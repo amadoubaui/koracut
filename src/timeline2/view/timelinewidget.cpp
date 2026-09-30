@@ -17,6 +17,8 @@
 #include "doc/kdenlivedoc.h"
 #include "effects/effectsrepository.hpp"
 #include "kdenlivesettings.h"
+#include "koracut/koracutanimatemenu.h"
+#include "koracut/koracuttimelinecolors.h"
 #include "mainwindow.h"
 #include "monitor/monitorproxy.h"
 #include "monitormanager.h"
@@ -26,6 +28,7 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QFontDatabase>
+#include <QNativeGestureEvent>
 #include <QMenu>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -101,6 +104,18 @@ void TimelineWidget::setTimelineMenu(QMenu *clipMenu, QMenu *compositionMenu, QM
                                      QAction *editGuideAction, QMenu *headerMenu, QMenu *thumbsMenu, QMenu *subtitleClipMenu, QMenu *addClipMenu)
 {
     m_timelineClipMenu = new QMenu(this);
+    // KoraCut : les gestes d'animation d'abord, là où la souris arrive (document 19, lot 5 suite).
+    m_koraCutAnimate = new KoraCutAnimateMenu(this);
+    m_timelineClipMenu->addMenu(m_koraCutAnimate->animateMenu());
+    m_timelineClipMenu->addMenu(m_koraCutAnimate->transitionMenu());
+    // KoraCut : la couleur du clip, comme dans Resolve et Premiere (document 13, 24 septembre 2026).
+    m_koraCutColors = new KoraCutColorMenu(this);
+    m_timelineClipMenu->addMenu(m_koraCutColors->clipMenu());
+    m_koraCutColorsSeparator = new QAction(this);
+    m_koraCutColorsSeparator->setSeparator(true);
+    m_koraCutColorsSeparator->setProperty("koracut_color", true);
+    m_koraCutColors->trackMenu()->menuAction()->setProperty("koracut_color", true);
+    m_timelineClipMenu->addSeparator();
     QList<QAction *> cActions = clipMenu->actions();
     for (auto &a : cActions) {
         m_timelineClipMenu->addAction(a);
@@ -220,6 +235,35 @@ void TimelineWidget::mouseMoveEvent(QMouseEvent *event)
     QQuickWidget::mouseMoveEvent(event);
 }
 
+bool TimelineWidget::event(QEvent *event)
+{
+    // KoraCut, 21 septembre 2026 : le pincement à deux doigts zoome la timeline, centré sur le
+    // pointeur. Qt livre le geste du trackpad en QNativeGestureEvent (macOS, Wayland). Sous
+    // Windows, le système le traduit lui-même en Ctrl + molette, que le QML sait déjà traiter.
+    if (event->type() == QEvent::NativeGesture) {
+        auto *gesture = static_cast<QNativeGestureEvent *>(event);
+        if (gesture->gestureType() == Qt::BeginNativeGesture) {
+            m_pinchAccumulated = 0.;
+        } else if (gesture->gestureType() == Qt::ZoomNativeGesture) {
+            // Un cran de zoom tous les 0,12 d'agrandissement : assez fin pour suivre les doigts,
+            // assez large pour ne pas traverser les 21 niveaux en un geste.
+            const double step = 0.12;
+            m_pinchAccumulated += gesture->value();
+            while (m_pinchAccumulated >= step) {
+                m_pinchAccumulated -= step;
+                pCore->window()->slotZoomIn(true);
+            }
+            while (m_pinchAccumulated <= -step) {
+                m_pinchAccumulated += step;
+                pCore->window()->slotZoomOut(true);
+            }
+            event->accept();
+            return true;
+        }
+    }
+    return QQuickWidget::event(event);
+}
+
 void TimelineWidget::showClipMenu(int cid)
 {
     // Hide not applicable effects
@@ -238,7 +282,28 @@ void TimelineWidget::showClipMenu(int cid)
             ac->setVisible(true);
         }
     }
+    if (m_koraCutAnimate) {
+        m_koraCutAnimate->prepare(model(), cid);
+    }
+    if (m_koraCutColors) {
+        m_koraCutColors->prepareClip(model(), cid);
+    }
     m_timelineClipMenu->popup(m_clickPos);
+}
+
+QMenu *TimelineWidget::koraCutShowClipMenu(int cid, const QPoint &globalPos)
+{
+    m_clickPos = globalPos;
+    showClipMenu(cid);
+    return m_timelineClipMenu;
+}
+
+QMenu *TimelineWidget::koraCutShowHeaderMenu(int tid, const QPoint &globalPos)
+{
+    m_clickPos = globalPos;
+    timelineController.setActiveTrack(tid);
+    showHeaderMenu();
+    return m_headerMenu;
 }
 
 void TimelineWidget::showMixMenu(int /*cid*/)
@@ -257,7 +322,8 @@ void TimelineWidget::showHeaderMenu()
     bool isAudio = timelineController.isActiveTrackAudio();
     QList<QAction *> menuActions = m_headerMenu->actions();
     QList<QAction *> audioActions;
-    QStringList allowedActions = {QLatin1String("show_track_record"), QLatin1String("separate_channels"), QLatin1String("normalize_channels")};
+    QStringList allowedActions = {QLatin1String("show_track_record"), QLatin1String("separate_channels"), QLatin1String("normalize_channels"),
+                                  QLatin1String("koracut_auto_ducking")};
     for (QAction *ac : std::as_const(menuActions)) {
         if (allowedActions.contains(ac->data().toString())) {
             if (ac->data().toString() == QLatin1String("separate_channels")) {
@@ -268,7 +334,9 @@ void TimelineWidget::showHeaderMenu()
     }
     if (!isAudio) {
         // Video track
-        int currentThumbs = timelineController.getActiveTrackProperty(QStringLiteral("kdenlive:thumbs_format")).toInt();
+        // KoraCut : une piste sans réglage est en bande complète, comme le dit le modèle.
+        const QString thumbsFormat = timelineController.getActiveTrackProperty(QStringLiteral("kdenlive:thumbs_format")).toString();
+        int currentThumbs = thumbsFormat.isEmpty() ? 1 : thumbsFormat.toInt();
         QList<QAction *> actions = m_thumbsMenu->actions();
         for (QAction *ac : std::as_const(actions)) {
             if (ac->data().toInt() == currentThumbs) {
@@ -289,6 +357,19 @@ void TimelineWidget::showHeaderMenu()
                 ac->setChecked(timelineController.getActiveTrackProperty(QStringLiteral("kdenlive:audio_rec")).toInt() == 1);
             }
         }
+    }
+    // KoraCut : « Couleur de la piste » en bas du menu. Le menu des têtes de pistes est partagé
+    // par toutes les séquences : on retire l'entrée d'une autre séquence avant de poser la nôtre.
+    if (m_koraCutColors) {
+        const QList<QAction *> current = m_headerMenu->actions();
+        for (QAction *ac : current) {
+            if (ac->property("koracut_color").toBool()) {
+                m_headerMenu->removeAction(ac);
+            }
+        }
+        m_koraCutColors->prepareTrack(model(), timelineController.activeTrack());
+        m_headerMenu->addAction(m_koraCutColorsSeparator);
+        m_headerMenu->addAction(m_koraCutColors->trackMenu()->menuAction());
     }
     m_headerMenu->popup(m_clickPos);
 }

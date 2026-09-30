@@ -60,6 +60,9 @@ avfilter.vpp_amf
 
 #####################
 # NOT WORKING AUDIO AVIFILTER
+# KoraCut, document 24 : tremolo marche (vérifié, fichier avfilter_tremolo.xml), il est retiré d'ici.
+# afftdn, anlmdn, arnndn, dynaudnorm, speechnorm restent hors d'usage : MLT refuse leurs trames
+# (« Unexpected return format », « Cannot get frame from buffer sink »).
 #####################
 #audiolevel (it has not to show up in the effects list) 
 avfilter.acue
@@ -81,7 +84,6 @@ avfilter.mcompand
 avfilter.rubberband
 avfilter.silencedetect
 avfilter.superequalizer
-avfilter.tremolo
 fft
 ladspa
 loudness_meter
@@ -108,7 +110,7 @@ pitch_shift
 # NOT NEEDED LADSPA FILTERS
 ###################
 # 1914 : Reports its delay value as systemic latency. Does nothing else, *this is not a delay*.
-# 1915 : Controls the degree to which the inputs are mixed into the output. Kdenlive doesn't support that (yet).
+# 1915 : Controls the degree to which the inputs are mixed into the output. KoraCut doesn't support that (yet).
 # 1186 : Reduces the period of the signal by the factor given, and makes it a square wave in the process. Has some amplitude tracking capability, but not really useful on complex signals. Not usable in my tests.
 # 1909 : This plugin add an output DC offset at the given amplitude to the input signal. It has no real use other than for debugging and in modular synths.
 # 1437 : This is a fairly normal flanger but with excessivly long delay times. To cut down the memory requirements the internal delay buffer noly has 15bits or resolution, so there is no headroom, if you feed in signals over 0dB it will clip the output. There is code to soften the effect of the clipping, but beware of it. There are other flangers available: 1438, 1191, 1208
@@ -127,10 +129,10 @@ ladspa.1212
 
 #####################
 # CRASHING AVFILTERS (WOULD REQUIRE AN XML FILE TO CORRECTLY DEFINE PARAMETERS)
+# KoraCut, document 24 (30 septembre 2026) : acompressor, aecho et agate ont leur fichier XML et
+# marchent sous MLT 7.41 (rendus vérifiés) ; ils sortent de cette liste. Un effet exclu ici reste
+# introuvable même avec un fichier XML (AbstractAssetsRepository::parseInfoFromXml).
 #####################
-avfilter.acompressor
-avfilter.aecho
-avfilter.agate
 avfilter.ametadata
 avfilter.arealtime
 avfilter.areverse

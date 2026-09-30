@@ -11,6 +11,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "abstractprojectitem.h"
 #include "binplaylist.hpp"
 #include "core.h"
+#include "koracut/koracutperformance.h"
 #include "cropcalculator.h"
 #include "doc/kdenlivedoc.h"
 #include "filewatcher.hpp"
@@ -32,6 +33,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 
 #include <KLocalizedString>
 
+#include <QFileInfo>
 #include <QIcon>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -130,6 +132,10 @@ int ProjectItemModel::mapToColumn(int column) const
     case 8:
         return AbstractProjectItem::UsageCount;
         break;
+    case 9:
+        return AbstractProjectItem::DataResolution;
+    case 10:
+        return AbstractProjectItem::DataFps;
     default:
         return AbstractProjectItem::DataName;
     }
@@ -170,6 +176,10 @@ QList<int> ProjectItemModel::mapDataToColumn(AbstractProjectItem::DataType type)
     case AbstractProjectItem::UsageCount:
         return {0, 8};
         break;
+    case AbstractProjectItem::DataResolution:
+        return {9};
+    case AbstractProjectItem::DataFps:
+        return {10};
     default:
         return {};
     }
@@ -346,6 +356,12 @@ QVariant ProjectItemModel::headerData(int section, Qt::Orientation orientation, 
             break;
         case 8:
             columnName = i18n("Usage");
+            break;
+        case 9:
+            columnName = i18nc("@title:column largeur × hauteur d'un média", "Resolution");
+            break;
+        case 10:
+            columnName = i18nc("@title:column images par seconde", "Frames/s");
             break;
         default:
             columnName = i18n("Unknown");
@@ -989,7 +1005,7 @@ bool ProjectItemModel::requestAddBinClip(QString &id, const QDomElement &descrip
         type = ClipType::ProducerType(description.attribute(QStringLiteral("type")).toInt());
     } else {
         const QString resource = Xml::getXmlProperty(description, QStringLiteral("resource"));
-        if (resource.endsWith(QLatin1String(".kdenlive")) || resource.endsWith(QLatin1String(".mlt"))) {
+        if (resource.endsWith(QLatin1String(".koracut")) || resource.endsWith(QLatin1String(".kdenlive")) || resource.endsWith(QLatin1String(".mlt"))) {
             type = ClipType::Playlist;
         }
     }
@@ -1715,13 +1731,15 @@ std::shared_ptr<Mlt::Tractor> ProjectItemModel::projectTractor()
 const std::pair<QString, QString> ProjectItemModel::sceneList(const QString &root, const QString &filterData, Mlt::Tractor *activeTractor, int duration,
                                                               bool timelineProducerOnly, const QString &aspectRatio)
 {
+    // KoraCut (chantier 10) : un effet lourd mis en pause pendant la lecture est remis le temps de l'écriture.
+    KoraCutPerformance::HeavyEffects::SaveGuard koraCutHeavyGuard;
     QWriteLocker lock(&pCore->xmlMutex);
     LocaleHandling::resetLocale();
     QString playlist;
 
     QTemporaryFile tempFile;
     if (!aspectRatio.isEmpty()) {
-        tempFile.setFileTemplate(QDir::temp().absoluteFilePath(QStringLiteral("kdenlive-XXXXXX.kdenlive")));
+        tempFile.setFileTemplate(QDir::temp().absoluteFilePath(QStringLiteral("koracut-XXXXXX.koracut")));
         if (!tempFile.open()) {
             qDebug() << "Could not open temporary file for writing";
             return {};
@@ -1742,7 +1760,7 @@ const std::pair<QString, QString> ProjectItemModel::sceneList(const QString &roo
     // Disabling meta creates cleaner files, but then we don't have access to metadata on the fly (meta channels, etc)
     // And we must use "avformat" instead of "avformat-novalidate" on project loading which causes a big delay on project opening
     // xmlConsumer.set("no_meta", 1);
-    // Add active timeline as playlist of the main tractor so that when played through melt, the .kdenlive file reads the playlist
+    // Add active timeline as playlist of the main tractor so that when played through melt, the project file reads the playlist
     if (m_projectTractor->count() > 0) {
         m_projectTractor->remove_track(0);
     }
@@ -1895,6 +1913,19 @@ void ProjectItemModel::setClipInvalid(const QString &binId)
     QWriteLocker locker(&m_lock);
     std::shared_ptr<ProjectClip> clip = getClipByBinID(binId);
     if (clip) {
+        // KoraCut, 21 septembre 2026 : KDirWatch signale aussi une disparition quand un fichier
+        // est remplace d'un bloc (rendu refait sur place, synchronisation). Avant de barrer le
+        // media, on regarde s'il est toujours la : si oui, c'est une modification, pas une perte.
+        const QString path = clip->clipUrl();
+        if (!path.isEmpty()) {
+            const QFileInfo info(path);
+            if (info.exists() && info.isFile()) {
+                clip->setClipStatus(FileStatus::StatusWaiting);
+                locker.unlock();
+                clip->reloadProducer();
+                return;
+            }
+        }
         clip->setClipStatus(FileStatus::StatusMissing);
         // TODO: set producer as blank invalid
     }

@@ -244,7 +244,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
                      <bool>true</bool>
                     </property>
                     <property name="configFile" stdset="0">
-                     <string>:data/kdenlive_renderprofiles.knsrc</string>
+                     <string>:data/koracut_renderprofiles.knsrc</string>
                     </property>
                    </widget>
                   </item>

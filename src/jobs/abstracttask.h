@@ -35,7 +35,8 @@ public:
         SPEEDJOB = 10,
         CACHEJOB = 11,
         MASKJOB = 12,
-        MELTJOB = 13
+        MELTJOB = 13,
+        MOTIONJOB = 14 // KoraCut : rendu HyperFrames d'un élément Motion
     };
     AbstractTask(const ObjectId &owner, JOBTYPE type, QObject* object);
     ~AbstractTask() override;

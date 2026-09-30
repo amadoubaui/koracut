@@ -9,7 +9,9 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "klocalizedstring.h"
 #include <QColor>
 #include <QDebug>
+#include <QFontMetrics>
 #include <QPainter>
+#include <algorithm>
 
 #define CHOP255(a) ((255) < (a) ? (255) : int(a))
 #define CHOP1255(a) ((a) < (1) ? (1) : ((a) > (255) ? (255) : (a)))
@@ -162,56 +164,35 @@ QImage RGBParadeGenerator::calculateRGBParade(const QSize &paradeSize, qreal sca
         davinci.drawLine(int(2 * partW + 2 * offset + distBorder), int(partH + distBorder), int(3 * partW + 2 * offset + distBorder), distBorder);
     }
 
-    const int d = 50;
-
-    // Show numerical minimum
-    if (minR == 0) {
-        davinci.setPen(palette.highlight().color());
-    } else {
-        davinci.setPen(palette.text().color());
+    // KoraCut : « min : » et « max : » en texte secondaire, lisibles sur tous les thèmes ; la couleur du
+    // canal va dans une pastille ; une valeur écrêtée (0 ou 255) s'écrit en jaune d'alerte (#FFD166).
+    // Sur un thème clair, un ambre plus foncé : le jaune ne se lit pas sur du blanc.
+    const QColor clipped = palette.window().color().lightnessF() > 0.5 ? QColor(0xA8, 0x6A, 0x00) : QColor(0xFF, 0xD1, 0x66);
+    QColor secondary = palette.text().color();
+    secondary.setAlphaF(0.62);
+    const QColor channel[3] = {QColor(0xFF, 0x72, 0x62), QColor(0x4A, 0xDE, 0x80), QColor(0x3D, 0xAE, 0xFF)};
+    const double mins[3] = {double(minR), double(minG), double(minB)};
+    const double maxs[3] = {double(maxR), double(maxG), double(maxB)};
+    const QFontMetrics fm(davinci.font());
+    const int labelW = std::max(fm.horizontalAdvance(i18n("min: ")), fm.horizontalAdvance(i18n("max: ")));
+    for (int c = 0; c < 3; ++c) {
+        const int x = int(c * (partW + offset) + distBorder);
+        const int dot = 8;
+        davinci.setPen(Qt::NoPen);
+        davinci.setBrush(channel[c]);
+        davinci.setRenderHint(QPainter::Antialiasing, true);
+        davinci.drawEllipse(QRectF(x, wh - 20 - fm.ascent() / 2. - dot / 2. - 1, dot, dot));
+        davinci.setRenderHint(QPainter::Antialiasing, false);
+        davinci.setBrush(Qt::NoBrush);
+        const int tx = x + dot + 6;
+        davinci.setPen(secondary);
+        davinci.drawText(tx, int(wh - 20), i18n("max: "));
+        davinci.drawText(tx, int(wh), i18n("min: "));
+        davinci.setPen(maxs[c] >= 255 ? clipped : palette.text().color());
+        davinci.drawText(tx + labelW + 4, int(wh - 20), QString::number(maxs[c], 'f', 0));
+        davinci.setPen(mins[c] <= 0 ? clipped : palette.text().color());
+        davinci.drawText(tx + labelW + 4, int(wh), QString::number(mins[c], 'f', 0));
     }
-    davinci.drawText(distBorder, int(wh), i18n("min: "));
-    if (minG == 0) {
-        davinci.setPen(palette.highlight().color());
-    } else {
-        davinci.setPen(palette.text().color());
-    }
-    davinci.drawText(int(partW + offset + distBorder), int(wh), i18n("min: "));
-    if (minB == 0) {
-        davinci.setPen(palette.highlight().color());
-    } else {
-        davinci.setPen(palette.text().color());
-    }
-    davinci.drawText(int(2 * partW + 2 * offset + distBorder), int(wh), i18n("min: "));
-
-    // Show numerical maximum
-    if (maxR == 255) {
-        davinci.setPen(palette.highlight().color());
-    } else {
-        davinci.setPen(palette.text().color());
-    }
-    davinci.drawText(distBorder, int(wh - 20), i18n("max: "));
-    if (maxG == 255) {
-        davinci.setPen(palette.highlight().color());
-    } else {
-        davinci.setPen(palette.text().color());
-    }
-    davinci.drawText(int(partW + offset + distBorder), int(wh) - 20, i18n("max: "));
-    if (maxB == 255) {
-        davinci.setPen(palette.highlight().color());
-    } else {
-        davinci.setPen(palette.text().color());
-    }
-    davinci.drawText(int(2 * partW + 2 * offset + distBorder), int(wh - 20), i18n("max: "));
-
-    davinci.setPen(palette.text().color());
-    davinci.drawText(d, int(wh), QString::number(minR, 'f', 0));
-    davinci.drawText(int(partW + offset + d), int(wh), QString::number(minG, 'f', 0));
-    davinci.drawText(int(2 * partW + 2 * offset + d), int(wh), QString::number(minB, 'f', 0));
-
-    davinci.drawText(d, int(wh - 20), QString::number(maxR, 'f', 0));
-    davinci.drawText(int(partW + offset + d), int(wh) - 20, QString::number(maxG, 'f', 0));
-    davinci.drawText(int(2 * partW + 2 * offset + d), int(wh - 20), QString::number(maxB, 'f', 0));
 
     return parade;
 }

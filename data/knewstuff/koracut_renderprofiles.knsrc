@@ -1,0 +1,6 @@
+[KNewStuff3]
+Name=Profils de rendu KoraCut
+ProvidersUrl=https://autoconfig.kde.org/ocs/providers.xml
+Categories=Kdenlive Export Profiles
+TargetDir=koracut/export
+Uncompress=archive

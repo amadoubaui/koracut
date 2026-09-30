@@ -13,7 +13,7 @@ from pathlib import Path
 
 def print_help():
     print("""
-    THIS SCRIPT IS PART OF KDENLIVE (www.kdenlive.org)
+    THIS SCRIPT IS PART OF KORACUT (koracut.org)
 
     Usage: python3 checkpackages.py [mode] [packages]
 
@@ -64,7 +64,7 @@ elif '--install' in sys.argv and len(sys.argv) > 1:
     python = sys.executable
     if len(missing) > 0:
         print("Installing missing packages: ", missing)
-        tmpFolder = os.path.join(Path.home(), ".cache/pip-kdenlive-tmp-folder")
+        tmpFolder = os.path.join(Path.home(), ".cache/pip-koracut-tmp-folder")
         print("Using tmp folder: ", tmpFolder)
         os.makedirs(tmpFolder, exist_ok=True)
         my_env = os.environ.copy()
@@ -82,7 +82,7 @@ elif '--force-install' in sys.argv and len(sys.argv) > 1:
     python = sys.executable
     if len(missing) > 0:
         print("Installing missing packages: ", missing)
-        tmpFolder = os.path.join(Path.home(), ".cache/pip-kdenlive-tmp-folder")
+        tmpFolder = os.path.join(Path.home(), ".cache/pip-koracut-tmp-folder")
         print("Using tmp folder: ", tmpFolder)
         os.makedirs(tmpFolder, exist_ok=True)
         my_env = os.environ.copy()

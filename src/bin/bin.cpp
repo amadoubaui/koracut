@@ -61,6 +61,11 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "undohelper.hpp"
 #include "utils/thumbnailcache.hpp"
 #include "xml/xml.hpp"
+#include "koracut/koracutemptystate.h"
+#include "koracut/koracutmetrics.h"
+
+#include <kddockwidgets/core/DockWidget.h>
+#include <QTimer>
 
 #include <KActionMenu>
 #include <KColorScheme>
@@ -84,6 +89,8 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include <QMimeData>
 #include <QSlider>
 #include <QStyledItemDelegate>
+#include <QTextLayout>
+#include <QTextOption>
 #include <QTimeLine>
 #include <QToolBar>
 #include <QToolTip>
@@ -95,6 +102,39 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include <memory>
 #include <utility>
 
+/** KoraCut : la case des étoiles de la colonne Note, à la taille des icônes (14 px par étoile), calée
+ *  à gauche et centrée en hauteur. Sert au dessin et au clic, pour qu'ils tombent au même endroit. */
+static QRect koraCutRatingRect(const QRect &cell)
+{
+    const int star = 14;
+    const int w = std::min(cell.width(), star * 5 + 4 * 2);
+    const int h = std::min(cell.height(), star);
+    return QRect(cell.left(), cell.top() + (cell.height() - h) / 2, w, h);
+}
+
+/** KoraCut, 25 septembre 2026 : le compteur d'usage en clair. Kdenlive écrivait « [0|1] » (utilisé 0 fois
+ *  dans cette séquence, 1 fois en tout), que personne ne savait lire, et qu'on prenait pour un bout du nom.
+ *  En liste, une phrase courte ; sous une vignette, « ×2 » et rien si le média ne sert pas dans la séquence. */
+static QString koraCutUsageLabel(const QString &usage, bool court)
+{
+    if (usage.isEmpty()) {
+        return QString();
+    }
+    const int bar = usage.indexOf(QLatin1Char('|'));
+    const int ici = (bar < 0 ? usage : usage.left(bar)).toInt();
+    const int total = bar < 0 ? ici : usage.mid(bar + 1).toInt();
+    if (court) {
+        return ici > 0 ? QStringLiteral("×%1").arg(ici) : QString();
+    }
+    if (ici == total) {
+        return i18ncp("@info:status how many times a media is used in the timeline", "used once", "used %1 times", ici);
+    }
+    if (ici == 0) {
+        return i18nc("@info:status media used only in other sequences", "used in another sequence");
+    }
+    return i18nc("@info:status %1 uses in this sequence, %2 in all sequences", "used %1× here, %2× in all", ici, total);
+}
+
 static QImage m_videoIcon;
 static QImage m_audioIcon;
 static QImage m_audioUsedIcon;
@@ -105,140 +145,114 @@ static QSize m_iconSize;
 static QIcon m_folderIcon;
 static QIcon m_sequenceFolderIcon;
 
-/**
- * @brief Draws the "Double click, drop files or click <icon> to import media" placeholder text when user has not yet imported any media
+/** @brief L'état vide du chutier : le modèle en quatre éléments de la charte.
+ *
+ * Il se peint dans le viewport, il ne peut donc pas contenir un vrai QPushButton sans poser un
+ * widget par-dessus. La zone du bouton est renvoyée à l'appelant, qui la garde chez lui et teste
+ * le clic contre elle dans son `mousePressEvent`. Chaque vue a la sienne : il y a deux vues de
+ * chutier, et l'application sait ouvrir un second chutier.
  */
-static void drawDropFilesPlaceholder(QPainter &painter, const QRect &rect, const QPalette &palette)
+static QRect drawDropFilesPlaceholder(QPainter &painter, const QRect &rect, const QPalette &palette)
 {
-    // Increment default font size by this amount to make it slightly stand out
-    static constexpr int FONT_SIZE_INCREASE = 3;
-    // Margin as percentage of font height. Less than this and we will not draw the text
-    static constexpr qreal MIN_MARGIN_RATIO_MULTILINE = 0.15;
-    // Margin as percentage of font height. Less than this and we'll switch to multiline layout
-    static constexpr qreal MIN_MARGIN_RATIO_SINGLELINE = 1.0;
-    // Space between lines
-    static constexpr qreal LINE_SPACING_RATIO = 0.3;
-    // Icon vertical alignment compensation for breeze-icons having top/bottom paddings so we can align it to the text baseline
-    static constexpr qreal ICON_ALIGNMENT_RATIO = 0.8;
+    const KoraCutEmptyState::Modele modele{
+        // Une pile de vignettes, pas le rectangle « ajouter un clip » (document 13, § 10.4).
+        QStringLiteral("koracut-bin-empty"), i18nc("@info état vide du chutier", "No media in this project"),
+        i18nc("@info état vide du chutier", "Drop files here, or double-click."),
+        i18nc("@action:button état vide du chutier", "Import Files")};
+    return KoraCutEmptyState::paint(painter, rect, palette, modele);
+}
 
-    // Icon placeholder text. Used in the text template but will be replaced by drawing an actual icon.
-    static const QString iconPlaceholder = QStringLiteral("{icon}");
-
-    QFont font = painter.font();
-    font.setPointSize(font.pointSize() + FONT_SIZE_INCREASE);
-    painter.setFont(font);
-
-    // Use a muted color for the placeholder text
-    QColor textColor = palette.color(QPalette::PlaceholderText);
-    if (!textColor.isValid()) {
-        textColor = palette.color(QPalette::Disabled, QPalette::Text);
+/** @brief KoraCut : écrit un nom sur plusieurs lignes au lieu de le tronquer au milieu.
+ *
+ * Les noms de rushes d'Amadou Ba sont longs et descriptifs, et c'est justement ce qui les rend
+ * utiles : « Univers Cosmetix - Vidéo 2 - Idées cadeaux qui font mouche - AVEC VOIX TÉMOIN ».
+ * Coupé après vingt caractères, il ne reste que le nom du client. Le texte est donc replié au mot
+ * (ou à n'importe quel caractère si un mot est trop long), sur @p lignesMax lignes au plus, et
+ * seule la dernière ligne se termine par des points de suspension si ça déborde encore.
+ */
+void dessineTexteReplie(QPainter *painter, const QRect &zone, const QString &texte, int lignesMax, Qt::Alignment alignement)
+{
+    if (texte.isEmpty() || zone.width() <= 0 || lignesMax < 1) {
+        return;
     }
-    painter.setPen(textColor);
-
-    // Setup text content templates with icon placeholder
-    const QString singlelineTemplate =
-        i18nc("Text shown when no media is imported yet. %1 is replaced by an icon", "Double click, drop files or click %1 to import media", iconPlaceholder);
-    const QString multilineTemplate = i18nc("Multiline version: Text shown when no media is imported yet. %1 is replaced by an icon",
-                                            "Double click, drop files\nor click %1 to import media", iconPlaceholder);
-
-    QIcon addIcon = QIcon::fromTheme(QStringLiteral("kdenlive-add-clip"));
-
-    // Calculate layout metrics
-    QFontMetrics fontMetrics(font);
-    const qreal devicePixelRatio = painter.device()->devicePixelRatioF();
-    const int fontHeight = fontMetrics.height();
-    const int iconSize = fontHeight;
-    const int minMarginMultiline = qRound(fontHeight * MIN_MARGIN_RATIO_MULTILINE);
-    const int minMarginSingleline = qRound(fontHeight * MIN_MARGIN_RATIO_SINGLELINE);
-
-    QPixmap iconPixmap = addIcon.pixmap(iconSize * devicePixelRatio, iconSize * devicePixelRatio);
-    iconPixmap.setDevicePixelRatio(devicePixelRatio);
-
-    // Determine if we need a multiline layout
-    // Width of the text + icon + margin on both sides of the text
-    const int singleLineTotalWidth =
-        fontMetrics.horizontalAdvance(QString(singlelineTemplate).replace(iconPlaceholder, "")) + iconSize + 2 * minMarginSingleline;
-
-    const bool needsMultilineLayout = singleLineTotalWidth > rect.width();
-
-    if (needsMultilineLayout) {
-        // Split multiline text into lines for layout calculation
-        const QStringList lines = multilineTemplate.split('\n', Qt::SkipEmptyParts);
-        // Ensure we have exactly 2 non-empty lines from translation. If not, bail out.
-        if (lines.size() != 2) {
-            return;
+    const QFontMetrics fm = painter->fontMetrics();
+    QTextOption options(alignement);
+    options.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+    QTextLayout layout(texte, painter->font());
+    layout.setTextOption(options);
+    layout.beginLayout();
+    QList<QPair<int, int>> lignes;
+    while (lignes.count() < lignesMax) {
+        QTextLine l = layout.createLine();
+        if (!l.isValid()) {
+            break;
         }
-
-        const QString firstLine = lines.at(0);
-        const QString secondLine = lines.at(1);
-
-        // Calculate width needed for drawing the text and icon
-        const int firstLineWidth = fontMetrics.horizontalAdvance(firstLine);
-        QString cleanedSecondLine = secondLine;
-        cleanedSecondLine.remove(iconPlaceholder);
-        const int secondLineWidth = fontMetrics.horizontalAdvance(cleanedSecondLine) + iconSize;
-        const int maxLineWidth = qMax(firstLineWidth, secondLineWidth);
-
-        // Early return if content won't fit even in multiline. So no text will be drawn in this case to avoid clipping.
-        if (maxLineWidth + 2 * minMarginMultiline > rect.width()) {
-            return;
-        }
-
-        const int lineSpacing = qRound(fontHeight * LINE_SPACING_RATIO);
-        const int totalContentHeight = fontHeight * 2 + lineSpacing;
-
-        const int layoutCenterX = rect.center().x();
-        const int layoutCenterY = rect.center().y();
-        const int contentStartY = layoutCenterY - totalContentHeight / 2 + fontMetrics.ascent();
-
-        // Draw first line centered
-        const int firstLineStartX = layoutCenterX - firstLineWidth / 2;
-        painter.drawText(firstLineStartX, contentStartY, firstLine);
-
-        // Draw second line with icon
-        const int secondLineY = contentStartY + fontHeight + lineSpacing;
-        const int iconPlaceholderIndex = secondLine.indexOf(iconPlaceholder);
-        const QString secondLineBeforeIcon = secondLine.left(iconPlaceholderIndex);
-        const QString secondLineAfterIcon = secondLine.mid(iconPlaceholderIndex + iconPlaceholder.length());
-
-        const int beforeIconWidth = fontMetrics.horizontalAdvance(secondLineBeforeIcon);
-        const int afterIconWidth = fontMetrics.horizontalAdvance(secondLineAfterIcon);
-        const int secondLineStartX = layoutCenterX - (beforeIconWidth + iconSize + afterIconWidth) / 2;
-
-        // Draw text before icon
-        painter.drawText(secondLineStartX, secondLineY, secondLineBeforeIcon);
-
-        // Draw icon
-        const int iconX = secondLineStartX + beforeIconWidth;
-        const int iconY = secondLineY - ICON_ALIGNMENT_RATIO * iconSize;
-        painter.drawPixmap(iconX, iconY, iconSize, iconSize, iconPixmap);
-
-        // Draw text after icon
-        const int afterIconX = iconX + iconSize;
-        painter.drawText(afterIconX, secondLineY, secondLineAfterIcon);
-
-    } else {
-        // single-line layout
-        const int textBaselineY = rect.center().y() + fontMetrics.ascent() / 2;
-        const QString textBeforeIcon = singlelineTemplate.left(singlelineTemplate.indexOf(iconPlaceholder));
-        const QString textAfterIcon = singlelineTemplate.mid(singlelineTemplate.indexOf(iconPlaceholder) + iconPlaceholder.length());
-
-        const int beforeIconWidth = fontMetrics.horizontalAdvance(textBeforeIcon);
-        const int totalWidth = beforeIconWidth + iconSize + fontMetrics.horizontalAdvance(textAfterIcon);
-        const int layoutStartX = rect.center().x() - totalWidth / 2;
-
-        // Draw text before icon
-        painter.drawText(layoutStartX, textBaselineY, textBeforeIcon);
-
-        // Draw icon aligned with text baseline
-        const int iconX = layoutStartX + beforeIconWidth;
-        const int iconY = textBaselineY - ICON_ALIGNMENT_RATIO * iconSize;
-        painter.drawPixmap(iconX, iconY, iconSize, iconSize, iconPixmap);
-
-        // Draw text after icon
-        const int afterIconX = iconX + iconSize;
-        painter.drawText(afterIconX, textBaselineY, textAfterIcon);
+        l.setLineWidth(zone.width());
+        lignes << qMakePair(l.textStart(), l.textLength());
     }
+    layout.endLayout();
+    if (lignes.isEmpty()) {
+        return;
+    }
+    const int hauteur = lignes.count() * fm.lineSpacing();
+    int y = zone.top();
+    if (alignement & Qt::AlignVCenter) {
+        y += qMax(0, (zone.height() - hauteur) / 2);
+    } else if (alignement & Qt::AlignBottom) {
+        y += qMax(0, zone.height() - hauteur);
+    }
+    const int dernier = lignes.count() - 1;
+    const Qt::Alignment horizontal = (alignement & Qt::AlignHCenter) ? Qt::AlignHCenter : Qt::AlignLeft;
+    for (int i = 0; i <= dernier; ++i) {
+        QString morceau = texte.mid(lignes.at(i).first, lignes.at(i).second);
+        if (i == dernier && lignes.at(i).first + lignes.at(i).second < texte.length()) {
+            morceau = fm.elidedText(texte.mid(lignes.at(i).first), Qt::ElideRight, zone.width());
+        }
+        painter->drawText(QRect(zone.left(), y, zone.width(), fm.lineSpacing()), int(horizontal) | Qt::AlignVCenter, morceau.trimmed());
+        y += fm.lineSpacing();
+    }
+}
+
+/** @brief KoraCut : la marque d'un média absent, posée sur sa vignette.
+ *
+ * Avant : un cadre rouge pur de 3 px tout autour de la vignette, plus une croix blanche dessinée
+ * par-dessus. C'est brutal, et c'est ce qui a fait croire à Amadou Ba que son rush était perdu.
+ * Resolve et Premiere posent un bandeau discret sur la vignette avec le mot. On fait pareil :
+ * bandeau sur le tiers bas, à 90 %, texte de 10 px en capitales, pas de cadre, pas de croix.
+ */
+/** Le rouge de la charte, #FF7262, pris au schéma de couleurs. */
+QColor couleurMediaAbsent()
+{
+    KColorScheme scheme(QPalette::Active);
+    return scheme.foreground(KColorScheme::NegativeText).color();
+}
+
+/** L'orange de la charte, #E07B39, pour un média dont seul le proxy est là. */
+QColor couleurProxySeul()
+{
+    KColorScheme scheme(QPalette::Active);
+    return scheme.foreground(KColorScheme::NeutralText).color();
+}
+
+void dessineBandeauMedia(QPainter *painter, const QRect &vignette, const QString &mot, const QColor &fond)
+{
+    if (vignette.width() < 24 || vignette.height() < 12) {
+        return;
+    }
+    painter->save();
+    QRect bandeau = vignette;
+    bandeau.setTop(vignette.bottom() - qMax(12, vignette.height() / 3) + 1);
+    QColor couleur = fond;
+    couleur.setAlphaF(.9);
+    painter->fillRect(bandeau, couleur);
+    QFont etiquette = painter->font();
+    etiquette.setPixelSize(KoraCutMetrics::FontLabel);
+    etiquette.setWeight(QFont::DemiBold);
+    painter->setFont(etiquette);
+    painter->setPen(Qt::white);
+    const QString texte = painter->fontMetrics().elidedText(mot.toUpper(), Qt::ElideRight, bandeau.width() - 4);
+    painter->drawText(bandeau, Qt::AlignCenter, texte);
+    painter->restore();
 }
 
 /**
@@ -280,6 +294,7 @@ public:
                     // Rating
                     QRect rect = option.rect;
                     rect.adjust(option.rect.width() / 12, 0, 0, 0);
+                    rect = koraCutRatingRect(rect);
                     int rate = 0;
                     if (me->pos().x() > rect.x()) {
                         rate = KRatingPainter::getRatingFromPosition(rect, Qt::AlignLeft | Qt::AlignVCenter, qApp->layoutDirection(), me->pos());
@@ -345,9 +360,14 @@ public:
         int decoWidth = 0;
         int mid = 0;
         if (type == AbstractProjectItem::ClipItem || type == AbstractProjectItem::SubClipItem || type == AbstractProjectItem::SubSequenceItem) {
-            mid = int((r1.height() / 2));
+            // KoraCut : même case de vignette et même bloc de texte centré que paint().
+            const int ligne = opt.fontMetrics.lineSpacing();
+            const int air = type == AbstractProjectItem::ClipItem ? KoraCutMetrics::SpaceTight : 0;
+            r1.adjust(0, air, 0, -air);
+            r1.setTop(r1.top() + qMax(0, (r1.height() - 2 * ligne - KoraCutMetrics::SpaceTight) / 2));
+            mid = qMax(0, r1.height() - ligne);
             if (opt.decorationSize.height() > 0) {
-                decoWidth = int(r1.height() * pCore->getCurrentDar());
+                decoWidth = int((option.rect.height() - 2 * air) * qMax(1.0, pCore->getCurrentDar()));
             }
         } else if (type == AbstractProjectItem::FolderItem) {
             if (opt.decorationSize.height() > 0) {
@@ -379,7 +399,15 @@ public:
             return QSize(hint.width(), qMin(option.fontMetrics.lineSpacing() + 4, hint.height()));
         }
         if (type == AbstractProjectItem::ClipItem) {
-            return QSize(hint.width(), qMax(option.fontMetrics.lineSpacing() * 2 + 4, qMax(hint.height(), option.decorationSize.height())));
+            // KoraCut : plancher à 2,4 fois le cran Base. Une ligne de chutier serrée à deux
+            // interlignes ne laisse pas la place de respirer entre le nom et la durée.
+            const int plancher = qRound(2.4 * KoraCutMetrics::FontBase);
+            // Plus l'air au-dessus et au-dessous de la vignette (22 septembre 2026, voir paint()).
+            // 25 septembre 2026 : la hauteur ne suit plus l'icône du média. Une vignette verticale
+            // (élément Motion 9:16) rendait sa ligne plus haute, donc sa case de vignette plus large,
+            // et son nom commençait plus à droite que ceux des autres lignes.
+            return QSize(hint.width(), 2 * KoraCutMetrics::SpaceTight +
+                                           qMax(plancher, qMax(option.fontMetrics.lineSpacing() * 2 + 4, option.decorationSize.height())));
         }
         if (type == AbstractProjectItem::SubClipItem || type == AbstractProjectItem::SubSequenceItem) {
             return QSize(hint.width(), qMax(option.fontMetrics.lineSpacing() * 2 + 4, qMin(hint.height(), int(option.decorationSize.height() / 1.5))));
@@ -414,30 +442,48 @@ public:
                 painter->setPen(option.palette.text().color());
             }
             QRect r = r1;
+            // KoraCut : le nom n'est plus en gras. Le gras servait à le distinguer de la durée ;
+            // c'est la taille et l'opacité qui le font maintenant, comme partout ailleurs.
             QFont font = painter->font();
-            font.setBold(true);
             painter->setFont(font);
             if (type == AbstractProjectItem::ClipItem || type == AbstractProjectItem::SubClipItem || type == AbstractProjectItem::SubSequenceItem) {
+                // KoraCut, 22 septembre 2026 : de l'air dans chaque ligne. La vignette occupait
+                // toute la hauteur et le texte collait au bord : les vignettes de deux lignes se
+                // touchaient et la durée d'un média se lisait comme celle du suivant (vu à l'écran
+                // avec quatre médias). Tout se dessine dans un rectangle rentré de 4 px, et
+                // sizeHint() ajoute ces 8 px à la hauteur.
+                if (type == AbstractProjectItem::ClipItem) {
+                    const int air = KoraCutMetrics::SpaceTight;
+                    r1.adjust(air, air, 0, -air);
+                    r = r1;
+                }
+                const QRect contenu = r1;
                 int decoWidth = 0;
                 FileStatus::ClipStatus clipStatus = FileStatus::ClipStatus(index.data(AbstractProjectItem::ClipStatus).toInt());
                 int cType = index.data(AbstractProjectItem::ClipType).toInt();
                 if (opt.decorationSize.height() > 0) {
-                    r.setWidth(int(r.height() * pCore->getCurrentDar()));
+                    // KoraCut, 25 septembre 2026 : une case de vignette de largeur fixe pour toute la
+                    // liste, au moins carrée. Avant, la case suivait le format de la séquence (9:16 :
+                    // étroite) mais la vignette gardait le sien (16:9 : large), et le nom du média
+                    // s'écrivait par-dessus l'image. La vignette tient maintenant dans sa case.
+                    const int caseLargeur = int(r.height() * qMax(1.0, pCore->getCurrentDar()));
+                    r.setWidth(caseLargeur);
                     QPixmap pix = opt.icon.pixmap(opt.icon.actualSize(r.size()));
                     if (!pix.isNull()) {
                         // Draw icon
-                        decoWidth += r.width() + textMargin;
-                        r.setWidth(r.height() * pix.width() / pix.height());
+                        decoWidth += caseLargeur + textMargin;
+                        QSize dessin = pix.size();
+                        dessin.scale(r.size(), Qt::KeepAspectRatio);
+                        r = QRect(r.left() + (caseLargeur - dessin.width()) / 2, r.top() + (r.height() - dessin.height()) / 2, dessin.width(), dessin.height());
                         painter->drawPixmap(r, pix, QRect(0, 0, pix.width(), pix.height()));
                     }
                     m_thumbRect = r;
 
-                    // Draw frame in case of missing source
-                    if (clipStatus == FileStatus::StatusMissing || clipStatus == FileStatus::StatusProxyOnly) {
-                        painter->save();
-                        painter->setPen(QPen(clipStatus == FileStatus::StatusProxyOnly ? Qt::yellow : Qt::red, 3));
-                        painter->drawRect(m_thumbRect.adjusted(0, 0, -1, -1));
-                        painter->restore();
+                    // KoraCut : un bandeau sur la vignette, à la place du cadre rouge.
+                    if (clipStatus == FileStatus::StatusMissing) {
+                        dessineBandeauMedia(painter, m_thumbRect, i18nc("@info:status média absent", "Missing"), couleurMediaAbsent());
+                    } else if (clipStatus == FileStatus::StatusProxyOnly) {
+                        dessineBandeauMedia(painter, m_thumbRect, i18nc("@info:status seul le proxy est là", "Proxy only"), couleurProxySeul());
                     } else if (cType == ClipType::Image || cType == ClipType::SlideShow) {
                         // Draw 'photo' frame to identify image clips
                         painter->save();
@@ -467,20 +513,34 @@ public:
                         }
                     }
                 }
-                int mid = int((r1.height() / 2));
-                r1.adjust(decoWidth, 0, 0, -mid);
-                QRect r2 = option.rect;
-                r2.adjust(decoWidth, mid, 0, 0);
-                QRectF bounding;
-                painter->drawText(r1, Qt::AlignLeft | Qt::AlignTop, index.data(AbstractProjectItem::DataName).toString(), &bounding);
-                font.setBold(false);
-                painter->setFont(font);
+                // KoraCut : le nom prend toute la place au-dessus de la ligne de durée et se
+                // replie sur deux lignes si besoin, au lieu d'être coupé net.
+                // KoraCut : 4 px au moins entre le nom et la durée, ils étaient collés.
+                const int ligne = option.fontMetrics.lineSpacing();
+                const int ecart = KoraCutMetrics::SpaceTight;
+                // KoraCut, 25 septembre 2026 : le nom et la durée forment un bloc centré dans la
+                // hauteur de la ligne. Avant, le nom collait en haut et la durée en bas : sur une
+                // grande vignette, un vide les séparait et la durée semblait appartenir au média
+                // suivant. Le nom prend deux lignes seulement s'il en a besoin.
+                const QString nom = index.data(AbstractProjectItem::DataName).toString();
+                const int largeurTexte = qMax(1, contenu.width() - decoWidth);
+                const int lignesNom = (option.fontMetrics.horizontalAdvance(nom) > largeurTexte && contenu.height() >= 3 * ligne + ecart) ? 2 : 1;
+                const int blocHauteur = lignesNom * ligne + ecart + ligne;
+                const int haut = contenu.top() + qMax(0, (contenu.height() - blocHauteur) / 2);
+                QRect r2(contenu.left() + decoWidth, haut + lignesNom * ligne + ecart, largeurTexte, ligne);
+                r1 = QRect(contenu.left() + decoWidth, haut, largeurTexte, lignesNom * ligne);
+                QRectF bounding(r1);
+                dessineTexteReplie(painter, r1, nom, lignesNom, Qt::AlignLeft | Qt::AlignTop);
+                // La durée et les marques passent au cran dense, à 62 %.
+                QFont dense = font;
+                dense.setPixelSize(KoraCutMetrics::FontDense);
+                painter->setFont(dense);
                 QString subText = index.data(AbstractProjectItem::DataDuration).toString();
                 QString tags = index.data(AbstractProjectItem::DataTag).toString();
                 if (!tags.isEmpty()) {
                     QStringList t = tags.split(QLatin1Char(';'));
                     QRectF tagRect = m_thumbRect.adjusted(2, 2, 0, 2);
-                    tagRect.setWidth(r1.height() / 3.5);
+                    tagRect.setWidth(contenu.height() / 3.5);
                     tagRect.setHeight(tagRect.width());
                     for (const QString &color : std::as_const(t)) {
                         painter->setBrush(QColor(color));
@@ -490,17 +550,17 @@ public:
                     painter->setBrush(Qt::NoBrush);
                 }
                 if (!subText.isEmpty()) {
-                    r2.adjust(0, int(bounding.bottom() - r2.top()), 0, 0);
                     QColor subTextColor = painter->pen().color();
                     bool selected = opt.state & QStyle::State_Selected;
                     if (!selected) {
-                        subTextColor.setAlphaF(.7);
+                        subTextColor.setAlphaF(.62);
                     }
                     painter->setPen(subTextColor);
                     // Draw usage counter
                     const QString usage = index.data(AbstractProjectItem::UsageCount).toString();
-                    if (!usage.isEmpty()) {
-                        subText.append(QStringLiteral(" [%1]").arg(usage));
+                    const QString usageLabel = koraCutUsageLabel(usage, false);
+                    if (!usageLabel.isEmpty()) {
+                        subText.append(QStringLiteral(" · ") + usageLabel);
                     }
                     painter->drawText(r2, Qt::AlignLeft | Qt::AlignTop, subText, &bounding);
                     // Add audio/video icons for selective drag
@@ -586,11 +646,31 @@ public:
                         warning.paint(painter, r2);
                     }
                 }
+            } else if (index.data(AbstractProjectItem::SequenceFolder).toBool()) {
+                // KoraCut : le dossier des séquences, toujours en tête de liste, est un en-tête
+                // et non un élément comme les autres. Il se lit donc comme une ligne de section :
+                // libellé au cran Étiquette en capitales, à 62 %, sans icône de dossier, et un
+                // filet de séparation dessous. Amadou Ba l'a cité nommément : « le dossier
+                // séquence n'est pas beau ».
+                QFont section = painter->font();
+                section.setPixelSize(KoraCutMetrics::FontLabel);
+                section.setWeight(QFont::DemiBold);
+                section.setLetterSpacing(QFont::AbsoluteSpacing, 0.4);
+                painter->setFont(section);
+                QColor couleur = painter->pen().color();
+                couleur.setAlphaF(.62);
+                painter->setPen(couleur);
+                QRect titre = r1.adjusted(textMargin, 0, -textMargin, 0);
+                painter->drawText(titre, Qt::AlignLeft | Qt::AlignVCenter, index.data(AbstractProjectItem::DataName).toString().toUpper());
+                QColor filet = option.palette.text().color();
+                filet.setAlphaF(.09);
+                painter->setPen(filet);
+                painter->drawLine(option.rect.left(), option.rect.bottom(), option.rect.right(), option.rect.bottom());
             } else {
                 // Folder
                 int decoWidth = 0;
                 if (opt.decorationSize.height() > 0) {
-                    QIcon icon = index.data(AbstractProjectItem::SequenceFolder).toBool() ? m_sequenceFolderIcon : m_folderIcon;
+                    QIcon icon = m_folderIcon;
                     r.setWidth(r.height());
                     QPixmap pix = icon.pixmap(icon.actualSize(r.size()));
                     // Draw icon
@@ -614,6 +694,9 @@ public:
             painter->setOpacity(1);
             if (index.data(AbstractProjectItem::ItemTypeRole).toInt() != AbstractProjectItem::FolderItem) {
                 r1.adjust(r1.width() / 12, 0, 0, 0);
+                // KoraCut : KRatingPainter agrandit les étoiles jusqu'à remplir la case ; une colonne large
+                // et des lignes hautes les rendaient énormes. Taille des icônes de l'application, 14 px.
+                r1 = koraCutRatingRect(r1);
                 KRatingPainter::paintRating(painter, r1, Qt::AlignLeft | Qt::AlignVCenter, index.data().toInt());
             }
         } else {
@@ -716,8 +799,13 @@ public:
             QStyle *style = opt.widget ? opt.widget->style() : QApplication::style();
             style->drawPrimitive(QStyle::PE_PanelItemViewItem, &opt, painter, opt.widget);
             // style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, opt.widget);
+            // KoraCut : la carte est au moins large de 96 px (voir sizeHint) ; la vignette garde sa
+            // largeur et se centre dedans, le nom prend toute la largeur de la carte.
             QRect r = opt.rect;
-            r.setHeight(r.width() / pCore->getCurrentDar());
+            const int largeurVignette = qMax(1, qMin(r.width(), m_iconSize.width()));
+            r.setLeft(opt.rect.x() + (opt.rect.width() - largeurVignette) / 2);
+            r.setWidth(largeurVignette);
+            r.setHeight(largeurVignette / pCore->getCurrentDar());
             int type = index.data(AbstractProjectItem::ItemTypeRole).toInt();
             bool isFolder = type == AbstractProjectItem::FolderItem;
             bool isSequenceFolder = index.data(AbstractProjectItem::SequenceFolder).toBool();
@@ -736,19 +824,17 @@ public:
             QString itemText = index.data(AbstractProjectItem::DataName).toString();
             // Draw usage counter
             const QString usage = isFolder ? QString() : index.data(AbstractProjectItem::UsageCount).toString();
-            if (!usage.isEmpty()) {
-                int usageWidth = option.fontMetrics.horizontalAdvance(QStringLiteral(" [%1]").arg(usage));
-                int availableWidth = textRect.width() - usageWidth;
-                if (option.fontMetrics.horizontalAdvance(itemText) > availableWidth) {
-                    itemText = option.fontMetrics.elidedText(itemText, Qt::ElideRight, availableWidth);
-                }
-                itemText.append(QStringLiteral(" [%1]").arg(usage));
-            } else {
-                if (option.fontMetrics.horizontalAdvance(itemText) > textRect.width()) {
-                    itemText = option.fontMetrics.elidedText(itemText, Qt::ElideRight, textRect.width());
-                }
+            const QString usageLabel = koraCutUsageLabel(usage, true);
+            if (!usageLabel.isEmpty()) {
+                itemText.append(QStringLiteral(" ") + usageLabel);
             }
-            painter->drawText(textRect, Qt::AlignCenter | Qt::AlignBottom, itemText, &bounding);
+            // KoraCut : le nom passe sur deux lignes sous la vignette, au lieu d'être coupé
+            // après une dizaine de caractères. C'est ce qui fait la différence entre
+            // « Univers C… » et « Univers Cosmetix - Vidéo 2 - Idées… ».
+            QRect nomRect = textRect;
+            nomRect.setTop(qMin(m_thumbRect.bottom() + 2, textRect.bottom()));
+            dessineTexteReplie(painter, nomRect, itemText, 2, Qt::AlignHCenter | Qt::AlignTop);
+            Q_UNUSED(bounding)
 
             if (isFolder) {
                 return;
@@ -812,13 +898,12 @@ public:
                     }
                 }
             }
-            // Draw frame in case of missing source
+            // KoraCut : un bandeau sur la vignette, à la place du cadre rouge.
             FileStatus::ClipStatus clipStatus = FileStatus::ClipStatus(index.data(AbstractProjectItem::ClipStatus).toInt());
-            if (clipStatus == FileStatus::StatusMissing || clipStatus == FileStatus::StatusProxyOnly) {
-                painter->save();
-                painter->setPen(QPen(clipStatus == FileStatus::StatusProxyOnly ? Qt::yellow : Qt::red, 3));
-                painter->drawRect(m_thumbRect);
-                painter->restore();
+            if (clipStatus == FileStatus::StatusMissing) {
+                dessineBandeauMedia(painter, m_thumbRect, i18nc("@info:status média absent", "Missing"), couleurMediaAbsent());
+            } else if (clipStatus == FileStatus::StatusProxyOnly) {
+                dessineBandeauMedia(painter, m_thumbRect, i18nc("@info:status seul le proxy est là", "Proxy only"), couleurProxySeul());
             } else if (cType == ClipType::Image || cType == ClipType::SlideShow) {
                 // Draw 'photo' frame to identify image clips
                 painter->save();
@@ -900,8 +985,10 @@ public:
 
     QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &) const override
     {
-        int textHeight = int(option.fontMetrics.height() * 1.5);
-        return (QSize(m_iconSize.width(), m_iconSize.height() + textHeight));
+        // Deux lignes de nom, et une largeur minimale : en 9:16 la vignette est si étroite que le nom
+        // se coupait lettre par lettre (« Sé q… », 29 septembre 2026).
+        const int textHeight = option.fontMetrics.lineSpacing() * 2 + 6;
+        return (QSize(qMax(m_iconSize.width(), 96), m_iconSize.height() + textHeight));
     }
 
 private:
@@ -973,6 +1060,13 @@ void MyListView::leaveEvent(QEvent *event)
 
 void MyListView::mousePressEvent(QMouseEvent *event)
 {
+    // KoraCut : le bouton de l'état vide est peint, pas posé. C'est ici qu'il devient cliquable.
+    if (event->button() == Qt::LeftButton && !m_emptyActionRect.isNull() && m_emptyActionRect.contains(event->pos())
+        && !pCore->bin()->hasUserClip()) {
+        QMetaObject::invokeMethod(pCore->bin(), "slotAddClip", Qt::QueuedConnection);
+        event->accept();
+        return;
+    }
     QListView::mousePressEvent(event);
     if (event->button() == Qt::LeftButton) {
         QModelIndex clickedIndex = indexAt(event->pos());
@@ -1078,7 +1172,7 @@ void MyListView::paintEvent(QPaintEvent *event)
         // Get the viewport rect
         QRect rect = viewport()->rect();
 
-        drawDropFilesPlaceholder(painter, rect, palette());
+        m_emptyActionRect = drawDropFilesPlaceholder(painter, rect, palette());
     }
 }
 
@@ -1091,6 +1185,13 @@ MyTreeView::MyTreeView(QWidget *parent)
 
 void MyTreeView::mousePressEvent(QMouseEvent *event)
 {
+    // KoraCut : le bouton de l'état vide est peint, pas posé. C'est ici qu'il devient cliquable.
+    if (event->button() == Qt::LeftButton && !m_emptyActionRect.isNull() && m_emptyActionRect.contains(event->pos())
+        && !pCore->bin()->hasUserClip()) {
+        QMetaObject::invokeMethod(pCore->bin(), "slotAddClip", Qt::QueuedConnection);
+        event->accept();
+        return;
+    }
     QTreeView::mousePressEvent(event);
     if (event->button() == Qt::LeftButton) {
         QModelIndex clickedIndex = indexAt(event->pos());
@@ -1250,7 +1351,7 @@ void MyTreeView::paintEvent(QPaintEvent *event)
         // Get the viewport rect
         QRect rect = viewport()->rect();
 
-        drawDropFilesPlaceholder(painter, rect, palette());
+        m_emptyActionRect = drawDropFilesPlaceholder(painter, rect, palette());
     }
 }
 
@@ -1417,15 +1518,18 @@ Bin::Bin(std::shared_ptr<ProjectItemModel> model, QWidget *parent, bool isMainBi
 
     // Create toolbar for buttons
     m_toolbar = new QToolBar(this);
-    int iconSize = style()->pixelMetric(QStyle::PM_SmallIconSize);
-    m_toolbar->setIconSize(QSize(iconSize, iconSize));
+    // KoraCut, 22 septembre 2026 : un nom, pour que la feuille de style pose le filet qui sépare
+    // la barre de la liste. « On dirait que tout est collé », et c'est vrai : les deux zones se
+    // touchaient sans rien pour les distinguer.
+    m_toolbar->setObjectName(QStringLiteral("koracutBinToolBar"));
+    m_toolbar->setIconSize(KoraCutMetrics::iconToolbar());
     m_toolbar->setToolButtonStyle(Qt::ToolButtonIconOnly);
     m_layout->addWidget(m_toolbar);
 
     if (m_isMainBin) {
         // Init icons
         qreal dpr = this->devicePixelRatioF();
-        QSize iconPxSize = QSize(iconSize, iconSize) * dpr;
+        QSize iconPxSize = KoraCutMetrics::iconToolbar() * dpr;
         m_audioIcon = QImage(iconPxSize, QImage::Format_ARGB32_Premultiplied);
         m_audioIcon.setDevicePixelRatio(dpr);
         m_videoIcon = QImage(iconPxSize, QImage::Format_ARGB32_Premultiplied);
@@ -1508,10 +1612,14 @@ Bin::Bin(std::shared_ptr<ProjectItemModel> model, QWidget *parent, bool isMainBi
     zoomWidget->setDefaultWidget(container);
 
     // View type
+    // KoraCut, 21 septembre 2026 : trois modes, dans l'ordre du plus dense au plus détaillé.
+    // Avant, le chutier n'avait qu'une seule façon de montrer les médias, une liste dense, et
+    // c'est ce qu'Amadou Ba a demandé en premier : « vue carte, vue liste ou n'importe quel
+    // type de vue ». Les trois sont aussi posés en contrôle segmenté dans la barre du chutier.
     m_listTypeAction = new KSelectAction(QIcon::fromTheme(QStringLiteral("view-list-tree")), i18n("View Mode"), this);
     pCore->window()->actionCollection()->addAction(QStringLiteral("bin_view_mode"), m_listTypeAction);
     pCore->window()->actionCollection()->setShortcutsConfigurable(m_listTypeAction, false);
-    QAction *treeViewAction = m_listTypeAction->addAction(QIcon::fromTheme(QStringLiteral("view-list-tree")), i18n("Tree View"));
+    QAction *treeViewAction = m_listTypeAction->addAction(QIcon::fromTheme(QStringLiteral("view-list-details")), i18n("List"));
     m_listTypeAction->addAction(treeViewAction);
     treeViewAction->setData(BinTreeView);
     if (m_listType == treeViewAction->data().toInt()) {
@@ -1522,12 +1630,20 @@ Bin::Bin(std::shared_ptr<ProjectItemModel> model, QWidget *parent, bool isMainBi
     connect(profileAction, &QAction::triggered, this, &Bin::adjustProjectProfileToItem);
     pCore->window()->actionCollection()->addAction(QStringLiteral("project_adjust_profile"), profileAction);
 
-    QAction *iconViewAction = m_listTypeAction->addAction(QIcon::fromTheme(QStringLiteral("view-list-icons")), i18n("Icon View"));
+    QAction *iconViewAction = m_listTypeAction->addAction(QIcon::fromTheme(QStringLiteral("view-list-icons")), i18n("Cards"));
     iconViewAction->setData(BinIconView);
     if (m_listType == iconViewAction->data().toInt()) {
         m_listTypeAction->setCurrentAction(iconViewAction);
     }
     pCore->window()->actionCollection()->addAction(QStringLiteral("bin_view_mode_icon"), iconViewAction);
+
+    QAction *detailsViewAction = m_listTypeAction->addAction(QIcon::fromTheme(QStringLiteral("view-list-tree")), i18n("Details"));
+    detailsViewAction->setData(BinDetailsView);
+    if (m_listType == detailsViewAction->data().toInt()) {
+        m_listTypeAction->setCurrentAction(detailsViewAction);
+    }
+    pCore->window()->actionCollection()->addAction(QStringLiteral("bin_view_mode_details"), detailsViewAction);
+    m_viewModeActions = {treeViewAction, iconViewAction, detailsViewAction};
 
     // Sort menu
     m_sortDescend = new QAction(i18n("Descending"), this);
@@ -1612,6 +1728,12 @@ Bin::Bin(std::shared_ptr<ProjectItemModel> model, QWidget *parent, bool isMainBi
 
     m_listTypeAction->setToolBarMode(KSelectAction::MenuMode);
     connect(m_listTypeAction, &KSelectAction::actionTriggered, this, &Bin::slotInitView);
+    // KoraCut, 21 septembre 2026 : chaque mode est aussi relié directement, pour que les trois
+    // boutons de la barre ne dépendent pas des rouages internes de `KSelectAction`. Le second
+    // appel ne coûte rien : il ressort aussitôt sur « ce mode est déjà le mode courant ».
+    for (QAction *a : std::as_const(m_viewModeActions)) {
+        connect(a, &QAction::triggered, this, [this, a]() { slotInitView(a); });
+    }
 
     // Settings menu
     auto *settingsAction = new KActionMenu(QIcon::fromTheme(QStringLiteral("application-menu")), i18n("Options"), this);
@@ -1699,6 +1821,13 @@ Bin::Bin(std::shared_ptr<ProjectItemModel> model, QWidget *parent, bool isMainBi
 
     m_tagAction->setCheckable(true);
     m_toolbar->addAction(m_tagAction);
+    // KoraCut : le sélecteur de mode, en contrôle segmenté. Un choix exclusif se dessine comme
+    // un seul objet, pas comme trois boutons dont un est allumé (charte, « États et composants »).
+    m_toolbar->addSeparator();
+    for (QAction *a : std::as_const(m_viewModeActions)) {
+        m_toolbar->addAction(a);
+    }
+    m_toolbar->addSeparator();
     m_toolbar->addAction(settingsAction);
 
     if (!m_isMainBin) {
@@ -1754,6 +1883,8 @@ Bin::Bin(std::shared_ptr<ProjectItemModel> model, QWidget *parent, bool isMainBi
     // Add filter and search line
     m_toolbar->addWidget(m_filterButton);
     m_toolbar->addWidget(m_searchLine);
+    // KoraCut : les trois modes forment un seul corps visuel, une fois leurs boutons créés.
+    setupViewModeSegments();
 
     // connect(pCore->projectManager(), SIGNAL(projectOpened(Project*)), this, SLOT(setProject(Project*)));
     m_headerInfo = QByteArray::fromBase64(KdenliveSettings::treeviewheaders().toLatin1());
@@ -1812,7 +1943,7 @@ void Bin::slotUpdatePalette()
     if (m_isMainBin) {
         // Refresh icons
         qreal dpr = this->devicePixelRatioF();
-        int iconSize = style()->pixelMetric(QStyle::PM_SmallIconSize);
+        const int iconSize = KoraCutMetrics::IconToolbar;
         QSize iconPxSize = QSize(iconSize, iconSize) * dpr;
         QIcon audioIcon = QIcon::fromTheme(QStringLiteral("audio-volume-high"));
         QIcon videoIcon = QIcon::fromTheme(QStringLiteral("kdenlive-show-video"));
@@ -1959,11 +2090,17 @@ bool Bin::eventFilter(QObject *obj, QEvent *event)
     if (event->type() == QEvent::Wheel) {
         auto *e = static_cast<QWheelEvent *>(event);
         if ((e != nullptr) && e->modifiers() == Qt::ControlModifier) {
+            // KoraCut, 21 septembre 2026 : le cumul n'était jamais remis à zéro, donc une fois le
+            // cran franchi la vue changeait de taille à chaque évènement. Au trackpad, où il en
+            // arrive des dizaines, c'était une fuite en avant. Un cran, un changement de taille.
+            if ((wheelAccumulatedDelta > 0) != (e->angleDelta().y() > 0)) {
+                wheelAccumulatedDelta = 0;
+            }
             wheelAccumulatedDelta += e->angleDelta().y();
             if (abs(wheelAccumulatedDelta) >= QWheelEvent::DefaultDeltasPerStep) {
                 slotZoomView(wheelAccumulatedDelta > 0);
+                wheelAccumulatedDelta = 0;
             }
-            // Q_EMIT zoomView(e->delta() > 0);
             return true;
         }
     }
@@ -2193,7 +2330,7 @@ void Bin::slotReloadClip()
                                 f.close();
                                 KMessageBox::information(
                                     this,
-                                    i18n("Your project file was modified by Kdenlive.\nTo make sure you do not lose data, a backup copy called %1 was created.",
+                                    i18n("Your project file was modified by KoraCut.\nTo make sure you do not lose data, a backup copy called %1 was created.",
                                          backupFile));
                             }
                         }
@@ -2878,7 +3015,7 @@ void Bin::createClip(const QDomElement &xml)
         parentFolder = m_itemModel->getRootFolder();
     }
     QString path = Xml::getXmlProperty(xml, QStringLiteral("resource"));
-    if (path.endsWith(QStringLiteral(".mlt")) || path.endsWith(QStringLiteral(".kdenlive"))) {
+    if (path.endsWith(QStringLiteral(".mlt")) || path.endsWith(QStringLiteral(".koracut")) || path.endsWith(QStringLiteral(".kdenlive"))) {
         QDomDocument doc;
         if (!Xml::docContentFromFile(doc, path, false)) {
             return;
@@ -2896,7 +3033,7 @@ void Bin::createClip(const QDomElement &xml)
                     out << doc.toString();
                     f.close();
                     KMessageBox::information(
-                        this, i18n("Your project file was modified by Kdenlive.\nTo make sure you do not lose data, a backup copy called %1 was created.",
+                        this, i18n("Your project file was modified by KoraCut.\nTo make sure you do not lose data, a backup copy called %1 was created.",
                                    backupFile));
                 }
             }
@@ -3230,6 +3367,27 @@ QList<std::shared_ptr<ProjectClip>> Bin::selectedClips()
     return ret;
 }
 
+void Bin::setupViewModeSegments()
+{
+    if (!m_toolbar || m_viewModeActions.isEmpty()) {
+        return;
+    }
+    QList<QWidget *> segments;
+    for (QAction *a : std::as_const(m_viewModeActions)) {
+        if (QWidget *w = m_toolbar->widgetForAction(a)) {
+            segments << w;
+        }
+    }
+    for (int i = 0; i < segments.count(); ++i) {
+        const QLatin1String place = segments.count() == 1              ? QLatin1String("seul")
+                                    : i == 0                           ? QLatin1String("premier")
+                                    : i == segments.count() - 1        ? QLatin1String("dernier")
+                                                                       : QLatin1String("milieu");
+        segments.at(i)->setProperty("koracutSegment", QString(place));
+        segments.at(i)->style()->polish(segments.at(i));
+    }
+}
+
 void Bin::slotInitView(QAction *action)
 {
     QString rootFolder;
@@ -3293,6 +3451,8 @@ void Bin::slotInitView(QAction *action)
     switch (m_listType) {
     case BinIconView: {
         auto *lv = new MyListView(this);
+        // KoraCut : un nom, pour que la feuille de style donne 12 px de marge autour de la grille.
+        lv->setObjectName(QStringLiteral("koracutBinIconView"));
         m_itemView = lv;
         m_binListViewDelegate = new BinListItemDelegate(this);
         m_showDate->setEnabled(false);
@@ -3358,7 +3518,7 @@ void Bin::slotInitView(QAction *action)
     m_itemModel->setDragType(PlaylistState::Disabled);
 
     // setup some default view specific parameters
-    if (m_listType == BinTreeView) {
+    if (m_listType == BinTreeView || m_listType == BinDetailsView) {
         m_itemView->setItemDelegate(m_binTreeViewDelegate);
         auto *view = static_cast<MyTreeView *>(m_itemView);
         view->setSortingEnabled(true);
@@ -3366,8 +3526,17 @@ void Bin::slotInitView(QAction *action)
         connect(view, &MyTreeView::updateDragMode, m_itemModel.get(), &ProjectItemModel::setDragType, Qt::DirectConnection);
         connect(view, &MyTreeView::selectCurrent, this, &Bin::ensureCurrent);
         connect(view, &MyTreeView::displayBinFrame, this, &Bin::showBinFrame);
-        if (!m_headerInfo.isEmpty()) {
+        // KoraCut : la vue Détails ne reprend pas la largeur de colonne enregistrée pour la vue
+        // Liste. Celle-ci donne tout l'espace au nom, et les colonnes ajoutées se retrouvaient
+        // hors de l'écran : le mode paraissait ne rien faire.
+        if (!m_headerInfo.isEmpty() && m_listType != BinDetailsView) {
             view->header()->restoreState(m_headerInfo);
+            // KoraCut : un état enregistré dans un panneau étroit gardait la colonne Nom à quelques
+            // dizaines de pixels (noms coupés en « kora cu… », vu le 24 septembre 2026 dans le projet
+            // promo). Le nom garde au moins la moitié du chutier.
+            if (view->header()->sectionSize(0) < qMax(160, width() / 2)) {
+                view->header()->resizeSection(0, qMax(160, width() / 2));
+            }
         } else {
             view->header()->resizeSections(QHeaderView::ResizeToContents);
             view->resizeColumnToContents(0);
@@ -3378,18 +3547,38 @@ void Bin::slotInitView(QAction *action)
             // Rating column
             view->setColumnHidden(7, true);
         }
-        // Type column
+        // KoraCut : la vue Détails est un tableau triable, la vue Liste reste dense.
+        const bool details = m_listType == BinDetailsView;
+        // Type column : elle rend un numéro brut (3 pour une vidéo), elle reste cachée.
         view->setColumnHidden(3, true);
         // Tags column
         view->setColumnHidden(4, true);
         // Duration column
-        view->setColumnHidden(5, true);
+        view->setColumnHidden(5, !details);
         // ID column
         view->setColumnHidden(6, true);
         // Rating column
         view->header()->resizeSection(7, QFontInfo(font()).pixelSize() * 4);
         // Usage column
-        view->setColumnHidden(8, true);
+        view->setColumnHidden(8, !details);
+        // KoraCut : résolution et images par seconde, en vue Détails seulement.
+        view->setColumnHidden(9, !details);
+        view->setColumnHidden(10, !details);
+        if (details) {
+            // Date column
+            view->setColumnHidden(1, false);
+            view->header()->setVisible(true);
+            view->header()->setSectionResizeMode(QHeaderView::Interactive);
+            view->header()->resizeSections(QHeaderView::ResizeToContents);
+            // Le nom prend la moitié, le reste se partage ce qui suit.
+            view->header()->resizeSection(0, qMax(160, width() / 2));
+            // KoraCut, 22 septembre 2026 : les colonnes courtes suivent leur contenu. Calculées une
+            // fois, elles restaient à la largeur d'un panneau étroit et coupaient la date et la
+            // durée (« 22-09-2… ») quand on élargissait le chutier.
+            for (int column : {1, 5, 8, 9, 10}) {
+                view->header()->setSectionResizeMode(column, QHeaderView::ResizeToContents);
+            }
+        }
         m_showDate->setChecked(!view->isColumnHidden(1));
         m_showDesc->setChecked(!view->isColumnHidden(2));
         m_showRating->setChecked(!view->isColumnHidden(7));
@@ -3417,8 +3606,15 @@ void Bin::slotInitView(QAction *action)
         m_itemView->setItemDelegate(m_binListViewDelegate);
         auto *view = static_cast<MyListView *>(m_itemView);
         connect(view, &MyListView::updateDragMode, m_itemModel.get(), &ProjectItemModel::setDragType, Qt::DirectConnection);
-        int textHeight = int(QFontInfo(font()).pixelSize() * 1.5);
-        view->setGridSize(QSize(m_iconSize.width() + 2, m_iconSize.height() + textHeight));
+        // KoraCut : deux lignes de nom sous la vignette, plus une marge. Avant, la grille ne
+        // réservait qu'une ligne et demie, donc le nom était tronqué faute de place.
+        int textHeight = QFontMetrics(font()).lineSpacing() * 2 + 6;
+        // Et 12 px de gouttière entre deux cartes : elles se touchaient presque.
+        // `setSpacing` pose la moitié de l'écart autour de chaque carte, d'où les 6 px.
+        view->setSpacing(KoraCutMetrics::SpaceZone / 2);
+        // Un projet vertical (9:16) donne des vignettes étroites : sans largeur minimale, le nom se
+        // coupait lettre par lettre (« Sé q… » pour « Séquences », vu chez Amadou Ba le 29 septembre 2026).
+        view->setGridSize(QSize(qMax(m_iconSize.width(), 96) + KoraCutMetrics::SpaceZone, m_iconSize.height() + textHeight));
         connect(view, &MyListView::focusView, this, &Bin::slotGotFocus);
         connect(view, &MyListView::displayBinFrame, this, &Bin::showBinFrame);
         if (!rootFolder.isEmpty()) {
@@ -3445,7 +3641,10 @@ void Bin::slotInitView(QAction *action)
     m_itemView->setEditTriggers(QAbstractItemView::NoEditTriggers); // DoubleClicked);
     m_itemView->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_itemView->setDragDropMode(QAbstractItemView::DragDrop);
-    m_itemView->setAlternatingRowColors(true);
+    // KoraCut : pas de zébrure. Elle alternait #1E1E1E et #2C2C2C, soit deux des quatre
+    // marches de surface : on ne savait plus si une ligne claire était une ligne paire
+    // ou une surface différente. La hauteur de ligne suffit à suivre une ligne.
+    m_itemView->setAlternatingRowColors(false);
     m_itemView->setFocus();
 }
 
@@ -3459,8 +3658,9 @@ void Bin::slotSetIconSize(int size)
     m_itemView->setIconSize(m_iconSize);
     if (m_listType == BinIconView) {
         auto *view = static_cast<MyListView *>(m_itemView);
-        int textHeight = int(QFontInfo(font()).pixelSize() * 1.5);
-        view->setGridSize(QSize(m_iconSize.width() + 2, m_iconSize.height() + textHeight));
+        // Les mêmes mesures qu'à la création de la vue (deux lignes de nom, largeur minimale, gouttière).
+        const int textHeight = QFontMetrics(font()).lineSpacing() * 2 + 6;
+        view->setGridSize(QSize(qMax(m_iconSize.width(), 96) + KoraCutMetrics::SpaceZone, m_iconSize.height() + textHeight));
     }
     QPixmap pix(m_iconSize);
     pix.fill(Qt::lightGray);
@@ -4064,6 +4264,21 @@ void Bin::setupMenu()
     addClipMenu->addAction(m_addClip);
     connect(m_addClip, &QAction::triggered, this, &Bin::slotAddClip);
 
+    // KoraCut, 22 septembre 2026 (document 13, § 10.5) : deux façons d'importer. La fenêtre du
+    // système reste le défaut (clic sur le bouton) ; le panneau « Navigateur de médias », déjà
+    // fourni par Kdenlive mais fermé et introuvable, est proposé juste en dessous.
+    QAction *browseMedia = addBinAction(QStringLiteral("koracut_browse_media"), i18nc("@action", "Browse in KoraCut…"),
+                                        QIcon::fromTheme(QStringLiteral("document-open")));
+    browseMedia->setToolTip(i18nc("@info:tooltip", "Opens the built-in media browser, with previews"));
+    addClipMenu->addAction(browseMedia);
+    connect(browseMedia, &QAction::triggered, this, []() {
+        if (KDDockWidgets::Core::DockWidget *dock = KDDockWidgets::Core::DockWidget::byName(QStringLiteral("media_browser"))) {
+            dock->open();
+            dock->setAsCurrentTab();
+        }
+    });
+    addClipMenu->addSeparator();
+
     setupAddClipAction(addClipMenu, ClipType::Color, QStringLiteral("add_color_clip"), i18n("Add Color Clip…"),
                        QIcon::fromTheme(QStringLiteral("kdenlive-add-color-clip")));
     setupAddClipAction(addClipMenu, ClipType::SlideShow, QStringLiteral("add_slide_clip"), i18n("Add Image Sequence…"),
@@ -4203,7 +4418,7 @@ void Bin::setupMenu()
 void Bin::buildPropertiesDock(KDDockWidgets::QtWidgets::DockWidget *parentDock)
 {
     m_propertiesDock =
-        pCore->window()->addDock(i18n("Clip Properties"), QStringLiteral("clip_properties"), m_propertiesPanel, KDDockWidgets::Location_OnLeft, parentDock);
+        pCore->window()->addDock(i18nc("@title:window nom court d'un panneau", "Properties"), QStringLiteral("clip_properties"), m_propertiesPanel, KDDockWidgets::Location_OnLeft, parentDock);
     m_propertiesDock->close();
 }
 
@@ -5489,7 +5704,8 @@ void Bin::refreshProxySettings()
                 toProxy << clp;
                 continue;
             } else if ((t == ClipType::AV || t == ClipType::Video) &&
-                       m_doc->autoGenerateProxy(clp->getProducerIntProperty(QStringLiteral("meta.media.width")))) {
+                       m_doc->autoGenerateProxy(clp->getProducerIntProperty(QStringLiteral("meta.media.width")), clp->videoCodecProperty(QStringLiteral("name")),
+                                                clp->videoCodecProperty(QStringLiteral("pix_fmt")))) {
                 // Start proxy
                 toProxy << clp;
                 continue;
@@ -6351,7 +6567,17 @@ void Bin::updateKeyBinding(const QString &bindingMessage)
 
 void Bin::showBinInfo()
 {
-    pCore->window()->showKeyBinding(QStringLiteral("%1%2").arg(m_clipsCountMessage, m_keyBindingMessage));
+    // KoraCut, 25 septembre 2026 : le compteur finit par « | » pour annoncer l'aide qui suit.
+    // Sans aide derrière, la barre restait seule au bout (« 37 vidéos | »).
+    QString compteur = m_clipsCountMessage;
+    if (m_keyBindingMessage.isEmpty()) {
+        compteur = compteur.trimmed();
+        if (compteur.endsWith(QLatin1Char('|'))) {
+            compteur.chop(1);
+            compteur = compteur.trimmed();
+        }
+    }
+    pCore->window()->showKeyBinding(QStringLiteral("%1%2").arg(compteur, m_keyBindingMessage));
 }
 
 bool Bin::containsId(const QString &clipId) const

@@ -82,7 +82,7 @@ QPair<bool, QString> DocumentValidator::validate(const double currentVersion, co
             // Requested locale not available, ask for install
             KMessageBox::error(QApplication::activeWindow(),
                                i18n("The document was created in \"%1\" locale, which is not installed on your system. Please install that language pack. "
-                                    "Until then, Kdenlive might not be able to correctly open the document.",
+                                    "Until then, KoraCut might not be able to correctly open the document.",
                                     mltLocale));
         }
 
@@ -217,8 +217,8 @@ bool DocumentValidator::upgrade(double version, int patchVersion, const double c
         qCCritical(KDENLIVE_LOG) << "Unable to open document with version " << version << "because it is newer than what this Kdenlive release supports ("
                                  << currentVersion << ")";
         KMessageBox::error(QApplication::activeWindow(),
-                           i18n("This project is unsupported because its document version (%1) is new than what this Kdenlive release supports (version %2 and "
-                                "older).\nPlease consider upgrading your Kdenlive version.",
+                           i18n("This project is unsupported because its document version (%1) is new than what this KoraCut release supports (version %2 and "
+                                "older).\nPlease consider upgrading your KoraCut version.",
                                 version, currentVersion),
                            i18n("Unable to open project"));
         return false;

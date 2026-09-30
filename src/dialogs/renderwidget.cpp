@@ -25,6 +25,7 @@
 
 #include "renderpresets/renderpresetmodel.hpp"
 #include "renderpresets/renderpresetrepository.hpp"
+#include "koracut/koracutmetrics.h"
 
 #include <KColorScheme>
 #include <KIO/DesktopExecParser>
@@ -39,11 +40,14 @@
 #include <kmemoryinfo.h>
 
 #include "kdenlive_debug.h"
+#include "koracut/koracutemptystate.h"
 #ifndef NODBUS
 #include <QDBusConnectionInterface>
 #endif
 #include <QDesktopServices>
+#include <QCheckBox>
 #include <QDir>
+#include <QPainter>
 #include <QDomDocument>
 #include <QFileIconProvider>
 #include <QHeaderView>
@@ -56,6 +60,7 @@
 #include <QMimeDatabase>
 #include <QProcess>
 #include <QScreen>
+#include <QSpinBox>
 #include <QScrollBar>
 #include <QStandardPaths>
 #include <QString>
@@ -293,8 +298,8 @@ RenderWidget::RenderWidget(bool enableProxy, QWidget *parent)
     , m_blockProcessing(false)
 {
     m_view.setupUi(this);
-    int size = style()->pixelMetric(QStyle::PM_SmallIconSize);
-    QSize iconSize(size, size);
+    const int size = KoraCutMetrics::IconDefault;
+    const QSize iconSize = KoraCutMetrics::iconDefault();
     KMemoryInfo memInfo;
     if (!memInfo.isNull()) {
         // Low memory is considered when less than 10% of the physical memory is available
@@ -341,7 +346,24 @@ RenderWidget::RenderWidget(bool enableProxy, QWidget *parent)
     });
 
     m_view.optionsGroup->setVisible(m_view.options->isChecked());
-    m_view.optionsGroup->setMinimumWidth(m_view.optionsGroup->width() + m_view.optionsGroup->verticalScrollBar()->width());
+    // KoraCut, 25 septembre 2026 : la zone ne défile pas en largeur. Sa largeur minimale doit donc
+    // tenir tout son contenu, sinon les libellés longs (en français surtout) et les listes
+    // (« Bilinéair », « Une ligr ») étaient coupés au bord droit.
+    // KoraCut, 27 septembre 2026 : (1) le calcul se faisait ici, avant que les listes (Interpolation,
+    // Désentrelacer, Rapport d'affichage) soient remplies et que la ligne « Niveler le son à » soit
+    // posée : les listes restaient coupées. On le refait une fois tout en place. (2) La zone défile
+    // en hauteur, mais Qt tassait son contenu jusqu'aux hauteurs minimales au lieu de défiler : les
+    // lignes de la section Audio se chevauchaient, coupées à mi-hauteur. Le contenu garde maintenant
+    // sa hauteur naturelle, la barre de défilement fait le reste.
+    if (QLayout *contenu = m_view.scrollAreaWidgetContents->layout()) {
+        contenu->setSizeConstraint(QLayout::SetMinimumSize);
+    }
+    const auto ajusterLargeur = [this]() {
+        m_view.scrollAreaWidgetContents->ensurePolished();
+        m_view.scrollAreaWidgetContents->adjustSize();
+        m_view.optionsGroup->setMinimumWidth(m_view.scrollAreaWidgetContents->sizeHint().width() + m_view.optionsGroup->verticalScrollBar()->sizeHint().width());
+    };
+    QTimer::singleShot(0, this, ajusterLargeur);
     connect(m_view.options, &QAbstractButton::toggled, m_view.optionsGroup, &QWidget::setVisible);
     connect(m_view.out_file, &KUrlRequester::urlSelected, this, &RenderWidget::slotUpdateUrl);
     connect(m_view.out_file->lineEdit(), &KLineEdit::editingFinished, this, &RenderWidget::slotUpdateUrl);
@@ -416,6 +438,31 @@ RenderWidget::RenderWidget(bool enableProxy, QWidget *parent)
 
     connect(m_view.video_box, &QGroupBox::toggled, this, &RenderWidget::refreshParams);
     connect(m_view.audio_box, &QGroupBox::toggled, this, &RenderWidget::refreshParams);
+    // KoraCut, 23 septembre 2026 : le son au niveau des plateformes (guide PIXEWORK, document 16).
+    // Coché d'office pour un projet créé par type de vidéo, avec la cible du guide.
+    m_loudnessCheck = new QCheckBox(i18nc("@option:check", "Level the sound at"), m_view.audio_box);
+    m_loudnessCheck->setToolTip(i18nc("@info:tooltip", "Brings the whole mix to this loudness, as platforms expect it: -14 LUFS for YouTube and social networks, -16 for podcasts, -23 for television."));
+    m_loudnessTarget = new QSpinBox(m_view.audio_box);
+    m_loudnessTarget->setRange(-30, -8);
+    m_loudnessTarget->setValue(-14);
+    m_loudnessTarget->setSuffix(i18nc("@item:valuesuffix loudness unit", " LUFS"));
+    m_loudnessTarget->setEnabled(false);
+    connect(m_loudnessCheck, &QCheckBox::toggled, m_loudnessTarget, &QWidget::setEnabled);
+    m_view.formLayout->addRow(m_loudnessCheck, m_loudnessTarget);
+    // KoraCut, 28 septembre 2026 : une version sans sous-titres sans désactiver la piste (vidéos AFEBABA).
+    m_koraCutSubtitles = new QCheckBox(i18nc("@option:check", "Include the subtitles"), this);
+    m_koraCutSubtitles->setToolTip(i18nc("@info:tooltip", "Uncheck for a clean version without subtitles. The subtitle track stays as it is in the timeline."));
+    m_koraCutSubtitles->setChecked(true);
+    for (QBoxLayout *box : findChildren<QBoxLayout *>()) {
+        const int at = box->indexOf(m_view.embed_subtitles);
+        if (at >= 0) {
+            box->insertWidget(at, m_koraCutSubtitles);
+            break;
+        }
+    }
+    connect(m_koraCutSubtitles, &QCheckBox::toggled, this, [this](bool include) {
+        m_view.embed_subtitles->setVisible(include);
+    });
     connect(m_view.rescale, &QAbstractButton::toggled, this, &RenderWidget::setRescaleEnabled);
     connect(m_view.rescale, &QAbstractButton::toggled, this, &RenderWidget::refreshParams);
     connect(m_view.rescale_width, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged), this, &RenderWidget::slotUpdateRescaleWidth);
@@ -489,6 +536,45 @@ RenderWidget::RenderWidget(bool enableProxy, QWidget *parent)
     m_view.running_jobs->setHeaderLabels(QStringList() << QString() << i18n("File"));
     m_view.running_jobs->setItemDelegate(m_jobsDelegate);
     m_view.running_jobs->setMouseTracking(true);
+    // KoraCut, 23 septembre 2026 : un état vide dans la file de rendu, sur le modèle du chutier
+    // (koracutemptystate.h). Sans lui, la file vide n'était qu'un rectangle muet.
+    class EmptyQueueFilter : public QObject
+    {
+    public:
+        EmptyQueueFilter(QTreeWidget *tree, const KoraCutEmptyState::Modele &modele)
+            : QObject(tree)
+            , m_tree(tree)
+            , m_modele(modele)
+        {
+        }
+
+    protected:
+        bool eventFilter(QObject *watched, QEvent *event) override
+        {
+            if (event->type() == QEvent::Paint && m_tree->topLevelItemCount() == 0) {
+                QPainter painter(m_tree->viewport());
+                painter.setRenderHint(QPainter::Antialiasing);
+                KoraCutEmptyState::paint(painter, m_tree->viewport()->rect(), m_tree->palette(), m_modele);
+            }
+            return QObject::eventFilter(watched, event);
+        }
+
+    private:
+        QTreeWidget *m_tree;
+        KoraCutEmptyState::Modele m_modele;
+    };
+    m_view.running_jobs->viewport()->installEventFilter(
+        new EmptyQueueFilter(m_view.running_jobs, KoraCutEmptyState::Modele{QStringLiteral("media-playback-start"),
+                                                                            i18nc("@info file de rendu vide", "No render in progress"),
+                                                                            i18nc("@info file de rendu vide", "Start an export from the “Project Render” tab: it will appear here."),
+                                                                            QString()}));
+    // Même chose pour l'onglet Scripts, vide chez presque tout le monde (23 septembre 2026).
+    m_view.scripts_list->viewport()->installEventFilter(new EmptyQueueFilter(
+        m_view.scripts_list,
+        KoraCutEmptyState::Modele{QStringLiteral("text-x-script"), i18nc("@info liste de scripts vide", "No saved script"),
+                                  i18nc("@info liste de scripts vide",
+                                        "A script keeps an export to run later, even with KoraCut closed. Make one with “Generate Script” in the “Project Render” tab."),
+                                  QString()}));
     connect(m_jobsDelegate, &RenderViewDelegate::hoverLink, this, [this](bool hover) {
         if (hover) {
             setCursor(Qt::PointingHandCursor);
@@ -511,20 +597,20 @@ RenderWidget::RenderWidget(bool enableProxy, QWidget *parent)
     header->resizeSection(0, size + 4);
 
     // Find path for Kdenlive renderer
-    if (KdenliveSettings::kdenliverendererpath().isEmpty() || !QFileInfo::exists(KdenliveSettings::kdenliverendererpath())) {
-        KdenliveSettings::setKdenliverendererpath(QString());
+    if (KdenliveSettings::koracutrendererpath().isEmpty() || !QFileInfo::exists(KdenliveSettings::koracutrendererpath())) {
+        KdenliveSettings::setKoracutrendererpath(QString());
         Wizard::fixKdenliveRenderPath();
     } else {
         // Ensure the Kdenlive renderer is in the same folder as the running app
         qDebug() << ":::::::::: COMPARING RENDERER PATH: " << QCoreApplication::applicationDirPath()
-                 << " != " << QFileInfo(KdenliveSettings::kdenliverendererpath()).absolutePath();
-        if (QCoreApplication::applicationDirPath() != QFileInfo(KdenliveSettings::kdenliverendererpath()).absolutePath()) {
-            KdenliveSettings::setKdenliverendererpath(QString());
+                 << " != " << QFileInfo(KdenliveSettings::koracutrendererpath()).absolutePath();
+        if (QCoreApplication::applicationDirPath() != QFileInfo(KdenliveSettings::koracutrendererpath()).absolutePath()) {
+            KdenliveSettings::setKoracutrendererpath(QString());
             Wizard::fixKdenliveRenderPath();
         }
     }
-    if (KdenliveSettings::kdenliverendererpath().isEmpty()) {
-        KMessageBox::error(this, i18n("Could not find the kdenlive_render application, something is wrong with your installation. Rendering will not work"));
+    if (KdenliveSettings::koracutrendererpath().isEmpty()) {
+        KMessageBox::error(this, i18n("Could not find the koracut_render application, something is wrong with your installation. Rendering will not work"));
     }
 
 #ifndef NODBUS
@@ -905,6 +991,29 @@ void RenderWidget::focusItem(const QString &profile)
     }
 }
 
+void RenderWidget::koraCutSetBounds(int in, int out)
+{
+    m_koraCutBounds = QPoint(in, out);
+}
+
+void RenderWidget::koraCutSetSubtitles(bool include)
+{
+    m_koraCutSubtitles->setChecked(include);
+}
+
+bool RenderWidget::koraCutSubtitles() const
+{
+    return m_koraCutSubtitles->isChecked();
+}
+
+void RenderWidget::startRenderTo(const QString &file)
+{
+    QFile::remove(file);
+    m_view.out_file->setUrl(QUrl::fromLocalFile(file));
+    m_view.out_file->setText(file);
+    slotPrepareExport2(false);
+}
+
 void RenderWidget::slotPrepareExport(bool delayedRendering)
 {
     if (pCore->projectDuration() < 2) {
@@ -992,8 +1101,10 @@ void RenderWidget::slotPrepareExport2(bool delayedRendering)
     request.setDelayedRendering(delayedRendering);
     request.setProxyRendering(m_view.proxy_render->isChecked());
     request.setEmbedSubtitles(m_view.embed_subtitles->isEnabled() && m_view.embed_subtitles->isChecked());
+    request.setBurnSubtitles(m_koraCutSubtitles->isChecked());
     request.setTwoPass(m_view.checkTwoPass->isChecked());
     request.setAudioFilePerTrack(m_view.stemAudioExport->isChecked() && m_view.stemAudioExport->isEnabled());
+    request.setLoudnessTarget(m_view.audio_box->isChecked() && m_loudnessCheck->isChecked() ? m_loudnessTarget->value() : 0);
 
     bool guideMultiExport = m_view.guide_multi_box->isChecked();
     int guideCategory = m_view.guideCategoryChooser->currentCategory();
@@ -1045,6 +1156,13 @@ void RenderWidget::slotPrepareExport2(bool delayedRendering)
             request.setBounds(in, out);
         }
     }
+
+    // KoraCut, porte de commande : des bornes données par export.lancer (zone = { in, out })
+    // l'emportent sur le choix de la fenêtre, une seule fois.
+    if (m_koraCutBounds.x() >= 0 && m_koraCutBounds.y() >= m_koraCutBounds.x()) {
+        request.setBounds(m_koraCutBounds.x(), m_koraCutBounds.y());
+    }
+    m_koraCutBounds = QPoint(-1, -1);
 
     std::vector<RenderRequest::RenderJob> jobs = request.process();
 
@@ -1187,13 +1305,13 @@ void RenderWidget::checkRenderStatus(int lastStatus)
 void RenderWidget::startRendering(RenderJobItem *item)
 {
     auto rendererArgs = item->data(1, ParametersRole).toStringList();
-    qDebug() << "starting kdenlive_render process using: " << KdenliveSettings::kdenliverendererpath();
+    qDebug() << "starting koracut_render process using: " << KdenliveSettings::koracutrendererpath();
     QProcess proc;
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     if (!KdenliveSettings::hwDecoding().isEmpty()) {
         env.insert(QLatin1String("MLT_AVFORMAT_HWACCEL"), KdenliveSettings::hwDecoding());
     }
-    proc.setProgram(KdenliveSettings::kdenliverendererpath());
+    proc.setProgram(KdenliveSettings::koracutrendererpath());
     proc.setProcessEnvironment(env);
     if (KdenliveSettings::keepRenderLogFiles()) {
         rendererArgs << QStringLiteral("--debug");
@@ -1615,6 +1733,13 @@ void RenderWidget::refreshParams()
     m_view.advanced_params->setPlainText(m_params.toString());
 }
 
+void RenderWidget::reloadPresets()
+{
+    // KoraCut : le dépôt garde les préréglages lus au démarrage, il faut le relire avant la liste.
+    RenderPresetRepository::get()->refresh();
+    parseProfiles();
+}
+
 void RenderWidget::parseProfiles(const QString &selectedProfile)
 {
     m_treeModel.reset();
@@ -1880,6 +2005,61 @@ RenderJobItem *RenderWidget::startingJob()
         item = static_cast<RenderJobItem *>(m_view.running_jobs->itemBelow(item));
     }
     return nullptr;
+}
+
+QJsonArray RenderWidget::koraCutJobs() const
+{
+    QJsonArray list;
+    for (int i = 0; i < m_view.running_jobs->topLevelItemCount(); ++i) {
+        auto *item = static_cast<RenderJobItem *>(m_view.running_jobs->topLevelItem(i));
+        QString state;
+        switch (item->status()) {
+        case WAITINGJOB:
+            state = QStringLiteral("attente");
+            break;
+        case STARTINGJOB:
+            state = QStringLiteral("demarrage");
+            break;
+        case RUNNINGJOB:
+            state = QStringLiteral("en_cours");
+            break;
+        case FINISHEDJOB:
+            state = QStringLiteral("fini");
+            break;
+        case FAILEDJOB:
+            state = QStringLiteral("echec");
+            break;
+        case ABORTEDJOB:
+            state = QStringLiteral("annule");
+            break;
+        default:
+            state = QStringLiteral("inconnu");
+        }
+        const QString dest = item->data(1, Qt::DisplayRole).toString();
+        list.append(QJsonObject{{QStringLiteral("tache_id"), dest},
+                                {QStringLiteral("chemin"), dest},
+                                {QStringLiteral("etat"), state},
+                                {QStringLiteral("avancement"), item->data(1, ProgressRole).toInt()},
+                                {QStringLiteral("erreur"), item->status() == FAILEDJOB ? item->data(1, Qt::UserRole).toString() : QString()}});
+    }
+    return list;
+}
+
+bool RenderWidget::koraCutAbortJob(const QString &dest)
+{
+    const QList<QTreeWidgetItem *> found = m_view.running_jobs->findItems(dest, Qt::MatchExactly, 1);
+    if (found.isEmpty()) {
+        return false;
+    }
+    auto *item = static_cast<RenderJobItem *>(found.first());
+    if (item->status() == RUNNINGJOB || item->status() == STARTINGJOB) {
+        Q_EMIT abortProcess(dest);
+    } else {
+        delete item;
+        slotCheckJob();
+        checkRenderStatus(-3);
+    }
+    return true;
 }
 
 void RenderWidget::slotAbortCurrentJob()
@@ -2164,9 +2344,34 @@ void RenderWidget::setRenderProfile(const QMap<QString, QString> &props)
     }
     m_view.out_file->setUrl(QUrl::fromLocalFile(url));
 
+    // KoraCut : un projet créé par type de vidéo arrive avec sa cible d'export (document 16). Tant que
+    // la personne n'a pas choisi elle-même un préréglage, on présélectionne MP4 H.264 ou H.265 et on
+    // coche le niveau sonore du guide. Ses choix sont ensuite enregistrés dans le projet (render*).
+    const KdenliveDoc *doc = pCore->currentDoc();
+    const QString typeCodec = doc ? doc->getDocumentProperty(QStringLiteral("koracut:export_codec")) : QString();
+    if (qEnvironmentVariableIsSet("KORACUT_SHOT")) {
+        qWarning().noquote() << "KORACUT-EXPORT-PROPS codec" << typeCodec << "props" << props.keys();
+    }
     if (props.contains(QStringLiteral("renderprofile")) || props.contains(QStringLiteral("rendercategory"))) {
         focusItem(props.value(QStringLiteral("renderprofile")));
+    } else if (!typeCodec.isEmpty()) {
+        focusItem(typeCodec.contains(QLatin1String("265")) ? QStringLiteral("MP4-H265 (HEVC)") : QStringLiteral("MP4-H264/AAC"));
     }
+    if (props.contains(QStringLiteral("renderloudness"))) {
+        const int lufs = props.value(QStringLiteral("renderloudness")).toInt();
+        m_loudnessCheck->setChecked(lufs != 0);
+        if (lufs != 0) {
+            m_loudnessTarget->setValue(lufs);
+        }
+    } else if (!typeCodec.isEmpty()) {
+        m_loudnessCheck->setChecked(true);
+        m_loudnessTarget->setValue(doc->getDocumentProperty(QStringLiteral("koracut:export_lufs"), QStringLiteral("-14")).toInt());
+    } else {
+        m_loudnessCheck->setChecked(false);
+    }
+
+    // Absent (projet d'avant le 28 septembre 2026) : les sous-titres sont inclus, comme avant.
+    m_koraCutSubtitles->setChecked(props.value(QStringLiteral("rendersubtitles"), QStringLiteral("1")) != QLatin1String("0"));
 
     if (props.contains(QStringLiteral("renderspeed"))) {
         m_view.speed->setValue(props.value(QStringLiteral("renderspeed")).toInt());
@@ -2194,6 +2399,8 @@ void RenderWidget::saveRenderProfile()
     }
     renderProps.insert(QStringLiteral("rendermode"), QString::number(mode));
     renderProps.insert(QStringLiteral("renderstemaudio"), m_view.stemAudioExport->isChecked() ? QString::number(1) : QString::number(0));
+    renderProps.insert(QStringLiteral("renderloudness"), m_loudnessCheck->isChecked() ? QString::number(m_loudnessTarget->value()) : QString::number(0));
+    renderProps.insert(QStringLiteral("rendersubtitles"), m_koraCutSubtitles->isChecked() ? QStringLiteral("1") : QStringLiteral("0"));
     renderProps.insert(QStringLiteral("renderstartguide"), QString::number(m_view.guide_start->currentIndex()));
     renderProps.insert(QStringLiteral("renderendguide"), QString::number(m_view.guide_end->currentIndex()));
     int export_audio = 0;
@@ -2225,7 +2432,7 @@ bool RenderWidget::startWaitingRenderJobs()
 #else
     const QLatin1String ScriptFormat(".sh");
 #endif
-    QTemporaryFile tmp(QDir::temp().absoluteFilePath(QStringLiteral("kdenlive-XXXXXX") + ScriptFormat));
+    QTemporaryFile tmp(QDir::temp().absoluteFilePath(QStringLiteral("koracut-XXXXXX") + ScriptFormat));
     if (!tmp.open()) {
         // Something went wrong
         return false;
@@ -2248,7 +2455,7 @@ bool RenderWidget::startWaitingRenderJobs()
         if (item->status() == WAITINGJOB) {
             // Add render process for item
             const QString params = item->data(1, ParametersRole).toStringList().join(QLatin1Char(' '));
-            outStream << '\"' << KdenliveSettings::kdenliverendererpath() << "\" " << params << '\n';
+            outStream << '\"' << KdenliveSettings::koracutrendererpath() << "\" " << params << '\n';
         }
         item = static_cast<RenderJobItem *>(m_view.running_jobs->itemBelow(item));
     }

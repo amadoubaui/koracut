@@ -5,21 +5,30 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 */
 
 #include "monitor.h"
+#include "koracut/koracutfonts.h"
 #include "bin/bin.h"
 #include "bin/projectclip.h"
 #include "capture/mediacapture.h"
 #include "core.h"
 #include "dialogs/markerdialog.h"
 #include "dialogs/profilesdialog.h"
+#include "doc/docundostack.hpp"
 #include "doc/kdenlivedoc.h"
 #include "doc/kthumb.h"
 #include "jobs/cuttask.h"
 #include "kdenlivesettings.h"
+#include "koracut/koracutperformance.h"
+#include <QElapsedTimer>
+#include <QLabel>
 #include "lib/audio/audioStreamInfo.h"
 #include "mainwindow.h"
 #include "mltcontroller/clipcontroller.h"
 #include "project/dialogs/guideslist.h"
 #include "videowidget.h"
+#include "koracut/koracutmetrics.h"
+#include "effects/effectstack/model/effectitemmodel.hpp"
+#include "effects/effectstack/model/effectstackmodel.hpp"
+#include "koracutmonitorguides.h"
 #if defined(Q_OS_WIN)
 #include "d3dvideowidget.h"
 #include "openglvideowidget.h"
@@ -55,12 +64,20 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include <KWindowConfig>
 
 #include "kdenlive_debug.h"
+#include <KConfigGroup>
+#include <KSharedConfig>
+#include <QActionGroup>
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
 #include <QDrag>
+#include <QFile>
 #include <QFontDatabase>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMenu>
+#include <QPainter>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QQuickItem>
@@ -68,6 +85,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include <QScrollBar>
 #include <QSlider>
 #include <QToolButton>
+#include "koracut/koracutthemes.h"
 #include <QVBoxLayout>
 #include <QtConcurrent/QtConcurrentRun>
 #include <utility>
@@ -211,6 +229,21 @@ Monitor::Monitor(Kdenlive::MonitorId id, MonitorManager *manager, QWidget *paren
     connect(m_glMonitor, &VideoWidget::mouseSeek, this, &Monitor::slotMouseSeek);
     connect(m_glMonitor, &VideoWidget::switchFullScreen, this, &Monitor::slotSwitchFullScreen);
     connect(m_glMonitor, &VideoWidget::zoomChanged, this, &Monitor::setZoom);
+    // KoraCut, document 20 : pincement et Ctrl + molette zooment autour du pointeur.
+    connect(m_glMonitor, &VideoWidget::zoomRequested, this, &Monitor::koraCutZoomAt);
+    connect(m_glMonitor, &VideoWidget::zoomChanged, this, [this]() { koraCutUpdateZoomLabel(); });
+    connect(m_glMonitor->getControllerProxy(), &MonitorProxy::overlayMenuRequested, this, [this]() {
+        koraCutBuildOverlayMenu();
+        m_koraOverlayMenu->popup(QCursor::pos());
+    });
+    connect(m_glMonitor->getControllerProxy(), &MonitorProxy::guidesEdited, this, &Monitor::koraCutSaveGuides);
+    connect(m_glMonitor->getControllerProxy(), &MonitorProxy::transformDragFinished, this, &Monitor::koraCutTransformDragFinished);
+    connect(this, &Monitor::effectChanged, this, &Monitor::koraCutOnEffectChanged);
+    m_koraPlatforms = KoraCutMonitorGuides::loadPlatforms();
+    {
+        KConfigGroup kc(KSharedConfig::openConfig(), QStringLiteral("KoraCut"));
+        m_glMonitor->getControllerProxy()->setRulersVisible(kc.readEntry(QStringLiteral("regles_moniteur_%1").arg(int(id)), false));
+    }
     connect(m_glMonitor, SIGNAL(lockMonitor(bool)), this, SLOT(slotLockMonitor(bool)), Qt::DirectConnection);
     connect(m_glMonitor, &VideoWidget::showContextMenu, this, &Monitor::slotShowMenu);
     connect(m_glMonitor, &VideoWidget::gpuNotSupported, this, &Monitor::gpuError);
@@ -221,10 +254,23 @@ Monitor::Monitor(Kdenlive::MonitorId id, MonitorManager *manager, QWidget *paren
 
     // Tool bar buttons
     m_toolbar = new QToolBar(this);
-    int size = style()->pixelMetric(QStyle::PM_SmallIconSize);
-    QSize iconSize(size, size);
+    // KoraCut : le transport est la commande principale, il garde la taille par défaut de la charte.
+    const QSize iconSize = KoraCutMetrics::iconDefault();
     m_toolbar->setIconSize(iconSize);
 
+    // KoraCut : le transport se centre. Depuis que le moniteur occupe toute la largeur, une barre
+    // calée à gauche laisse plus de 1 200 px de vide à sa droite. Deux entretoises extensibles,
+    // une avant et une après, et les commandes se tiennent sous le milieu de l'image.
+    auto *entretoiseGauche = new QWidget(this);
+    entretoiseGauche->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_toolbar->addWidget(entretoiseGauche);
+
+    // KoraCut (chantier 10) : le badge des effets lourds en pause pendant la lecture, discret, à gauche du choix de résolution.
+    m_koraCutSimplified = new QLabel(i18nc("@info:status monitor badge, heavy effects are paused during playback", "Simplified preview"), this);
+    m_koraCutSimplified->setObjectName(QStringLiteral("koracutApercuSimplifie"));
+    m_koraCutSimplified->setToolTip(i18nc("@info:tooltip", "Heavy effects (blur, noise reduction…) are paused while playing on this computer. They come back when you pause, and the export always uses them."));
+    m_koraCutSimplified->setVisible(false);
+    m_toolbar->addWidget(m_koraCutSimplified)->setVisible(false);
     auto *scalingAction = new QComboBox(this);
     scalingAction->setToolTip(i18n("Preview resolution - lower resolution means faster preview"));
     scalingAction->setWhatsThis(xi18nc("@info:whatsthis",
@@ -284,6 +330,31 @@ Monitor::Monitor(Kdenlive::MonitorId id, MonitorManager *manager, QWidget *paren
     scalingAction->setFrame(false);
     scalingAction->setFont(QFontDatabase::systemFont(QFontDatabase::SmallestReadableFont));
     m_toolbar->addWidget(scalingAction);
+
+    // KoraCut, document 20 : le pourcentage de zoom, toujours visible, en chiffres monospace.
+    // Un clic ouvre le menu : Ajuster, les crans, zoom avant et arrière.
+    m_koraZoomButton = new QToolButton(this);
+    m_koraZoomButton->setObjectName(QStringLiteral("koracut_monitor_zoom"));
+    m_koraZoomButton->setAutoRaise(true);
+    m_koraZoomButton->setPopupMode(QToolButton::InstantPopup);
+    m_koraZoomButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    QFont monoFont = KoraCutFonts::numbers(KoraCutMetrics::FontDense);
+    m_koraZoomButton->setFont(monoFont);
+    m_koraZoomButton->setToolTip(i18nc("@info:tooltip KoraCut monitor", "Zoom of the image. Pinch or Ctrl + wheel over the image, Ctrl+0 to fit."));
+    auto *zoomMenu = new QMenu(m_koraZoomButton);
+    QAction *fitAction = zoomMenu->addAction(i18nc("@item:inmenu KoraCut monitor zoom", "Fit"), this, [this]() { m_glMonitor->slotZoomReset(); });
+    fitAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_0));
+    fitAction->setShortcutContext(Qt::WidgetShortcut);
+    const QList<int> steps = KoraCutMonitorGuides::zoomSteps();
+    for (int step : steps) {
+        zoomMenu->addAction(i18nc("@item:inmenu KoraCut monitor zoom, %1 is a number", "%1 %", step), this, [this, step]() { koraCutSetZoomPercent(step); });
+    }
+    zoomMenu->addSeparator();
+    zoomMenu->addAction(QIcon::fromTheme(QStringLiteral("zoom-in")), i18n("Zoom In"), this, [this]() { koraCutZoomAt(m_glMonitor->zoom() * 1.2, m_glMonitor->rect().center()); });
+    zoomMenu->addAction(QIcon::fromTheme(QStringLiteral("zoom-out")), i18n("Zoom Out"), this, [this]() { koraCutZoomAt(m_glMonitor->zoom() / 1.2, m_glMonitor->rect().center()); });
+    m_koraZoomButton->setMenu(zoomMenu);
+    m_toolbar->addWidget(m_koraZoomButton);
+    koraCutUpdateZoomLabel();
     m_toolbar->addSeparator();
 
     if (id == Kdenlive::ClipMonitor) {
@@ -498,12 +569,73 @@ Monitor::Monitor(Kdenlive::MonitorId id, MonitorManager *manager, QWidget *paren
 
     m_toolbar->addAction(manager->getAction(QStringLiteral("monitor_editmode")));
 
+    // KoraCut, document 20 : les points clés automatiques, un losange bleu quand c'est actif.
+    // Bouger un élément à un temps sans point clé en pose un tout seul (comme CapCut).
+    {
+        // Dessiné avec l'accent du thème, et redessiné quand le thème change (25 septembre 2026).
+        const auto drawDiamond = [this]() -> QIcon {
+            QIcon diamond;
+            const QColor on = KoraCutThemes::token(QStringLiteral("accent"));
+            QColor off = palette().color(QPalette::ButtonText);
+            off.setAlpha(160);
+            for (int size : {16, 32}) {
+                for (bool checked : {false, true}) {
+                    QPixmap pm(size, size);
+                    pm.fill(Qt::transparent);
+                    QPainter painter(&pm);
+                    painter.setRenderHint(QPainter::Antialiasing);
+                    const double c = size / 2.;
+                    const double r = size * 0.30;
+                    QPolygonF shape;
+                    shape << QPointF(c, c - r) << QPointF(c + r, c) << QPointF(c, c + r) << QPointF(c - r, c);
+                    painter.setPen(QPen(checked ? on : off, size / 16. * 1.5));
+                    painter.setBrush(checked ? QBrush(on) : Qt::NoBrush);
+                    painter.drawPolygon(shape);
+                    diamond.addPixmap(pm, QIcon::Normal, checked ? QIcon::On : QIcon::Off);
+                }
+            }
+            return diamond;
+        };
+        const QIcon diamond = drawDiamond();
+        m_koraAutoKeyframe = new QAction(diamond, i18nc("@action KoraCut monitor", "Automatic keyframes"), this);
+        m_koraAutoKeyframe->setCheckable(true);
+        m_koraAutoKeyframe->setChecked(KdenliveSettings::autoKeyframe());
+        m_koraAutoKeyframe->setToolTip(i18nc("@info:tooltip KoraCut monitor", "Automatic keyframes: moving an element adds a keyframe at the playhead"));
+        connect(m_koraAutoKeyframe, &QAction::toggled, this, [](bool on) { KdenliveSettings::setAutoKeyframe(on); });
+        connect(KdenliveSettings::self(), &KdenliveSettings::autoKeyframeChanged, this, [this]() {
+            QSignalBlocker bk(m_koraAutoKeyframe);
+            m_koraAutoKeyframe->setChecked(KdenliveSettings::autoKeyframe());
+        });
+        m_toolbar->addAction(m_koraAutoKeyframe);
+        connect(KoraCutThemes::self(), &KoraCutThemes::themeChanged, this, [this, drawDiamond]() { m_koraAutoKeyframe->setIcon(drawDiamond()); });
+    }
+
     m_toolbar->addSeparator();
     m_toolbar->addWidget(m_timePos);
     m_toolbar->addAction(m_configMenuAction);
+    // KoraCut, document 20 : le même menu de repères et superpositions, aussi dans « Plus d'options ».
+    {
+        m_koraRulersAction = new QAction(i18nc("@action KoraCut monitor", "Rulers"), this);
+        m_koraRulersAction->setCheckable(true);
+        m_koraRulersAction->setChecked(m_glMonitor->getControllerProxy()->rulersVisible());
+        connect(m_koraRulersAction, &QAction::triggered, this, [this](bool on) {
+            if (on != m_glMonitor->getControllerProxy()->rulersVisible()) {
+                koraCutToggleRulers();
+            }
+        });
+        connect(m_glMonitor->getControllerProxy(), &MonitorProxy::rulersVisibleChanged, this,
+                [this]() { m_koraRulersAction->setChecked(m_glMonitor->getControllerProxy()->rulersVisible()); });
+        m_koraOverlayMenu = new QMenu(i18nc("@title:menu KoraCut monitor", "Guides and overlays"), this);
+        m_koraOverlayMenu->setIcon(QIcon::fromTheme(QStringLiteral("view-grid")));
+        m_configMenuAction->addAction(m_koraOverlayMenu->menuAction());
+        connect(m_koraOverlayMenu, &QMenu::aboutToShow, this, &Monitor::koraCutBuildOverlayMenu);
+    }
     m_toolbar->addSeparator();
     m_audioMeterWidget = new MonitorAudioLevel(this);
     m_toolbar->addWidget(m_audioMeterWidget);
+    auto *entretoiseDroite = new QWidget(this);
+    entretoiseDroite->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_toolbar->addWidget(entretoiseDroite);
     if (!m_audioMeterWidget->isValid) {
         KdenliveSettings::setMonitoraudio(0x01);
         m_audioMeterWidget->setVisibility(false);
@@ -591,6 +723,15 @@ Monitor::Monitor(Kdenlive::MonitorId id, MonitorManager *manager, QWidget *paren
 
 Monitor::~Monitor()
 {
+    koraCutEndTransformMacro();
+    // Une lecture en aperçu réduit au moment de fermer : la résolution choisie est remise avant l'enregistrement des réglages.
+    const int restore = m_koraCutAdaptive.stop();
+    if (restore >= 0) {
+        KdenliveSettings::setPreviewScaling(restore);
+    }
+    if (m_id == Kdenlive::ProjectMonitor) {
+        KoraCutPerformance::HeavyEffects::restore();
+    }
     destroyFullscreenMirror();
     m_markerModel.reset();
     delete m_audioMeterWidget;
@@ -1039,6 +1180,7 @@ void Monitor::resizeEvent(QResizeEvent *event)
         m_verticalScroll->hide();
     }
     m_glMonitor->updateImagePosition();
+    koraCutUpdateZoomLabel();
 }
 
 void Monitor::adjustScrollBars(float horizontal, float vertical)
@@ -1414,6 +1556,26 @@ void Monitor::keyPressEvent(QKeyEvent *event)
 
 void Monitor::slotMouseSeek(int eventDelta, uint modifiers)
 {
+    if (eventDelta == 0) {
+        return;
+    }
+    // KoraCut, 21 septembre 2026 : au trackpad, un glissement à deux doigts produit des dizaines
+    // d'évènements de quelques unités, et l'image partait en vrille. Un cran de souris vaut 120 :
+    // on accumule donc jusqu'à un cran complet avant de bouger. La souris, elle, ne change pas.
+    if (qAbs(eventDelta) < QWheelEvent::DefaultDeltasPerStep) {
+        if ((m_wheelAccumulated > 0) != (eventDelta > 0)) {
+            // Changement de sens : on repart de zéro plutôt que de résister au doigt.
+            m_wheelAccumulated = 0;
+        }
+        m_wheelAccumulated += eventDelta;
+        if (qAbs(m_wheelAccumulated) < QWheelEvent::DefaultDeltasPerStep) {
+            return;
+        }
+        eventDelta = m_wheelAccumulated;
+        m_wheelAccumulated = 0;
+    } else {
+        m_wheelAccumulated = 0;
+    }
     if ((modifiers & Qt::ControlModifier) != 0u) {
         // Ctrl wheel zooms monitor
         if (eventDelta == 0) {
@@ -1947,11 +2109,13 @@ void Monitor::switchPlay(bool play)
         play = false;
     }
     m_playAction->setActive(play);
+    koraCutPlaybackChanged(play);
 }
 
 void Monitor::updatePlayAction(bool play)
 {
     m_playAction->setActive(play);
+    koraCutPlaybackChanged(play);
     if (!play) {
         m_droppedTimer.stop();
     }
@@ -2017,9 +2181,10 @@ void Monitor::slotSwitchPlay()
         } else {
             m_droppedTimer.stop();
         }
-    } else {
+    } else if (!m_koraCutPlaying || !play) {
         m_droppedTimer.stop();
     }
+    koraCutPlaybackChanged(m_playAction->isActive());
     if (m_playAction->isActive()) {
         m_preventSleepTimer.start();
     } else {
@@ -2476,6 +2641,10 @@ void Monitor::slotShowEffectScene(SceneType::MonitorSceneType sceneType, bool te
     if (m_trimmingbar->isVisible()) {
         return;
     }
+    // KoraCut, document 20 : l'inspecteur reprend la main sur la scène, la proposition de cadre tombe.
+    if (!temporary) {
+        m_koraTransformOffer = false;
+    }
     if (sceneType == SceneType::MonitorSceneNone) {
         // We just want to revert to normal scene
         if (m_qmlManager->sceneType() == SceneType::MonitorSceneSplit || m_qmlManager->sceneType() == SceneType::MonitorSceneDefault) {
@@ -2585,6 +2754,22 @@ void Monitor::updateAudioForAnalysis()
 
 void Monitor::onFrameDisplayed(const SharedFrame &frame)
 {
+    // KoraCut (chantier 10) : le temps entre deux images affichées, pendant la lecture seulement.
+    if (m_koraCutPlaying) {
+        static QElapsedTimer clock;
+        if (!clock.isValid()) {
+            clock.start();
+        }
+        const qint64 now = clock.nsecsElapsed();
+        if (m_koraCutLastFrameNs > 0) {
+            const double ms = double(now - m_koraCutLastFrameNs) / 1e6;
+            m_koraCutFrameSumMs += ms;
+            m_koraCutFrameMaxMs = std::max(m_koraCutFrameMaxMs, ms);
+            m_koraCutFrameCount++;
+        }
+        m_koraCutLastFrameNs = now;
+        m_koraCutFramesThisSecond++;
+    }
     Q_EMIT m_monitorManager->frameDisplayed(frame);
     if (m_id == Kdenlive::ProjectMonitor) {
         Q_EMIT pCore->updateMixerLevels(frame.get_position());
@@ -2602,6 +2787,22 @@ void Monitor::onFrameDisplayed(const SharedFrame &frame)
 void Monitor::checkDrops()
 {
     int dropped = m_glMonitor->droppedFrames();
+    // KoraCut (chantier 10) : la seconde écoulée nourrit l'aperçu adaptatif et le panneau Diagnostic.
+    const double projectFps = pCore->getCurrentFps();
+    // MLT ne compte pas toujours une image en retard comme sautée (le décodeur bloque la lecture) :
+    // on prend aussi ce qui manque à l'écran pendant la seconde écoulée.
+    const int shown = m_koraCutFramesThisSecond;
+    m_koraCutFramesThisSecond = 0;
+    const int missing = m_koraCutPlaying ? std::max(0, int(projectFps + 0.5) - shown) : 0;
+    const int late = std::max(dropped, missing);
+    m_koraCutLastDropped = late;
+    m_koraCutLastFps = m_koraCutPlaying ? double(shown) : std::max(0., projectFps - dropped);
+    if (m_koraCutPlaying) {
+        const int next = m_koraCutAdaptive.tick(late, projectFps);
+        if (next >= 0) {
+            koraCutApplyScaling(next);
+        }
+    }
     if (dropped == 0) {
         // No dropped frames since last check
         m_qmlManager->setProperty(QStringLiteral("dropped"), false);
@@ -2708,7 +2909,7 @@ void Monitor::slotSwitchCompare(bool enable)
                 m_splitEffect->set("2", -0.747); // 2 is tilt
             } else {
                 // frei0r.alphagrad is not available
-                warningMessage(i18n("The alphagrad filter is required for that feature, please install frei0r and restart Kdenlive"));
+                warningMessage(i18n("The alphagrad filter is required for that feature, please install frei0r and restart KoraCut"));
                 return;
             }
             Q_EMIT createSplitOverlay(m_splitEffect);
@@ -2765,14 +2966,14 @@ void Monitor::buildSplitEffect(Mlt::Producer *original)
         m_splitEffect->set("2", -0.747); // 2 is tilt
     } else {
         // frei0r.alphagrad is not available
-        pCore->displayMessage(i18n("The alphagrad filter is required for that feature, please install frei0r and restart Kdenlive"), ErrorMessage);
+        pCore->displayMessage(i18n("The alphagrad filter is required for that feature, please install frei0r and restart KoraCut"), ErrorMessage);
         return;
     }
     QString splitTransition = TransitionsRepository::get()->getCompositingTransition();
     Mlt::Transition t(pCore->getProjectProfile(), splitTransition.toUtf8().constData());
     if (!t.is_valid()) {
         m_splitEffect.reset();
-        pCore->displayMessage(i18n("The cairoblend transition is required for that feature, please install frei0r and restart Kdenlive"), ErrorMessage);
+        pCore->displayMessage(i18n("The cairoblend transition is required for that feature, please install frei0r and restart KoraCut"), ErrorMessage);
         return;
     }
     Mlt::Tractor trac(pCore->getProjectProfile());
@@ -2839,6 +3040,7 @@ void Monitor::loadQmlScene(SceneType::MonitorSceneType type, const QVariant &sce
                 m_nextSceneType = SceneType::MonitorSceneNone;
             });
             m_qmlManager->blockSceneChange(true);
+            koraCutEndTransformMacro();
             root->deleteLater();
             m_qmlManager->clearSceneType();
             return;
@@ -3064,7 +3266,7 @@ void Monitor::updateQmlDisplay(int currentOverlay)
             m_glMonitor->resetDrops();
             m_droppedTimer.start();
         }
-    } else {
+    } else if (!m_koraCutPlaying) {
         m_droppedTimer.stop();
     }
 }
@@ -3131,11 +3333,17 @@ void Monitor::setProducer(const QUuid uuid, std::shared_ptr<Mlt::Producer> produ
     } else {
         m_markerModel.reset();
     }
-    if (m_displayedUuid != uuid) {
+    const bool sequenceChanged = m_displayedUuid != uuid;
+    if (sequenceChanged) {
         m_dirty = false;
         m_displayedUuid = uuid;
     }
     m_glMonitor->setProducer(std::move(producer), isActive() && isVisible(), pos);
+    // KoraCut, document 20 : les repères se gardent par séquence, la plateforme se propose selon le type de vidéo.
+    if (sequenceChanged && m_id == Kdenlive::ProjectMonitor && pCore->currentDoc()) {
+        koraCutLoadGuides();
+        koraCutSuggestPlatform();
+    }
 }
 
 void Monitor::reconfigure()
@@ -3146,6 +3354,9 @@ void Monitor::reconfigure()
 void Monitor::slotSeekPosition(int pos)
 {
     Q_EMIT seekPosition(pos);
+    if (m_koraTransformOffer) {
+        koraCutRefreshOffer(pos, 0);
+    }
     m_timePos->setValue(pos);
     checkOverlay();
 }
@@ -3512,4 +3723,505 @@ void Monitor::rebuildAudio(int cid)
     if (cid == m_controller->clipId().toInt()) {
         m_controller->discardAudioThumb(true);
     }
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// KoraCut, document 20 : zoom autour du pointeur, pourcentage, déplacement direct, règles, repères
+// et repères de plateforme.
+// SPDX-FileCopyrightText: 2026 KoraCut contributors / PIXEWORK
+// SPDX-License-Identifier: GPL-3.0-or-later
+// ---------------------------------------------------------------------------------------------
+
+void Monitor::koraCutZoomAt(double newZoom, const QPointF &viewPos)
+{
+    const QSize profile = pCore->getCurrentFrameSize();
+    if (profile.isEmpty()) {
+        return;
+    }
+    // Mêmes bornes que VideoWidget::slotZoom : 20 % du panneau au minimum, 60 px du projet au maximum.
+    const double maxZoom = qMax(1., qMin(profile.width() / 60., profile.height() / 60.));
+    newZoom = qBound(0.2, newZoom, maxZoom);
+    if (qFuzzyCompare(float(newZoom), m_glMonitor->zoom())) {
+        return;
+    }
+    QQuickItem *root = m_glMonitor->rootObject();
+    // Le coin haut gauche de l'image dans la vue, tel que le QML le calcule (frame.x, frame.y).
+    auto origin = [root, profile]() {
+        const QPointF c = root->property("center").toPointF();
+        return QPointF(c.x() - profile.width() * root->property("scalex").toDouble() / 2. - root->property("offsetx").toDouble(),
+                       c.y() - profile.height() * root->property("scaley").toDouble() / 2. - root->property("offsety").toDouble());
+    };
+    QPointF imagePoint;
+    if (root) {
+        const QPointF o = origin();
+        imagePoint = QPointF((viewPos.x() - o.x()) / root->property("scalex").toDouble(), (viewPos.y() - o.y()) / root->property("scaley").toDouble());
+    }
+    m_glMonitor->setZoom(float(newZoom));
+    if (root && newZoom > 1.) {
+        // Ramener le point du projet qui était sous le pointeur au même endroit de la vue.
+        const QPointF o = origin();
+        const QPointF wanted(viewPos.x() - imagePoint.x() * root->property("scalex").toDouble(),
+                             viewPos.y() - imagePoint.y() * root->property("scaley").toDouble());
+        m_horizontalScroll->setValue(m_horizontalScroll->value() + qRound(o.x() - wanted.x()));
+        m_verticalScroll->setValue(m_verticalScroll->value() + qRound(o.y() - wanted.y()));
+    }
+    koraCutUpdateZoomLabel();
+}
+
+double Monitor::koraCutZoomPercent() const
+{
+    return KoraCutMonitorGuides::zoomToPercent(m_glMonitor->zoom(), m_glMonitor->displayRect().width(), pCore->getCurrentFrameSize().width());
+}
+
+void Monitor::koraCutSetZoomPercent(double percent)
+{
+    const double zoom = KoraCutMonitorGuides::percentToZoom(percent, m_glMonitor->displayRect().width(), pCore->getCurrentFrameSize().width());
+    koraCutZoomAt(zoom, QPointF(m_glMonitor->width() / 2., m_glMonitor->height() / 2.));
+}
+
+void Monitor::koraCutUpdateZoomLabel()
+{
+    if (!m_koraZoomButton) {
+        return;
+    }
+    const int percent = qRound(koraCutZoomPercent());
+    m_koraZoomButton->setText(QStringLiteral("%1 %").arg(percent));
+}
+
+void Monitor::koraCutToggleRulers()
+{
+    MonitorProxy *proxy = m_glMonitor->getControllerProxy();
+    proxy->setRulersVisible(!proxy->rulersVisible());
+    KConfigGroup kc(KSharedConfig::openConfig(), QStringLiteral("KoraCut"));
+    kc.writeEntry(QStringLiteral("regles_moniteur_%1").arg(int(m_id)), proxy->rulersVisible());
+}
+
+void Monitor::koraCutSetPlatform(const QString &id)
+{
+    m_koraPlatformId = id;
+    const KoraCutMonitorGuides::Platform platform = KoraCutMonitorGuides::platform(id, m_koraPlatforms);
+    if (!platform.isValid()) {
+        m_koraPlatformId.clear();
+        m_glMonitor->getControllerProxy()->setPlatform(QString(), QString(), QVariantList());
+    } else {
+        m_glMonitor->getControllerProxy()->setPlatform(id, platform.name,
+                                                       KoraCutMonitorGuides::platformZones(platform, pCore->getCurrentFrameSize(), pCore->getCurrentFps()));
+    }
+    koraCutSaveGuides();
+}
+
+void Monitor::koraCutBuildOverlayMenu()
+{
+    if (!m_koraOverlayMenu) {
+        m_koraOverlayMenu = new QMenu(i18nc("@title:menu KoraCut monitor", "Guides and overlays"), this);
+    }
+    m_koraOverlayMenu->clear();
+    MonitorProxy *proxy = m_glMonitor->getControllerProxy();
+
+    // Les superpositions de Kdenlive : une seule à la fois.
+    auto *overlays = new QActionGroup(m_koraOverlayMenu);
+    overlays->setExclusive(true);
+    const QStringList overlayNames = {i18nc("@item:inmenu monitor overlay", "No overlay"),        i18nc("@item:inmenu monitor overlay", "Standard"),
+                                      i18nc("@item:inmenu monitor overlay", "Minimal"),           i18nc("@item:inmenu monitor overlay", "Center"),
+                                      i18nc("@item:inmenu monitor overlay", "Center and diagonals"), i18nc("@item:inmenu monitor overlay", "Thirds")};
+    for (int i = 0; i < overlayNames.size(); ++i) {
+        QAction *a = m_koraOverlayMenu->addAction(overlayNames.at(i));
+        a->setCheckable(true);
+        a->setChecked(proxy->overlayType() == i);
+        overlays->addAction(a);
+        connect(a, &QAction::triggered, this, [this, i]() {
+            m_glMonitor->getControllerProxy()->setOverlayType(i);
+            setQmlProperty(QStringLiteral("overlayType"), i);
+            Q_EMIT m_glMonitor->getControllerProxy()->overlayTypeChanged();
+        });
+    }
+    m_koraOverlayMenu->addSeparator();
+    QAction *safe = m_koraOverlayMenu->addAction(i18nc("@item:inmenu KoraCut monitor", "Safe zone"));
+    safe->setCheckable(true);
+    safe->setChecked(proxy->showSafezone());
+    connect(safe, &QAction::triggered, this, [this](bool on) { m_glMonitor->getControllerProxy()->setShowSafezone(on); });
+    QAction *grid = m_koraOverlayMenu->addAction(i18nc("@item:inmenu KoraCut monitor", "Grid"));
+    grid->setCheckable(true);
+    grid->setChecked(KdenliveSettings::showMonitorGrid());
+    connect(grid, &QAction::triggered, this, [](bool on) { KdenliveSettings::setShowMonitorGrid(on); });
+    m_koraOverlayMenu->addSeparator();
+
+    // Règles et repères.
+    if (m_koraRulersAction) {
+        m_koraRulersAction->setChecked(proxy->rulersVisible());
+        m_koraOverlayMenu->addAction(m_koraRulersAction);
+    }
+    QAction *showGuides = m_koraOverlayMenu->addAction(i18nc("@item:inmenu KoraCut monitor", "Show guides"));
+    showGuides->setCheckable(true);
+    showGuides->setChecked(proxy->guidesVisible());
+    connect(showGuides, &QAction::triggered, this, [this](bool on) { m_glMonitor->getControllerProxy()->setGuidesVisible(on); });
+    QAction *lockGuides = m_koraOverlayMenu->addAction(i18nc("@item:inmenu KoraCut monitor", "Lock guides"));
+    lockGuides->setCheckable(true);
+    lockGuides->setChecked(proxy->guidesLocked());
+    connect(lockGuides, &QAction::triggered, this, [this](bool on) { m_glMonitor->getControllerProxy()->setGuidesLocked(on); });
+    QAction *clearGuides = m_koraOverlayMenu->addAction(i18nc("@item:inmenu KoraCut monitor", "Clear all guides"));
+    clearGuides->setEnabled(!proxy->guideList().isEmpty() && !proxy->guidesLocked());
+    connect(clearGuides, &QAction::triggered, this, [this]() { m_glMonitor->getControllerProxy()->clearGuides(); });
+    m_koraOverlayMenu->addSeparator();
+
+    // Les repères de plateforme : les zones que l'interface de l'application recouvre.
+    QMenu *platforms = m_koraOverlayMenu->addMenu(i18nc("@title:menu KoraCut monitor", "Platform guides"));
+    auto *platformGroup = new QActionGroup(platforms);
+    platformGroup->setExclusive(true);
+    QAction *none = platforms->addAction(i18nc("@item:inmenu KoraCut platform guides", "None"));
+    none->setCheckable(true);
+    none->setChecked(m_koraPlatformId.isEmpty());
+    platformGroup->addAction(none);
+    connect(none, &QAction::triggered, this, [this]() { koraCutSetPlatform(QString()); });
+    for (const KoraCutMonitorGuides::Platform &p : std::as_const(m_koraPlatforms)) {
+        QString label = p.name;
+        if (p.id == m_koraSuggestedPlatform) {
+            label = i18nc("@item:inmenu KoraCut platform guides, %1 is a platform name", "%1 (this project's platform)", p.name);
+        }
+        QAction *a = platforms->addAction(label);
+        a->setCheckable(true);
+        a->setChecked(p.id == m_koraPlatformId);
+        platformGroup->addAction(a);
+        const QString id = p.id;
+        connect(a, &QAction::triggered, this, [this, id]() { koraCutSetPlatform(id); });
+    }
+}
+
+void Monitor::koraCutLoadGuides()
+{
+    if (!pCore->currentDoc() || m_displayedUuid.isNull()) {
+        return;
+    }
+    m_koraGuidesLoading = true;
+    const QString json = pCore->currentDoc()->getSequenceProperty(m_displayedUuid, QStringLiteral("koracut:reperes"));
+    QList<std::pair<bool, double>> guides;
+    bool visible = true;
+    bool locked = false;
+    QString platform;
+    if (!json.isEmpty()) {
+        const QJsonObject o = QJsonDocument::fromJson(json.toUtf8()).object();
+        const QJsonArray v = o.value(QLatin1String("v")).toArray();
+        const QJsonArray h = o.value(QLatin1String("h")).toArray();
+        for (const QJsonValue &x : v) {
+            guides.append({true, x.toDouble()});
+        }
+        for (const QJsonValue &y : h) {
+            guides.append({false, y.toDouble()});
+        }
+        visible = o.value(QLatin1String("visible")).toBool(true);
+        locked = o.value(QLatin1String("locked")).toBool(false);
+        platform = o.value(QLatin1String("plateforme")).toString();
+    }
+    m_glMonitor->getControllerProxy()->setGuides(guides, visible, locked);
+    m_koraPlatformId.clear();
+    koraCutSetPlatform(platform);
+    m_koraGuidesLoading = false;
+}
+
+void Monitor::koraCutSaveGuides()
+{
+    if (m_koraGuidesLoading || m_id != Kdenlive::ProjectMonitor || !pCore->currentDoc() || m_displayedUuid.isNull()) {
+        return;
+    }
+    MonitorProxy *proxy = m_glMonitor->getControllerProxy();
+    QJsonArray v, h;
+    for (const auto &g : proxy->guideList()) {
+        (g.first ? v : h).append(g.second);
+    }
+    QJsonObject o;
+    o.insert(QLatin1String("v"), v);
+    o.insert(QLatin1String("h"), h);
+    o.insert(QLatin1String("visible"), proxy->guidesVisible());
+    o.insert(QLatin1String("locked"), proxy->guidesLocked());
+    o.insert(QLatin1String("plateforme"), m_koraPlatformId);
+    const QString json = QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
+    if (v.isEmpty() && h.isEmpty() && m_koraPlatformId.isEmpty() && proxy->guidesVisible() && !proxy->guidesLocked()) {
+        pCore->currentDoc()->clearSequenceProperty(m_displayedUuid, QStringLiteral("koracut:reperes"));
+    } else {
+        pCore->currentDoc()->setSequenceProperty(m_displayedUuid, QStringLiteral("koracut:reperes"), json);
+    }
+}
+
+void Monitor::koraCutSuggestPlatform()
+{
+    m_koraSuggestedPlatform.clear();
+    if (!pCore->currentDoc()) {
+        return;
+    }
+    const QString typeId = pCore->currentDoc()->getDocumentProperty(QStringLiteral("koracut:videotype"));
+    if (typeId.isEmpty()) {
+        return;
+    }
+    QFile file(QStringLiteral(":/data/koracut-video-types.json"));
+    if (!file.open(QIODevice::ReadOnly)) {
+        return;
+    }
+    const QJsonArray types = QJsonDocument::fromJson(file.readAll()).object().value(QLatin1String("types")).toArray();
+    QString platformsText;
+    for (const QJsonValue &t : types) {
+        if (t.toObject().value(QLatin1String("id")).toString() == typeId) {
+            platformsText = t.toObject().value(QLatin1String("plateformes")).toString();
+            break;
+        }
+    }
+    m_koraSuggestedPlatform = KoraCutMonitorGuides::platformForVideoType(platformsText, m_koraPlatforms);
+    if (m_koraSuggestedPlatform.isEmpty()) {
+        return;
+    }
+    // Une seule fois par projet : une ligne dans la barre d'état.
+    if (pCore->currentDoc()->getDocumentProperty(QStringLiteral("koracut:reperes_annonce")).isEmpty()) {
+        pCore->currentDoc()->setDocumentProperty(QStringLiteral("koracut:reperes_annonce"), QStringLiteral("1"));
+        const QString name = KoraCutMonitorGuides::platform(m_koraSuggestedPlatform, m_koraPlatforms).name;
+        pCore->displayMessage(i18nc("@info:status KoraCut, %1 is a platform name", "This project targets %1: platform guides are in the monitor's overlay menu", name),
+                              InformationMessage, 8000);
+    }
+}
+
+// L'effet Transformer (qtblend) d'une pile, intégré ou ajouté, ou rien.
+static std::shared_ptr<EffectItemModel> koraCutTransformEffect(const std::shared_ptr<EffectStackModel> &stack)
+{
+    for (int i = 0; i < stack->rowCount(); ++i) {
+        auto item = stack->getEffectStackRow(i);
+        if (item->childCount() > 0) {
+            continue;
+        }
+        auto effect = std::static_pointer_cast<EffectItemModel>(item);
+        if (effect->getAssetId() == QLatin1String("qtblend")) {
+            return effect;
+        }
+    }
+    return nullptr;
+}
+
+// Le plan n'a pas encore de transformation utilisable : effet intégré désactivé (réglage « effets
+// intégrés »), ou aucun effet qtblend dans sa pile.
+static bool koraCutNeedsTransform(const std::shared_ptr<EffectStackModel> &stack)
+{
+    if (KdenliveSettings::enableBuiltInEffects()) {
+        return stack->hasDisabledBuiltInTransform();
+    }
+    return koraCutTransformEffect(stack) == nullptr;
+}
+
+void Monitor::koraCutOfferTransform(const std::shared_ptr<EffectStackModel> &stack)
+{
+    if (m_id != Kdenlive::ProjectMonitor || !stack) {
+        return;
+    }
+    if (stack->getOwnerId().type != KdenliveObjectType::TimelineClip || !koraCutNeedsTransform(stack)) {
+        return;
+    }
+    if (!m_monitorManager->getAction(QStringLiteral("monitor_editmode"))->isChecked() || m_trimmingbar->isVisible()) {
+        return;
+    }
+    // Un autre effet tient déjà la scène (recadrage, masque...) : il garde la main.
+    const SceneType::MonitorSceneType current = m_nextSceneType != SceneType::MonitorSceneNone ? m_nextSceneType : m_qmlManager->sceneType();
+    if (current != SceneType::MonitorSceneDefault && current != SceneType::MonitorSceneRotatedGeometry && current != SceneType::MonitorSceneNone) {
+        return;
+    }
+    m_koraOfferStack = stack;
+    slotShowEffectScene(SceneType::MonitorSceneRotatedGeometry);
+    m_koraTransformOffer = true;
+    koraCutRefreshOffer(position());
+}
+
+void Monitor::koraCutRefreshOffer(int pos, int retries)
+{
+    if (!m_koraTransformOffer) {
+        return;
+    }
+    auto stack = m_koraOfferStack.lock();
+    if (!stack) {
+        m_koraTransformOffer = false;
+        return;
+    }
+    if (m_nextSceneType != SceneType::MonitorSceneNone || m_qmlManager->sceneType() != SceneType::MonitorSceneRotatedGeometry) {
+        // La scène se charge encore : on repasse un peu plus tard.
+        if (retries > 0) {
+            QTimer::singleShot(120, this, [this, pos, retries]() { koraCutRefreshOffer(pos, retries - 1); });
+        }
+        return;
+    }
+    const QSize profile = pCore->getCurrentFrameSize();
+    if (QQuickItem *root = m_glMonitor->rootObject()) {
+        root->setProperty("framesize", QRect(0, 0, profile.width(), profile.height()));
+        root->setProperty("rect_rotation", 0.);
+    }
+    const bool contains = pCore->itemContainsPos(stack->getOwnerId(), pos);
+    setEffectKeyframe(true, !contains);
+}
+
+void Monitor::koraCutOnEffectChanged(const QRectF &rect)
+{
+    Q_UNUSED(rect)
+    if (!m_koraTransformOffer) {
+        return;
+    }
+    auto stack = m_koraOfferStack.lock();
+    m_koraTransformOffer = false;
+    if (!stack || !koraCutNeedsTransform(stack)) {
+        return;
+    }
+    // Premier glisser sur un plan sans transformation : l'ajout (ou l'activation) de l'effet et le
+    // déplacement tiennent dans une seule étape d'annulation. L'inspecteur ouvre l'effet et branche
+    // son aide au moniteur, qui reçoit la suite du glisser.
+    pCore->undoStack()->beginMacro(i18nc("@action undo text", "Move clip in monitor"));
+    m_koraTransformMacro = true;
+    if (KdenliveSettings::enableBuiltInEffects()) {
+        // La vue de l'effet intégré l'active en différé, dans la même macro.
+        Q_EMIT pCore->enableBuildInTransform();
+    } else {
+        stack->appendEffect(QStringLiteral("qtblend"), true);
+    }
+}
+
+void Monitor::koraCutTransformDragFinished()
+{
+    if (!m_koraTransformMacro) {
+        return;
+    }
+    // Laisser passer l'activation différée de l'effet avant de fermer la macro.
+    QTimer::singleShot(0, this, [this]() { koraCutEndTransformMacro(); });
+}
+
+void Monitor::koraCutEndTransformMacro()
+{
+    if (m_koraTransformMacro) {
+        m_koraTransformMacro = false;
+        pCore->undoStack()->endMacro();
+    }
+}
+
+void Monitor::koraCutDebugCommand(const QString &command)
+{
+    const QString verb = command.section(QLatin1Char('='), 0, 0);
+    const QString arg = command.section(QLatin1Char('='), 1);
+    MonitorProxy *proxy = m_glMonitor->getControllerProxy();
+    if (verb == QLatin1String("zoom")) {
+        koraCutSetZoomPercent(arg.toDouble());
+    } else if (verb == QLatin1String("regles")) {
+        koraCutToggleRulers();
+    } else if (verb == QLatin1String("repere")) {
+        // repere=x:540 ou repere=y:200
+        proxy->addGuide(arg.startsWith(QLatin1Char('x')), arg.section(QLatin1Char(':'), 1).toDouble());
+    } else if (verb == QLatin1String("plateforme")) {
+        koraCutSetPlatform(arg);
+    } else if (verb == QLatin1String("deplacer")) {
+        // Comme un glisser du cadre : premier mouvement, suite du mouvement, relâcher.
+        QQuickItem *root = m_glMonitor->rootObject();
+        if (!root || m_qmlManager->sceneType() != SceneType::MonitorSceneRotatedGeometry) {
+            qWarning() << "KORACUT-GEOMETRIE pas de cadre affiché, scène" << int(m_qmlManager->sceneType());
+            return;
+        }
+        QRectF r = root->property("framesize").toRectF();
+        // « 120x80 » (la virgule sépare déjà les actions).
+        r.translate(arg.section(QLatin1Char('x'), 0, 0).toDouble(), arg.section(QLatin1Char('x'), 1, 1).toDouble());
+        Q_EMIT effectChanged(r);
+        QTimer::singleShot(400, this, [this, r]() {
+            Q_EMIT effectChanged(r);
+            QTimer::singleShot(100, this, [this]() { koraCutTransformDragFinished(); });
+        });
+        return;
+    } else if (verb == QLatin1String("etat")) {
+        // écrit l'état, ci-dessous
+    }
+    qWarning().noquote() << "KORACUT-MONITEUR zoom" << qRound(koraCutZoomPercent()) << "regles" << proxy->rulersVisible() << "reperes" << proxy->guides().size()
+                         << "plateforme" << m_koraPlatformId << "zones" << proxy->platformZones().size() << "scene" << int(m_qmlManager->sceneType())
+                         << "offre" << m_koraTransformOffer;
+    if (auto stack = m_koraOfferStack.lock()) {
+        auto effect = koraCutTransformEffect(stack);
+        qWarning().noquote() << "KORACUT-GEOMETRIE effets" << stack->rowCount() << "transformer" << (effect ? "oui" : "non") << "actif"
+                             << (effect && effect->isAssetEnabled()) << "rect" << (effect ? effect->filter().get("rect") : "-") << "rotation"
+                             << (effect ? effect->filter().get("rotation") : "-") << "annulation"
+                             << (pCore->undoStack()->index() > 0 ? pCore->undoStack()->text(pCore->undoStack()->index() - 1) : QStringLiteral("-"))
+                             << pCore->undoStack()->index();
+    }
+}
+
+// ---- KoraCut, chantier 10 : aperçu adaptatif ------------------------------------------------
+
+void Monitor::koraCutConfigureAdaptive()
+{
+    m_koraCutAdaptive.configure(m_id == Kdenlive::ProjectMonitor ? KoraCutPerformance::adaptiveFloor() : 0);
+}
+
+void Monitor::koraCutApplyScaling(int scaling)
+{
+    // Même chemin que le choix du menu de résolution, sans rafraîchir l'image : la lecture continue.
+    KdenliveSettings::setPreviewScaling(scaling);
+    Q_EMIT m_monitorManager->scalingChanged();
+    Q_EMIT m_monitorManager->updatePreviewScaling();
+    qInfo().noquote() << "KORACUT-PERF aperçu" << MachineProfile::scalingHeight(scaling) << (m_koraCutAdaptive.degraded() ? "adapté" : "choisi");
+}
+
+void Monitor::koraCutPlaybackChanged(bool play)
+{
+    if (play == m_koraCutPlaying) {
+        return;
+    }
+    m_koraCutPlaying = play;
+    m_koraCutLastFrameNs = 0;
+    m_koraCutFramesThisSecond = 0;
+    if (play) {
+        if (m_id == Kdenlive::ProjectMonitor && KoraCutPerformance::simplifiedHeavyEffects()) {
+            const int paused = KoraCutPerformance::HeavyEffects::simplifyCurrentTimeline();
+            if (paused > 0 && m_koraCutSimplified) {
+                m_koraCutSimplified->setVisible(true);
+                for (QAction *a : m_toolbar->actions()) {
+                    if (m_toolbar->widgetForAction(a) == m_koraCutSimplified) {
+                        a->setVisible(true);
+                    }
+                }
+            }
+        }
+        koraCutConfigureAdaptive();
+        const int start = m_koraCutAdaptive.start(KdenliveSettings::previewScaling());
+        if (start >= 0) {
+            koraCutApplyScaling(start);
+        }
+        if (m_koraCutAdaptive.enabled() || m_id == Kdenlive::ProjectMonitor) {
+            m_glMonitor->resetDrops();
+            m_droppedTimer.start();
+        }
+    } else {
+        const int restore = m_koraCutAdaptive.stop();
+        const bool hadSimplified = KoraCutPerformance::HeavyEffects::count() > 0;
+        if (hadSimplified) {
+            KoraCutPerformance::HeavyEffects::restore();
+            if (m_koraCutSimplified) {
+                for (QAction *a : m_toolbar->actions()) {
+                    if (m_toolbar->widgetForAction(a) == m_koraCutSimplified) {
+                        a->setVisible(false);
+                    }
+                }
+            }
+        }
+        if (restore >= 0) {
+            // À la pause, l'image nette revient : c'est celle qu'on regarde.
+            koraCutApplyScaling(restore);
+        }
+        if (restore >= 0 || hadSimplified) {
+            m_monitorManager->refreshMonitors();
+        }
+        m_droppedTimer.stop();
+    }
+}
+
+Monitor::KoraCutPlaybackStats Monitor::koraCutStats(bool reset)
+{
+    KoraCutPlaybackStats st;
+    st.playing = m_koraCutPlaying;
+    st.fps = m_koraCutPlaying ? m_koraCutLastFps : 0.;
+    st.dropped = m_koraCutPlaying ? m_koraCutLastDropped : 0;
+    st.frameMs = m_koraCutFrameCount > 0 ? m_koraCutFrameSumMs / m_koraCutFrameCount : 0.;
+    st.frameMaxMs = m_koraCutFrameMaxMs;
+    st.scaling = KdenliveSettings::previewScaling();
+    st.adapted = m_koraCutAdaptive.degraded();
+    if (reset) {
+        m_koraCutFrameSumMs = 0.;
+        m_koraCutFrameMaxMs = 0.;
+        m_koraCutFrameCount = 0;
+    }
+    return st;
 }

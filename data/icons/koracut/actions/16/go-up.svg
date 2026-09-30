@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
+  <!-- Lucide 1.47.0 "chevron-up" - ISC -->
+  <defs>
+    <style type="text/css" id="current-color-scheme">.ColorScheme-Text { color:#fcfcfc; }</style>
+  </defs>
+  <g class="ColorScheme-Text" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m18 15-6-6-6 6" />
+  </g>
+</svg>

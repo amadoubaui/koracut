@@ -31,7 +31,7 @@
         <key>LSMinimumSystemVersion</key>
         <string>13.0.0</string>
         <key>NSMicrophoneUsageDescription</key>
-        <string>Kdenlive can record audio when user requests it.</string>
+        <string>KoraCut enregistre le son quand vous le demandez.</string>
         <key>LSApplicationCategoryType</key>
         <string>public.app-category.video</string>
         <key>CSResourcesFileMapped</key>
@@ -49,20 +49,20 @@
         <dict>
         <key>CFBundleTypeExtensions</key>
         <array>
-          <string>kdenlive</string>
-          <string>KDENLIVE</string>
+          <string>koracut</string>
+          <string>KORACUT</string>
         </array>
         <key>CFBundleTypeIconFile</key>
-        <string>sc-apps-kdenlive.icns</string>
+        <string>sc-apps-koracut.icns</string>
         <key>CFBundleTypeMIMETypes</key>
         <array>
-          <string>application/vnd.kdenlive+xml</string>
+          <string>application/x-koracut</string>
         </array>
         <key>CFBundleTypeName</key>
-        <string>Kdenlive Project</string>
+        <string>Projet KoraCut</string>
         <key>CFBundleTypeOSTypes</key>
         <array>
-          <string>kdenlive</string>
+          <string>koracut</string>
         </array>
         <key>CFBundleTypeRole</key>
         <string>Editor</string>
@@ -70,6 +70,20 @@
         <string>Owner</string>
         <key>LSIsAppleDefaultForType</key>
         <true/>
+        </dict>
+        <dict>
+        <key>CFBundleTypeExtensions</key>
+        <array>
+          <string>kdenlive</string>
+        </array>
+        <key>CFBundleTypeIconFile</key>
+        <string>sc-apps-koracut.icns</string>
+        <key>CFBundleTypeName</key>
+        <string>Ancien projet vidéo</string>
+        <key>CFBundleTypeRole</key>
+        <string>Editor</string>
+        <key>LSHandlerRank</key>
+        <string>Alternate</string>
         </dict>
         </array>
 </dict>

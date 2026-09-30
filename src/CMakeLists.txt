@@ -67,6 +67,7 @@ add_subdirectory(utils)
 add_subdirectory(widgets)
 add_subdirectory(xml)
 add_subdirectory(layouts)
+add_subdirectory(koracut)
 
 ## toplevel source code files
 list(APPEND kdenlive_SRCS
@@ -96,7 +97,7 @@ ecm_qt_declare_logging_category(kdenlive_SRCS
 )
 
 if(USE_DBUS)
-    qt_add_dbus_adaptor(kdenlive_SRCS org.kdenlive.MainWindow.xml mainwindow.h MainWindow)
+    qt_add_dbus_adaptor(kdenlive_SRCS pro.pixework.koracut.MainWindow.xml mainwindow.h MainWindow)
 endif()
 
 ## UI's
@@ -138,6 +139,9 @@ ecm_target_qml_sources(kdenliveLib
     monitor/view/MonitorOverlay.qml
     monitor/view/MonitorRotoScene.qml
     monitor/view/MonitorSafeZone.qml
+    monitor/view/MonitorRulers.qml
+    monitor/view/MonitorGuides.qml
+    monitor/view/MonitorPlatformZones.qml
     monitor/view/MonitorSplit.qml
     monitor/view/MonitorSplitTracks.qml
     monitor/view/MonitorToolButton.qml
@@ -186,52 +190,58 @@ ecm_target_qml_sources(kdenliveLib
     dialogs/Simplesplash.qml
 )
 
-qt_add_resources(kdenlive_extra_SRCS icons.qrc uiresources.qrc)
+qt_add_resources(kdenlive_extra_SRCS icons.qrc uiresources.qrc ../data/icons/plateformes/plateformes.qrc ../data/icons/koracut-icons.qrc ../data/effect-previews/effect-previews.qrc ../data/koracut-agents-cli.qrc)
+if(KORACUT_AGENTS)
+  # Les définitions d'outils des agents (Agents in-app/outils/*.json), embarquées telles quelles : voir la racine.
+  qt_add_resources(kdenlive_extra_SRCS ${KORACUT_AGENTS_QRC})
+  # Connexions IA : le catalogue des fournisseurs (data/koracut-fournisseurs-ia.json) et leurs logos.
+  qt_add_resources(kdenlive_extra_SRCS ../data/icons/fournisseurs/fournisseurs.qrc)
+endif()
 
 ## Icon for Windows and MacOS.
 ## The svg (or svgz) icon must be provided first to be used on MacOS
 set(ICONS_FOLDER ${CMAKE_CURRENT_SOURCE_DIR}/../data/icons)
 set(ICON_FILES
-  ${ICONS_FOLDER}/sc-apps-kdenlive.svg
-  ${ICONS_FOLDER}/16-apps-kdenlive.png
-  ${ICONS_FOLDER}/22-apps-kdenlive.png
-  ${ICONS_FOLDER}/32-apps-kdenlive.png
-  ${ICONS_FOLDER}/48-apps-kdenlive.png
-  ${ICONS_FOLDER}/64-apps-kdenlive.png
-  ${ICONS_FOLDER}/128-apps-kdenlive.png
-  ${ICONS_FOLDER}/256-apps-kdenlive.png
-  ${ICONS_FOLDER}/512-apps-kdenlive.png
-  ${ICONS_FOLDER}/1024-apps-kdenlive.png
+  ${ICONS_FOLDER}/sc-apps-koracut.svg
+  ${ICONS_FOLDER}/16-apps-koracut.png
+  ${ICONS_FOLDER}/22-apps-koracut.png
+  ${ICONS_FOLDER}/32-apps-koracut.png
+  ${ICONS_FOLDER}/48-apps-koracut.png
+  ${ICONS_FOLDER}/64-apps-koracut.png
+  ${ICONS_FOLDER}/128-apps-koracut.png
+  ${ICONS_FOLDER}/256-apps-koracut.png
+  ${ICONS_FOLDER}/512-apps-koracut.png
+  ${ICONS_FOLDER}/1024-apps-koracut.png
 )
-ecm_add_app_icon(kdenlive ICONS ${ICON_FILES})
+ecm_add_app_icon(koracut ICONS ${ICON_FILES})
 
-## Kdenlive Executable
-qt_add_executable(kdenlive MACOSX_BUNDLE main.cpp ${kdenlive_extra_SRCS} ${kdenlive})
-target_include_directories(kdenlive
+## KoraCut Executable
+qt_add_executable(koracut MACOSX_BUNDLE main.cpp ${kdenlive_extra_SRCS} ${koracut})
+target_include_directories(koracut
     PRIVATE ${CMAKE_BINARY_DIR}
     )
 
 if (APPLE)
 # Apple app package
-set_target_properties(kdenlive PROPERTIES MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/../data/Info.plist)
-set_target_properties(kdenlive PROPERTIES
-    MACOSX_BUNDLE_DISPLAY_NAME "Kdenlive"
-    MACOSX_BUNDLE_BUNDLE_NAME "Kdenlive"
-    MACOSX_BUNDLE_LONG_VERSION_STRING "Kdenlive ${KDENLIVE_VERSION}"
+set_target_properties(koracut PROPERTIES MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/../data/Info.plist)
+set_target_properties(koracut PROPERTIES
+    MACOSX_BUNDLE_DISPLAY_NAME "KoraCut"
+    MACOSX_BUNDLE_BUNDLE_NAME "KoraCut"
+    MACOSX_BUNDLE_LONG_VERSION_STRING "KoraCut ${KDENLIVE_VERSION}"
     MACOSX_BUNDLE_SHORT_VERSION_STRING "${RELEASE_SERVICE_VERSION_MAJOR}.${RELEASE_SERVICE_VERSION_MINOR}"
     MACOSX_BUNDLE_BUNDLE_VERSION "${KDENLIVE_VERSION}"
-    MACOSX_BUNDLE_GUI_IDENTIFIER "org.kde.Kdenlive"
-    MACOSX_BUNDLE_COPYRIGHT "2000-2022 The Kdenlive Authors")
+    MACOSX_BUNDLE_GUI_IDENTIFIER "pro.pixework.koracut"
+    MACOSX_BUNDLE_COPYRIGHT "Copyright © 2026 PIXEWORK")
 
 # Add entitlements for code signing to allow access to microphone
-set_target_properties(kdenlive PROPERTIES
-    XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS "${CMAKE_SOURCE_DIR}/kdenlive.entitlements"
+set_target_properties(koracut PROPERTIES
+    XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS "${CMAKE_SOURCE_DIR}/koracut.entitlements"
 )
-#set_target_properties(kdenlive PROPERTIES MACOSX_BUNDLE ON)
+#set_target_properties(koracut PROPERTIES MACOSX_BUNDLE ON)
 endif()
 
-target_link_libraries(kdenlive PUBLIC kdenliveLib kdenliveLibplugin)
-install(TARGETS kdenlive DESTINATION ${KDE_INSTALL_BINDIR})
+target_link_libraries(koracut PUBLIC kdenliveLib kdenliveLibplugin)
+install(TARGETS koracut DESTINATION ${KDE_INSTALL_BINDIR})
 
 ## Kdenlive Lib
 target_include_directories(kdenliveLib PRIVATE
@@ -285,6 +295,26 @@ if(KF6_VERSION VERSION_GREATER_EQUAL "6.8.0")
   target_link_libraries(kdenliveLib PUBLIC KF${KF_MAJOR}::I18nQml)
 endif()
 
+# KoraCut, document 22 : le moteur d'étalonnage (aperçus, scopes, outils des agents, tests).
+target_link_libraries(kdenliveLib PUBLIC kcgrade)
+
+if(KORACUT_AGENTS)
+  target_link_libraries(kdenliveLib PUBLIC Qt${QT_MAJOR_VERSION}::WebSockets)
+  # Connexions IA : les clés API au trousseau du système par QtKeychain (Keychain, Secret Service,
+  # Credential Manager). Sans QtKeychain, repli sur un fichier 0600 (koracutaisecrets.cpp).
+  find_package(Qt${QT_MAJOR_VERSION}Keychain CONFIG QUIET)
+  if(TARGET qt${QT_MAJOR_VERSION}keychain)
+    target_link_libraries(kdenliveLib PUBLIC qt${QT_MAJOR_VERSION}keychain)
+    set_source_files_properties(koracut/ai/koracutaisecrets.cpp PROPERTIES COMPILE_DEFINITIONS "KORACUT_KEYCHAIN=1")
+    message(STATUS "KoraCut: API keys in the system keychain (QtKeychain)")
+  else()
+    message(STATUS "KoraCut: QtKeychain not found, API keys in a 0600 file")
+  endif()
+  # Le service d'agents local, lancé par l'application en développement (Agents in-app/service-essai).
+  get_filename_component(KORACUT_AGENT_SERVICE_DIR "${KORACUT_AGENT_TOOLS_DIR}/../service-essai" ABSOLUTE)
+  set_source_files_properties(koracut/ai/koracutaibridge.cpp PROPERTIES COMPILE_DEFINITIONS "KORACUT_AGENT_SERVICE_DIR=\"${KORACUT_AGENT_SERVICE_DIR}\"")
+endif()
+
 target_link_libraries(kdenliveLib PUBLIC
     Qt${QT_MAJOR_VERSION}::Core
     Qt${QT_MAJOR_VERSION}::Svg
@@ -327,12 +357,12 @@ if(CRASH_AUTO_TEST)
 endif()
 
 if(DRMINGW_FOUND)
-    target_compile_definitions(kdenlive PRIVATE -DUSE_DRMINGW)
-    target_include_directories(kdenlive SYSTEM PRIVATE ${DRMINGW_INCLUDE_DIR})
-    target_link_libraries(kdenlive PUBLIC ${DRMINGW_LIBRARY})
+    target_compile_definitions(koracut PRIVATE -DUSE_DRMINGW)
+    target_include_directories(koracut SYSTEM PRIVATE ${DRMINGW_INCLUDE_DIR})
+    target_link_libraries(koracut PUBLIC ${DRMINGW_LIBRARY})
 elseif(KF${KF_MAJOR}Crash_FOUND)
-    target_compile_definitions(kdenlive PRIVATE -DKF5_USE_CRASH)
-    target_link_libraries(kdenlive PUBLIC KF${KF_MAJOR}::Crash)
+    target_compile_definitions(koracut PRIVATE -DKF5_USE_CRASH)
+    target_link_libraries(koracut PUBLIC KF${KF_MAJOR}::Crash)
 endif()
 
 if(Q_WS_X11)
@@ -353,7 +383,7 @@ endif()
 
 if(NOT USE_DBUS)
     target_compile_definitions(kdenliveLib PRIVATE -DNODBUS)
-    target_compile_definitions(kdenlive PRIVATE -DNODBUS)
+    target_compile_definitions(koracut PRIVATE -DNODBUS)
 endif()
 
 if (BUILD_QCH)
@@ -371,7 +401,7 @@ if (BUILD_QCH)
     )
 endif()
 
-add_dependencies(kdenlive all_qmllint)
+add_dependencies(koracut all_qmllint)
 
 ecm_finalize_qml_module(kdenliveLib
     DESTINATION ${KDE_INSTALL_QMLDIR})

@@ -53,7 +53,8 @@ Item {
     property bool selected: false
     property double speed: 1.0
     property color color: displayRect.color
-    property color borderColor: 'black'
+    // KoraCut : plus de contour noir, un liseré violet translucide.
+    property color borderColor: Qt.rgba(0.486, 0.361, 1.0, 0.55)
     readonly property bool trimInProgress: trimInMouseArea.pressed || trimOutMouseArea.pressed
     readonly property bool isUserInteracting: mouseArea.pressed || trimInProgress
     readonly property bool hideCompoViews: !visible || width < root.minClipWidthForViews
@@ -183,9 +184,10 @@ Item {
         anchors.topMargin: compositionRoot.displayHeight - compositionRoot.trackOffset
         height: compositionRoot.parentTrack.height - compositionRoot.displayHeight
         property int handleWidth: Math.max(2, Math.ceil(K.UiUtils.baseSizeMedium / 4))
-        color: Qt.darker('mediumpurple')
+        color: Qt.darker('#7C5CFF')
+        radius: width < 12 ? 0 : 3
         border.color: compositionRoot.grouped ? compositionRoot.timeline.groupColor : mouseArea.containsMouse ? activePalette.highlight : compositionRoot.borderColor
-        border.width: compositionRoot.isGrabbed ? 8 : 2
+        border.width: compositionRoot.isGrabbed ? 3 : 2
         opacity: dragProxyArea.drag.active && dragProxy.draggedItem == compositionRoot.clipId ? 0.5 : 1.0
 
         states: [
@@ -204,7 +206,7 @@ Item {
                 }
                 PropertyChanges {
                     displayRect.height: parentTrack.height - displayHeight + Math.min(Logic.getTrackHeightByPos(Logic.getTrackIndexFromId(parentTrack.trackInternalId) + 1) / 3, K.UiUtils.baseSizeMedium)
-                    displayRect.color: 'mediumpurple'
+                    displayRect.color: '#7C5CFF'
                     displayRect.border.color: compositionRoot.timeline.selectionColor
                 }
             }

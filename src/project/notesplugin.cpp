@@ -12,6 +12,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "mainwindow.h"
 #include "monitor/monitormanager.h"
 #include "project/projectmanager.h"
+#include "koracut/koracutmetrics.h"
 
 #include <QFrame>
 #include <QLineEdit>
@@ -31,9 +32,7 @@ NotesPlugin::NotesPlugin(KDDockWidgets::QtWidgets::DockWidget *tabbedDock, QObje
     lay->setSpacing(0);
     m_tb = new QToolBar();
     m_tb->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    int size = container->style()->pixelMetric(QStyle::PM_SmallIconSize);
-    QSize iconSize(size, size);
-    m_tb->setIconSize(iconSize);
+    m_tb->setIconSize(KoraCutMetrics::iconToolbar());
     lay->addWidget(m_tb);
     // Search line
     m_searchFrame = new QFrame(container);
@@ -64,7 +63,7 @@ NotesPlugin::NotesPlugin(KDDockWidgets::QtWidgets::DockWidget *tabbedDock, QObje
     connect(m_widget, &NotesWidget::reAssign, this, &NotesPlugin::slotReAssign);
     m_widget->setTabChangesFocus(true);
     m_widget->setPlaceholderText(i18n("Enter your project notes here …"));
-    m_notesDock = pCore->window()->addDock(i18n("Project Notes"), QStringLiteral("notes_widget"), container, KDDockWidgets::Location_None, tabbedDock);
+    m_notesDock = pCore->window()->addDock(i18nc("@title:window nom court d'un panneau", "Notes"), QStringLiteral("notes_widget"), container, KDDockWidgets::Location_None, tabbedDock);
     m_notesDock->close();
     m_notesDock->setFocusProxy(m_widget);
     connect(m_searchLine, &QLineEdit::textChanged, this, [this](const QString &searchText) {

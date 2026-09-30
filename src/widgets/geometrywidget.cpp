@@ -8,6 +8,7 @@
 #include "doublewidget.h"
 #include "dragvalue.h"
 #include "monitor/monitor.h"
+#include "koracut/koracutmetrics.h"
 
 #include <KLocalizedString>
 #include <QFormLayout>
@@ -142,7 +143,7 @@ GeometryWidget::GeometryWidget(Monitor *monitor, QPair<int, int> range, const QR
     connect(alignbottom, &QAction::triggered, this, &GeometryWidget::slotMoveBottom);
 
     QToolBar *tbAlign = new QToolBar(parent);
-    int size = parent->style()->pixelMetric(QStyle::PM_SmallIconSize);
+    const int size = KoraCutMetrics::IconInspector;
     tbAlign->setIconSize(QSize(size, size));
     tbAlign->setStyleSheet(QStringLiteral("QToolBar { padding: 0; } QToolBar QToolButton { padding: 0; margin: 0; }"));
     tbAlign->setFixedHeight(m_spinX->height());

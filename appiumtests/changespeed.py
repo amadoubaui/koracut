@@ -25,7 +25,7 @@ class ChangeSpeedDialogTests(unittest.TestCase):
     def setUpClass(cls):
         cls.clip_path = cls.ensure_sample_clip()
         caps = {
-            "app" : "kdenlive --no-welcome"
+            "app" : "koracut --no-welcome"
         }
         options = AppiumOptions().load_capabilities(caps)
         cls.driver = webdriver.Remote(command_executor="http://127.0.0.1:4723", options=options)
@@ -88,7 +88,7 @@ class ChangeSpeedDialogTests(unittest.TestCase):
 
         # profile match message box - cancel it
         try:
-            self.wait_for_name("Warning — Kdenlive", timeout=8)
+            self.wait_for_name("Warning — KoraCut", timeout=8)
             dialog = self.driver.find_element(by=AppiumBy.ACCESSIBILITY_ID, value="QApplication.warningYesNo")
             dialog.find_element(by=AppiumBy.NAME, value="Cancel").click()
         except:
@@ -104,7 +104,7 @@ class ChangeSpeedDialogTests(unittest.TestCase):
         # select all in timeline
         self.driver.find_element(by=AppiumBy.NAME, value="Select All").click()
         self.click_action(["Change Speed", "Change Speed…"])
-        self.wait_for_name("Clip Speed — Kdenlive")
+        self.wait_for_name("Clip Speed — KoraCut")
         self.wait_for_name("Reverse clip").click()
         self.wait_for_name("OK").click()
         self.wait_not_present("Clip Speed")

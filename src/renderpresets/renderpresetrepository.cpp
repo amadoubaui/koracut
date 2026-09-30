@@ -442,7 +442,7 @@ bool RenderPresetRepository::deletePreset(const QString &name, bool dontRefresh)
     if (!edit.endsWith(QLatin1String("customprofiles.xml"))) {
         // This is a KNewStuff installed file, process through KNS
         KNS::Engine engine(0);
-        if (engine.init("kdenlive_render.knsrc")) {
+        if (engine.init("koracut_render.knsrc")) {
             KNS::Entry::List entries;
         }
         return;

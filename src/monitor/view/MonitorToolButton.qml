@@ -13,6 +13,9 @@ ToolButton {
     property string toolTipText
     width: parent.width
     height: width
+    // KoraCut : taille par défaut de la charte pour les commandes des moniteurs
+    icon.width: 16
+    icon.height: 16
     focusPolicy: Qt.NoFocus
     ToolTip {
         visible: toolButton.hovered

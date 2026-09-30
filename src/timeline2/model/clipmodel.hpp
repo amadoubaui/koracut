@@ -70,6 +70,16 @@ public:
      */
     const QString clipName() const;
     const QString clipTag() const;
+    /** @brief KoraCut : la couleur propre du clip (« #RRGGBB »), vide s'il suit sa piste. Portée par
+     *  le clip de la timeline (propriété kdenlive:koracut_color), enregistrée dans le projet. */
+    QString koraCutColor() const;
+    /** @brief KoraCut : pose la couleur propre du clip, vide pour la retirer (sans annulation). */
+    void setKoraCutColor(const QString &color);
+    /** @brief KoraCut : le nom propre du clip dans la timeline (propriété kdenlive:koracut_clipname),
+     *  vide s'il porte le nom de son média. Enregistré dans le projet, suit les deux moitiés d'une coupe. */
+    QString koraCutName() const;
+    /** @brief KoraCut : pose le nom propre du clip, vide pour reprendre celui du média (sans annulation). */
+    void setKoraCutName(const QString &name);
     QSize getFrameSize() const;
     bool showKeyframes() const;
     void setShowKeyframes(bool show);

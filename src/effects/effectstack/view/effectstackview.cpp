@@ -405,6 +405,10 @@ void EffectStackView::loadEffects()
             ->slotShowEffectScene(SceneType::MonitorSceneDefault);
         updateTreeHeight();
         Q_EMIT effectsCountChanged();
+        // KoraCut, document 20 : même sans aucun effet, le plan montre son cadre dans le moniteur.
+        if (item.type == KdenliveObjectType::TimelineClip) {
+            pCore->getMonitor(Kdenlive::ProjectMonitor)->koraCutOfferTransform(m_model);
+        }
         return;
     }
     QModelIndex activeIndex;
@@ -483,6 +487,11 @@ void EffectStackView::loadEffects()
         }
     }
     Q_EMIT effectsCountChanged();
+    // KoraCut, document 20 : un plan de la timeline sans transformation active montre quand même son
+    // cadre dans le moniteur Programme ; le premier glisser active l'effet.
+    if (m_model->getOwnerId().type == KdenliveObjectType::TimelineClip) {
+        pCore->getMonitor(Kdenlive::ProjectMonitor)->koraCutOfferTransform(m_model);
+    }
     qDebug() << "MUTEX UNLOCK!!!!!!!!!!!! loadEffects";
 }
 

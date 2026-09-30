@@ -1,35 +1,31 @@
-# Contributing to Kdenlive
+# Contributing to KoraCut
 
-* Create a merge request on GitLab
-* Get it reviewed
-* Join the Matrix group #kdenlive-dev:kde.org
+KoraCut is developed by PIXEWORK in Dakar. The repository is not public yet, so
+there is no contribution process to point you at for now. This page describes
+how we work in the meantime.
 
+## Coding guidelines
 
-## Coding Guidelines
+* Use the existing code style. `clang-format` config is at the root of the repository.
+* Write unit tests. Run them with `-DBUILD_TESTING=ON` then `ctest`.
+* Document the unclear parts, for example what a given `QMutex` is locking.
+* Do not rename the internal identifiers listed in [coding.md](coding.md). They are
+  invisible to the user and renaming them breaks the build.
+* Every string shown to a user goes through `i18n()`, and the French catalog
+  `po/fr/koracut.po` is updated in the same commit.
 
-* Use existing code style
-* Write unit tests
-* Document unclear parts (e.g. what a QMutex is locking)
+## Branches
 
+* `koracut` is the working branch, forked from the v26.08.1 tag of the project
+  KoraCut derives from.
+* Work branches are welcome for anything that takes more than a day.
 
-## Release + Branching Model
+## Where the decisions live
 
-Kdenlive is following the [KDE Release Schedule][sched] and a new major version
-like `20.04` is released every four months. Bugfix releases like `20.04.1` are
-released until the next major release arrives.
+The project documents are in the parent folder, outside the source tree:
 
-The branching model in Git works as follows:
-
-* `master` is the most recent development version.
-* `release/*` contains release branches like `release/20.04`. Shortly before a
-  new major version is released, the new release branch is created and we enter
-  feature and string freeze for final bugfixes and translation of texts. The
-  version which is effectively released is marked with a tag.
-* `work/*` contains work branches. When you start coding a new feature,
-  do it on a work branch. When it is ready, the work branch is merged
-  back into master if the merge request has been approved.
-
-Bugfixes for the released versions are added on the release branch and then
-merged back to master.
-
-[sched]: https://community.kde.org/Schedules
+* `TACHES.md` is the task list. A finished task is deleted from it, not ticked.
+* `2 - Charte graphique KoraCut.md` holds the application design tokens.
+* `9 - UX de l'application.md` and `11 - Refonte UI-UX, la passe moderne.md` hold
+  the interface decisions and why they were taken.
+* `Sources/BUILD.md` holds the build procedure and its pitfalls.

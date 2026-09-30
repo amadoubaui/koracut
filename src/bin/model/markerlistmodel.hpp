@@ -53,6 +53,12 @@ public:
        @param type is the type (color) associated with the marker. If -1 is passed, then the value is pulled from kdenlive's defaults
      */
     bool addRangeMarker(GenTime pos, GenTime duration, const QString &comment, int type = -1);
+    /** @brief KoraCut : la même chose dans une macro d'annulation, pour poser des dizaines de marques
+     * en une seule étape (coupe automatique, document 15). La version avec undo/redo est protégée. */
+    bool addRangeMarkerWithUndo(GenTime pos, GenTime duration, const QString &comment, int type, Fun &undo, Fun &redo)
+    {
+        return addRangeMarker(pos, duration, comment, type, undo, redo);
+    }
     /** @brief Returns the model's owner clip id */
     const QString &ownerId() const;
 

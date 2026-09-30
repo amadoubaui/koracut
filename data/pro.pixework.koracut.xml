@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-koracut">
+    <comment>Projet vidéo KoraCut</comment>
+    <sub-class-of type="video/mlt-playlist"/>
+    <glob pattern="*.koracut"/>
+  </mime-type>
+  <mime-type type="application/x-koracuttitle">
+    <comment>Titre vidéo KoraCut</comment>
+    <sub-class-of type="application/xml"/>
+    <glob pattern="*.koracuttitle"/>
+  </mime-type>
+  <mime-type type="application/koracutlayout">
+    <comment>Disposition de panneaux KoraCut</comment>
+    <sub-class-of type="text/plain"/>
+    <glob pattern="*.koracutlayout"/>
+  </mime-type>
+  <!-- Anciens formats, gardés en lecture seule : les projets créés avant le
+       changement d'extension doivent rester ouvrables. -->
+  <mime-type type="application/x-kdenlive">
+    <comment>Ancien projet vidéo</comment>
+    <sub-class-of type="video/mlt-playlist"/>
+    <glob pattern="*.kdenlive"/>
+  </mime-type>
+  <mime-type type="application/x-kdenlivetitle">
+    <comment>Ancien titre vidéo</comment>
+    <sub-class-of type="application/xml"/>
+    <glob pattern="*.kdenlivetitle"/>
+  </mime-type>
+  <mime-type type="application/kdenlivelayout">
+    <comment>Ancienne disposition de panneaux</comment>
+    <sub-class-of type="text/plain"/>
+    <glob pattern="*.kdenlivelayout"/>
+  </mime-type>
+</mime-info>

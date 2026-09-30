@@ -1,5 +1,21 @@
 <?xml version="1.0"?>
 <profiles version="0.1">
+ <!-- KoraCut, lot B des outils d'agent (24 septembre 2026) : les cinq préréglages que les agents
+      nomment master_4k_prores, youtube_1080p, reels_tiktok_9x16, audio_wav, apercu_gif. Ils gardent
+      le format du projet (une séquence verticale pour un vrai 9:16) ; le niveau sonore se demande
+      à l'export (niveau_lufs, -14 pour YouTube et les réseaux). -->
+ <group renderer="avformat" type="av" id="koracut">
+  <name>KoraCut</name>
+  <profile name="KoraCut YouTube 1080p" extension="mp4"
+   args="f=mp4 movflags=+faststart vcodec=libx264 crf=20 preset=medium g=60 bf=2 pix_fmt=yuv420p acodec=aac ab=192k ar=48000"/>
+  <profile name="KoraCut Reels TikTok 9:16" extension="mp4"
+   args="f=mp4 movflags=+faststart vcodec=libx264 crf=21 preset=medium g=60 bf=2 pix_fmt=yuv420p acodec=aac ab=192k ar=48000"/>
+  <profile name="KoraCut Master ProRes" extension="mov"
+   args="f=mov vcodec=prores_ks profile=3 vendor=apl0 pix_fmt=yuv422p10le qscale=9 acodec=pcm_s24le ar=48000"/>
+  <profile name="KoraCut Audio WAV" extension="wav"
+   args="f=wav acodec=pcm_s16le ar=48000 vn=1 video_off=1"/>
+  <profile name="KoraCut Aperçu GIF" extension="gif" args=""/>
+ </group>
  <group renderer="avformat" type="av" id="generic">
   <name>Generic (HD for web, mobile devices...)</name>
   <profile name="WebM-VP8/Vorbis (libre)" extension="webm"

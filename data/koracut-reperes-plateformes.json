@@ -1,0 +1,101 @@
+{
+  "_commentaire": "KoraCut : repères de plateforme du moniteur (document 20). Les zones sont en fractions du cadre de la plateforme (0 à 1), x et y depuis le coin haut gauche. « sure » est la zone où rien de l'interface ne passe. « dernieresSecondes » limite une zone à la fin de la vidéo. Source : Recherche/Guide types de vidéos/guide.json (specs, colonne « zones à éviter ») et les proportions usuelles des applications en 2026. Modifiable sans recompiler.",
+  "version": 1,
+  "plateformes": [
+    {
+      "id": "tiktok",
+      "nom": "TikTok",
+      "motsCles": ["tiktok"],
+      "ratio": [9, 16],
+      "zones": [
+        {"id": "haut", "etiquette": "Barre du haut", "x": 0, "y": 0, "w": 1, "h": 0.10},
+        {"id": "droite", "etiquette": "J'aime, commentaires, partages", "x": 0.85, "y": 0.40, "w": 0.15, "h": 0.60},
+        {"id": "bas", "etiquette": "Nom du compte et légende", "x": 0, "y": 0.75, "w": 0.85, "h": 0.25}
+      ],
+      "sure": {"x": 0.056, "y": 0.10, "w": 0.78, "h": 0.65}
+    },
+    {
+      "id": "reels",
+      "nom": "Instagram Reels",
+      "motsCles": ["reels", "reel"],
+      "ratio": [9, 16],
+      "zones": [
+        {"id": "haut", "etiquette": "Barre du haut", "x": 0, "y": 0, "w": 1, "h": 0.10},
+        {"id": "droite", "etiquette": "J'aime, commentaires, partages", "x": 0.85, "y": 0.40, "w": 0.15, "h": 0.60},
+        {"id": "bas", "etiquette": "Nom du compte et légende", "x": 0, "y": 0.75, "w": 0.85, "h": 0.25}
+      ],
+      "sure": {"x": 0.04, "y": 0.11, "w": 0.80, "h": 0.63}
+    },
+    {
+      "id": "shorts",
+      "nom": "YouTube Shorts",
+      "motsCles": ["youtube shorts", "shorts", "short"],
+      "ratio": [9, 16],
+      "zones": [
+        {"id": "haut", "etiquette": "Barre du haut", "x": 0, "y": 0, "w": 1, "h": 0.06},
+        {"id": "droite", "etiquette": "J'aime, commentaires, partages", "x": 0.88, "y": 0.45, "w": 0.12, "h": 0.55},
+        {"id": "bas", "etiquette": "Titre et nom de la chaîne", "x": 0, "y": 0.80, "w": 0.88, "h": 0.20}
+      ],
+      "sure": {"x": 0.04, "y": 0.06, "w": 0.84, "h": 0.73}
+    },
+    {
+      "id": "stories",
+      "nom": "Stories Instagram et Facebook",
+      "motsCles": ["stories", "story"],
+      "ratio": [9, 16],
+      "zones": [
+        {"id": "haut", "etiquette": "Barre de progression et compte", "x": 0, "y": 0, "w": 1, "h": 0.15},
+        {"id": "bas", "etiquette": "Réponse et partage", "x": 0, "y": 0.80, "w": 1, "h": 0.20}
+      ],
+      "sure": {"x": 0.04, "y": 0.15, "w": 0.92, "h": 0.65}
+    },
+    {
+      "id": "whatsapp",
+      "nom": "Statut WhatsApp",
+      "motsCles": ["whatsapp"],
+      "ratio": [9, 16],
+      "zones": [
+        {"id": "haut", "etiquette": "Nom et heure", "x": 0, "y": 0, "w": 1, "h": 0.12},
+        {"id": "bas", "etiquette": "Réponse", "x": 0, "y": 0.82, "w": 1, "h": 0.18}
+      ],
+      "sure": {"x": 0.05, "y": 0.12, "w": 0.90, "h": 0.70}
+    },
+    {
+      "id": "youtube",
+      "nom": "YouTube (écran de fin)",
+      "motsCles": ["youtube"],
+      "ratio": [16, 9],
+      "zones": [
+        {"id": "fin", "etiquette": "Écran de fin (20 dernières secondes)", "x": 0.55, "y": 0.55, "w": 0.45, "h": 0.45, "dernieresSecondes": 20},
+        {"id": "controles", "etiquette": "Barre de lecture", "x": 0, "y": 0.90, "w": 1, "h": 0.10}
+      ],
+      "sure": {"x": 0.03, "y": 0.05, "w": 0.94, "h": 0.85}
+    },
+    {
+      "id": "facebook",
+      "nom": "Facebook (fil)",
+      "motsCles": ["facebook"],
+      "ratio": [4, 5],
+      "zones": [
+        {"id": "marge", "etiquette": "Marge de 5 %", "x": 0, "y": 0, "w": 1, "h": 0.05},
+        {"id": "marge-bas", "etiquette": "Marge de 5 %", "x": 0, "y": 0.95, "w": 1, "h": 0.05},
+        {"id": "marge-gauche", "etiquette": "", "x": 0, "y": 0.05, "w": 0.05, "h": 0.90},
+        {"id": "marge-droite", "etiquette": "", "x": 0.95, "y": 0.05, "w": 0.05, "h": 0.90}
+      ],
+      "sure": {"x": 0.05, "y": 0.05, "w": 0.90, "h": 0.90}
+    },
+    {
+      "id": "linkedin",
+      "nom": "LinkedIn",
+      "motsCles": ["linkedin"],
+      "ratio": [1, 1],
+      "zones": [
+        {"id": "marge", "etiquette": "Marge de 5 %", "x": 0, "y": 0, "w": 1, "h": 0.05},
+        {"id": "marge-bas", "etiquette": "Marge de 5 %", "x": 0, "y": 0.95, "w": 1, "h": 0.05},
+        {"id": "marge-gauche", "etiquette": "", "x": 0, "y": 0.05, "w": 0.05, "h": 0.90},
+        {"id": "marge-droite", "etiquette": "", "x": 0.95, "y": 0.05, "w": 0.05, "h": 0.90}
+      ],
+      "sure": {"x": 0.05, "y": 0.05, "w": 0.90, "h": 0.90}
+    }
+  ]
+}

@@ -1,0 +1,645 @@
+{
+  "version": 1,
+  "mis_a_jour": "2026-09-25",
+  "source": "Recherche du 25 septembre 2026 (voir data/icons/fournisseurs/LISEZ-MOI.md)",
+  "fournisseurs": [
+    {
+      "id": "anthropic",
+      "nom": "Anthropic",
+      "logo": "anthropic.svg",
+      "description": "Les modèles Claude. Très bons pour monter : ils suivent les consignes et appellent les outils avec soin.",
+      "url_doc": "https://platform.claude.com/docs/en/api/overview",
+      "url_inscription": "https://platform.claude.com",
+      "url_cle": "https://platform.claude.com/settings/keys",
+      "url_base": "https://api.anthropic.com",
+      "format": "anthropic",
+      "auth": "x-api-key",
+      "chemin_modeles": "/v1/models",
+      "gratuit": false,
+      "modeles_conseilles": [
+        "claude-sonnet-5",
+        "claude-opus-5",
+        "claude-fable-5-1",
+        "claude-opus-5-5",
+        "claude-haiku-4-5"
+      ]
+    },
+    {
+      "id": "openai",
+      "nom": "OpenAI",
+      "logo": "openai.svg",
+      "description": "Les modèles GPT.",
+      "url_doc": "https://developers.openai.com/api/reference/overview",
+      "url_inscription": "https://platform.openai.com/signup",
+      "url_cle": "https://platform.openai.com/settings/organization/api-keys",
+      "url_base": "https://api.openai.com/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "gratuit": false,
+      "modeles_conseilles": [
+        "gpt-6-sol",
+        "gpt-6-luna",
+        "gpt-6-astra",
+        "gpt-5.6"
+      ],
+      "note": "Avec les modèles GPT-6, KoraCut demande la réponse sans raisonnement long : c'est la seule façon d'utiliser les outils par cette API."
+    },
+    {
+      "id": "gemini",
+      "nom": "Google Gemini",
+      "logo": "gemini-color.svg",
+      "description": "Les modèles Gemini de Google, par Google AI Studio.",
+      "url_doc": "https://ai.google.dev/gemini-api/docs/api-key",
+      "url_inscription": "https://aistudio.google.com",
+      "url_cle": "https://aistudio.google.com/apikey",
+      "url_base": "https://generativelanguage.googleapis.com/v1beta",
+      "format": "gemini",
+      "auth": "x-goog-api-key",
+      "gratuit": true,
+      "gratuit_note": "Offre gratuite : les modèles Flash et Flash-Lite, dans des limites de débit par minute et par jour.",
+      "modeles_conseilles": [
+        "gemini-3.8-flash",
+        "gemini-3.7-flash",
+        "gemini-3.1-pro-preview",
+        "gemini-3.5-flash-lite"
+      ],
+      "note": "Google remplace les anciennes clés (AIza…) par de nouvelles clés liées au compte. Si ta clé est refusée, crée une clé neuve dans AI Studio."
+    },
+    {
+      "id": "openrouter",
+      "nom": "OpenRouter",
+      "logo": "openrouter.svg",
+      "description": "Une seule clé pour des centaines de modèles (Claude, GPT, Gemini, Qwen, Kimi, GLM…).",
+      "url_doc": "https://openrouter.ai/docs/api-reference/authentication",
+      "url_inscription": "https://openrouter.ai",
+      "url_cle": "https://openrouter.ai/settings/keys",
+      "url_base": "https://openrouter.ai/api/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "chemin_verification": "/key",
+      "gratuit": true,
+      "gratuit_note": "Les modèles marqués « :free » sont gratuits : 50 demandes par jour, 1000 après un premier achat de crédits.",
+      "modeles_conseilles": [
+        "anthropic/claude-sonnet-5",
+        "google/gemini-3.8-flash",
+        "openai/gpt-6-sol",
+        "qwen/qwen3.8-27b:free",
+        "openrouter/free"
+      ],
+      "entetes": {
+        "HTTP-Referer": "https://koracut.org",
+        "X-Title": "KoraCut"
+      }
+    },
+    {
+      "id": "mistral",
+      "nom": "Mistral AI",
+      "logo": "mistral-color.svg",
+      "description": "Modèles français, hébergés en Europe.",
+      "url_doc": "https://docs.mistral.ai/api/",
+      "url_inscription": "https://console.mistral.ai",
+      "url_cle": "https://console.mistral.ai/api-keys",
+      "url_base": "https://api.mistral.ai/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "gratuit": true,
+      "gratuit_note": "Le plan « Experiment » est gratuit, sans carte, avec une vérification par téléphone et un débit limité.",
+      "modeles_conseilles": [
+        "mistral-medium-latest",
+        "mistral-small-latest",
+        "mistral-large-latest"
+      ]
+    },
+    {
+      "id": "groq",
+      "nom": "Groq",
+      "logo": "groq.svg",
+      "description": "Des modèles ouverts servis très vite.",
+      "url_doc": "https://console.groq.com/docs/quickstart",
+      "url_inscription": "https://console.groq.com",
+      "url_cle": "https://console.groq.com/keys",
+      "url_base": "https://api.groq.com/openai/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "gratuit": true,
+      "gratuit_note": "Offre gratuite avec des limites de débit, sans carte.",
+      "modeles_conseilles": [
+        "openai/gpt-oss-120b",
+        "llama-3.3-70b-versatile",
+        "openai/gpt-oss-20b"
+      ]
+    },
+    {
+      "id": "cerebras",
+      "nom": "Cerebras",
+      "logo": "cerebras-color.svg",
+      "description": "Des modèles ouverts, parmi les plus rapides.",
+      "url_doc": "https://inference-docs.cerebras.ai/quickstart",
+      "url_inscription": "https://cloud.cerebras.ai",
+      "url_cle": "https://cloud.cerebras.ai",
+      "url_base": "https://api.cerebras.ai/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "gratuit": true,
+      "gratuit_note": "Offre gratuite, sans carte, avec des limites plus basses (contexte réduit).",
+      "modeles_conseilles": [
+        "gpt-oss-120b",
+        "qwen-3.8-27b"
+      ]
+    },
+    {
+      "id": "nvidia",
+      "nom": "NVIDIA NIM",
+      "logo": "nvidia-color.svg",
+      "description": "Les modèles ouverts du catalogue build.nvidia.com.",
+      "url_doc": "https://docs.api.nvidia.com/nim/reference/llm-apis",
+      "url_inscription": "https://build.nvidia.com",
+      "url_cle": "https://build.nvidia.com/settings/api-keys",
+      "url_base": "https://integrate.api.nvidia.com/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "chemin_verification": "chat",
+      "gratuit": true,
+      "gratuit_note": "Crédits gratuits pour essayer, avec un débit limité.",
+      "modeles_conseilles": [
+        "moonshotai/kimi-k3",
+        "z-ai/glm-5.3",
+        "deepseek-ai/deepseek-v4.1-flash",
+        "nvidia/nemotron-3-super-120b-a12b"
+      ]
+    },
+    {
+      "id": "huggingface",
+      "nom": "Hugging Face",
+      "logo": "huggingface-color.svg",
+      "description": "Inference Providers : un routeur vers de nombreux hébergeurs de modèles ouverts.",
+      "url_doc": "https://huggingface.co/docs/inference-providers/index",
+      "url_inscription": "https://huggingface.co/join",
+      "url_cle": "https://huggingface.co/settings/tokens/new?ownUserPermissions=inference.serverless.write&tokenType=fineGrained",
+      "url_base": "https://router.huggingface.co/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "chemin_verification": "https://huggingface.co/api/whoami-v2",
+      "gratuit": true,
+      "gratuit_note": "Des crédits gratuits chaque mois, plus avec le compte PRO.",
+      "modeles_conseilles": [
+        "openai/gpt-oss-120b",
+        "moonshotai/Kimi-K3",
+        "zai-org/GLM-5.3",
+        "deepseek-ai/DeepSeek-V4.1-Flash"
+      ],
+      "note": "Le jeton doit avoir la permission « Make calls to Inference Providers » (le bouton « Obtenir une clé » la coche pour toi)."
+    },
+    {
+      "id": "deepseek",
+      "nom": "DeepSeek",
+      "logo": "deepseek-color.svg",
+      "description": "Les modèles DeepSeek, peu chers.",
+      "url_doc": "https://api-docs.deepseek.com/",
+      "url_inscription": "https://platform.deepseek.com",
+      "url_cle": "https://platform.deepseek.com/api_keys",
+      "url_base": "https://api.deepseek.com/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "gratuit": false,
+      "modeles_conseilles": [
+        "deepseek-flash",
+        "deepseek-v4-pro",
+        "deepseek-v4-flash"
+      ]
+    },
+    {
+      "id": "xai",
+      "nom": "xAI Grok",
+      "logo": "xai.svg",
+      "description": "Les modèles Grok.",
+      "url_doc": "https://docs.x.ai/docs/tutorial",
+      "url_inscription": "https://console.x.ai",
+      "url_cle": "https://console.x.ai",
+      "url_base": "https://api.x.ai/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "gratuit": false,
+      "modeles_conseilles": [
+        "grok-4.7",
+        "grok-4.6"
+      ],
+      "note": "Dans la console, ouvre « API Keys » pour créer la clé."
+    },
+    {
+      "id": "qwen",
+      "nom": "Alibaba Qwen",
+      "logo": "qwen-color.svg",
+      "description": "Les modèles Qwen, par Alibaba Cloud Model Studio (international).",
+      "url_doc": "https://www.alibabacloud.com/help/en/model-studio/compatibility-of-openai-with-dashscope",
+      "url_inscription": "https://www.alibabacloud.com",
+      "url_cle": "https://modelstudio.console.alibabacloud.com/ap-southeast-1/settings/api-key",
+      "url_base": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+      "url_base_modifiable": true,
+      "url_base_aide": "Une clé ne marche que dans sa région. Pour un espace de travail dédié : https://<espace>.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "gratuit": true,
+      "gratuit_note": "Les nouveaux comptes reçoivent un quota gratuit par modèle pendant 90 jours (région Singapour).",
+      "modeles_conseilles": [
+        "qwen3.8-max",
+        "qwen3.7-plus",
+        "qwen3.8-flash"
+      ]
+    },
+    {
+      "id": "moonshot",
+      "nom": "Moonshot Kimi",
+      "logo": "kimi-color.svg",
+      "description": "Les modèles Kimi.",
+      "url_doc": "https://platform.kimi.ai/docs/api/chat",
+      "url_inscription": "https://platform.kimi.ai",
+      "url_cle": "https://platform.kimi.ai/console/api-keys",
+      "url_base": "https://api.moonshot.ai/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "gratuit": false,
+      "modeles_conseilles": [
+        "kimi-k3",
+        "kimi-k2.6"
+      ]
+    },
+    {
+      "id": "zai",
+      "nom": "Z.ai GLM",
+      "logo": "zai.svg",
+      "description": "Les modèles GLM de Zhipu (international).",
+      "url_doc": "https://docs.z.ai/api-reference/introduction",
+      "url_inscription": "https://z.ai/model-api",
+      "url_cle": "https://z.ai/manage-apikey/apikey-list",
+      "url_base": "https://api.z.ai/api/paas/v4",
+      "format": "openai",
+      "auth": "bearer",
+      "gratuit": true,
+      "gratuit_note": "Les modèles GLM Flash sont gratuits.",
+      "modeles_conseilles": [
+        "glm-5.3",
+        "glm-4.7-flash"
+      ]
+    },
+    {
+      "id": "minimax",
+      "nom": "MiniMax",
+      "logo": "minimax-color.svg",
+      "description": "Les modèles MiniMax (international).",
+      "url_doc": "https://platform.minimax.io/docs/api-reference/text-openai-api",
+      "url_inscription": "https://platform.minimax.io/login",
+      "url_cle": "https://platform.minimax.io/user-center/basic-information/interface-key",
+      "url_base": "https://api.minimax.io/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "gratuit": false,
+      "modeles_conseilles": [
+        "MiniMax-M3",
+        "MiniMax-M2.7"
+      ]
+    },
+    {
+      "id": "together",
+      "nom": "Together AI",
+      "logo": "together-color.svg",
+      "description": "Des modèles ouverts hébergés (Kimi, GLM, DeepSeek, gpt-oss…).",
+      "url_doc": "https://docs.together.ai/docs/quickstart",
+      "url_inscription": "https://api.together.ai",
+      "url_cle": "https://api.together.ai/settings/api-keys",
+      "url_base": "https://api.together.xyz/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "gratuit": false,
+      "modeles_conseilles": [
+        "moonshotai/Kimi-K3",
+        "zai-org/GLM-5.3",
+        "deepseek-ai/DeepSeek-V4.1-Flash",
+        "openai/gpt-oss-120b"
+      ]
+    },
+    {
+      "id": "fireworks",
+      "nom": "Fireworks AI",
+      "logo": "fireworks-color.svg",
+      "description": "Des modèles ouverts hébergés, rapides.",
+      "url_doc": "https://docs.fireworks.ai/getting-started/quickstart",
+      "url_inscription": "https://fireworks.ai",
+      "url_cle": "https://fireworks.ai",
+      "url_base": "https://api.fireworks.ai/inference/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "gratuit": false,
+      "modeles_conseilles": [
+        "accounts/fireworks/models/glm-5p3-flash"
+      ],
+      "note": "Une fois connecté, ouvre Settings puis API Keys pour créer la clé."
+    },
+    {
+      "id": "cohere",
+      "nom": "Cohere",
+      "logo": "cohere-color.svg",
+      "description": "Les modèles Command, par l'API compatible OpenAI de Cohere.",
+      "url_doc": "https://docs.cohere.com/docs/compatibility-api",
+      "url_inscription": "https://dashboard.cohere.com",
+      "url_cle": "https://dashboard.cohere.com/api-keys",
+      "url_base": "https://api.cohere.ai/compatibility/v1",
+      "chemin_modeles": "https://api.cohere.com/v1/models",
+      "format": "openai",
+      "auth": "bearer",
+      "gratuit": true,
+      "gratuit_note": "Une clé d'essai gratuite : 1000 appels par mois, débit limité.",
+      "modeles_conseilles": [
+        "command-a-plus-05-2026",
+        "command-a-03-2025"
+      ]
+    },
+    {
+      "id": "sambanova",
+      "nom": "SambaNova",
+      "logo": "sambanova-color.svg",
+      "description": "Des modèles ouverts servis vite.",
+      "url_doc": "https://docs.sambanova.ai/cloud/docs/get-started/overview",
+      "url_inscription": "https://cloud.sambanova.ai",
+      "url_cle": "https://cloud.sambanova.ai/apis",
+      "url_base": "https://api.sambanova.ai/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "chemin_verification": "chat",
+      "gratuit": true,
+      "gratuit_note": "Offre gratuite, sans carte, avec un débit limité.",
+      "modeles_conseilles": [
+        "gpt-oss-120b",
+        "MiniMax-M3",
+        "DeepSeek-V3.2"
+      ]
+    },
+    {
+      "id": "deepinfra",
+      "nom": "DeepInfra",
+      "logo": "deepinfra-color.svg",
+      "description": "Des modèles ouverts hébergés, au prix du jeton.",
+      "url_doc": "https://docs.deepinfra.com/chat/overview",
+      "url_inscription": "https://deepinfra.com",
+      "url_cle": "https://deepinfra.com/dash/api_keys",
+      "url_base": "https://api.deepinfra.com/v1/openai",
+      "format": "openai",
+      "auth": "bearer",
+      "chemin_verification": "chat",
+      "gratuit": false,
+      "modeles_conseilles": [
+        "moonshotai/Kimi-K3",
+        "zai-org/GLM-5.3",
+        "deepseek-ai/DeepSeek-V4.1-Flash",
+        "openai/gpt-oss-120b"
+      ]
+    },
+    {
+      "id": "novita",
+      "nom": "Novita AI",
+      "logo": "novita-color.svg",
+      "description": "Des modèles ouverts hébergés.",
+      "url_doc": "https://docs.novita.ai/guides/llm-api",
+      "url_inscription": "https://novita.ai",
+      "url_cle": "https://novita.ai/settings/key-management",
+      "url_base": "https://api.novita.ai/openai",
+      "chemin_modeles": "https://api.novita.ai/v3/openai/models",
+      "format": "openai",
+      "auth": "bearer",
+      "chemin_verification": "chat",
+      "gratuit": false,
+      "modeles_conseilles": [
+        "zai-org/glm-5.3",
+        "deepseek/deepseek-v4.1-flash",
+        "minimax/minimax-m3",
+        "openai/gpt-oss-120b"
+      ]
+    },
+    {
+      "id": "nebius",
+      "nom": "Nebius Token Factory",
+      "logo": "nebius.svg",
+      "description": "Des modèles ouverts hébergés en Europe.",
+      "url_doc": "https://docs.tokenfactory.nebius.com/quickstart",
+      "url_inscription": "https://tokenfactory.nebius.com",
+      "url_cle": "https://tokenfactory.nebius.com",
+      "url_base": "https://api.tokenfactory.nebius.com/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "gratuit": false,
+      "modeles_conseilles": [
+        "deepseek-ai/DeepSeek-R1-0528"
+      ]
+    },
+    {
+      "id": "vercel",
+      "nom": "Vercel AI Gateway",
+      "logo": "vercel.svg",
+      "description": "Une passerelle vers les grands fournisseurs, avec une seule clé.",
+      "url_doc": "https://vercel.com/docs/ai-gateway/sdks-and-apis/openai-chat-completions",
+      "url_inscription": "https://vercel.com/signup",
+      "url_cle": "https://vercel.com/dashboard",
+      "url_base": "https://ai-gateway.vercel.sh/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "chemin_verification": "chat",
+      "gratuit": true,
+      "gratuit_note": "Un crédit gratuit chaque mois, sur une partie des modèles.",
+      "modeles_conseilles": [
+        "anthropic/claude-sonnet-5",
+        "google/gemini-3.8-flash",
+        "zai/glm-5.3"
+      ],
+      "note": "Dans le tableau de bord, ouvre AI Gateway puis API Keys."
+    },
+    {
+      "id": "cloudflare",
+      "nom": "Cloudflare Workers AI",
+      "logo": "cloudflare-color.svg",
+      "description": "Des modèles ouverts sur le réseau de Cloudflare.",
+      "url_doc": "https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/",
+      "url_inscription": "https://dash.cloudflare.com/sign-up",
+      "url_cle": "https://dash.cloudflare.com/profile/api-tokens",
+      "url_base": "https://api.cloudflare.com/client/v4/accounts/{compte}/ai/v1",
+      "url_base_aide": "Remplace {compte} par l'identifiant de ton compte Cloudflare (tableau de bord, colonne de droite).",
+      "chemin_modeles": "",
+      "chemin_verification": "https://api.cloudflare.com/client/v4/user/tokens/verify",
+      "format": "openai",
+      "auth": "bearer",
+      "gratuit": true,
+      "gratuit_note": "10 000 « Neurons » gratuits par jour.",
+      "modeles_conseilles": [
+        "@cf/openai/gpt-oss-120b",
+        "@cf/zai-org/glm-5.3",
+        "@cf/qwen/qwen3.8-27b"
+      ],
+      "note": "Crée un jeton d'API avec la permission Workers AI."
+    },
+    {
+      "id": "azure",
+      "nom": "Azure OpenAI",
+      "logo": "azure-color.svg",
+      "description": "Les modèles OpenAI (et d'autres) déployés dans ton abonnement Azure, par Microsoft Foundry.",
+      "url_doc": "https://learn.microsoft.com/en-us/azure/foundry/openai/api-version-lifecycle",
+      "url_inscription": "https://azure.microsoft.com/free",
+      "url_cle": "https://ai.azure.com",
+      "url_base": "https://{ressource}.openai.azure.com/openai/v1",
+      "url_base_aide": "Remplace {ressource} par le nom de ta ressource Azure. La clé est dans « Keys and Endpoint ».",
+      "format": "openai",
+      "auth": "api-key",
+      "gratuit": false,
+      "modeles_conseilles": [],
+      "note": "Le modèle à choisir est le nom de ton déploiement, pas le nom du modèle."
+    },
+    {
+      "id": "bedrock",
+      "nom": "AWS Bedrock",
+      "logo": "bedrock-color.svg",
+      "description": "Les modèles d'Amazon Bedrock, avec une clé d'API Bedrock.",
+      "url_doc": "https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html",
+      "url_inscription": "https://aws.amazon.com",
+      "url_cle": "https://console.aws.amazon.com/bedrock",
+      "url_base": "https://bedrock-mantle.{region}.api.aws/v1",
+      "url_base_aide": "Remplace {region} par ta région AWS (par exemple us-east-1). La clé ne marche que dans sa région.",
+      "format": "openai",
+      "auth": "bearer",
+      "gratuit": false,
+      "modeles_conseilles": [
+        "openai.gpt-oss-120b"
+      ],
+      "note": "Dans la console Bedrock, menu « API keys ». Une clé longue sert à essayer ; une clé courte expire au bout de 12 heures."
+    },
+    {
+      "id": "ollama",
+      "nom": "Ollama",
+      "logo": "ollama.svg",
+      "description": "Des modèles qui tournent sur cet ordinateur. Rien ne sort de la machine.",
+      "url_doc": "https://docs.ollama.com/api/openai-compatibility",
+      "url_inscription": "",
+      "url_cle": "https://ollama.com/download",
+      "url_base": "http://localhost:11434/v1",
+      "url_base_modifiable": true,
+      "url_base_aide": "Ollama doit être ouvert. Pour un modèle : ollama pull gpt-oss:20b",
+      "format": "openai",
+      "auth": "aucune",
+      "cle_requise": false,
+      "local": true,
+      "gratuit": true,
+      "gratuit_note": "Gratuit et sans limite : il faut un ordinateur assez puissant.",
+      "modeles_conseilles": [
+        "gpt-oss:20b"
+      ],
+      "note": "Sur une machine modeste, un modèle local rend les agents lents. Préfère un fournisseur en ligne gratuit."
+    },
+    {
+      "id": "ollama_cloud",
+      "nom": "Ollama Cloud",
+      "logo": "ollama.svg",
+      "description": "Les grands modèles ouverts, servis par Ollama.",
+      "url_doc": "https://docs.ollama.com/cloud",
+      "url_inscription": "https://ollama.com/signup",
+      "url_cle": "https://ollama.com/settings/keys",
+      "url_base": "https://ollama.com/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "gratuit": true,
+      "gratuit_note": "Offre gratuite avec des crédits de départ, une demande à la fois.",
+      "modeles_conseilles": [
+        "gpt-oss:120b",
+        "kimi-k3",
+        "glm-5.3",
+        "deepseek-v4.1-flash"
+      ]
+    },
+    {
+      "id": "lmstudio",
+      "nom": "LM Studio",
+      "logo": "lmstudio.svg",
+      "description": "Des modèles qui tournent sur cet ordinateur, avec l'application LM Studio.",
+      "url_doc": "https://lmstudio.ai/docs/developer/openai-compat",
+      "url_inscription": "",
+      "url_cle": "https://lmstudio.ai",
+      "url_base": "http://localhost:1234/v1",
+      "url_base_modifiable": true,
+      "url_base_aide": "Dans LM Studio, charge un modèle puis démarre le serveur (onglet Developer).",
+      "format": "openai",
+      "auth": "aucune",
+      "cle_requise": false,
+      "local": true,
+      "gratuit": true,
+      "gratuit_note": "Gratuit et sans limite : il faut un ordinateur assez puissant.",
+      "modeles_conseilles": []
+    },
+    {
+      "id": "scaleway",
+      "nom": "Scaleway",
+      "logo": "",
+      "description": "Generative APIs de Scaleway, hébergées en France.",
+      "url_doc": "https://www.scaleway.com/en/docs/generative-apis/api-cli/using-generative-apis/",
+      "url_inscription": "https://console.scaleway.com/register",
+      "url_cle": "https://console.scaleway.com/iam/api-keys",
+      "url_base": "https://api.scaleway.ai/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "gratuit": false,
+      "modeles_conseilles": [
+        "gpt-oss-120b"
+      ],
+      "note": "La clé est la clé secrète d'une clé d'API IAM."
+    },
+    {
+      "id": "ovhcloud",
+      "nom": "OVHcloud AI Endpoints",
+      "logo": "",
+      "description": "Des modèles ouverts hébergés en France.",
+      "url_doc": "https://docs.ovhcloud.com/en/guides/public-cloud/ai-machine-learning/ai-endpoints-getting-started",
+      "url_inscription": "https://www.ovhcloud.com",
+      "url_cle": "https://www.ovh.com/manager/",
+      "url_base": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
+      "format": "openai",
+      "auth": "bearer",
+      "cle_requise": false,
+      "gratuit": true,
+      "gratuit_note": "Sans clé : gratuit, 2 demandes par minute. Avec une clé : bien plus, payant.",
+      "modeles_conseilles": [
+        "gpt-oss-120b",
+        "Qwen3.8-27B",
+        "Meta-Llama-3_3-70B-Instruct"
+      ],
+      "note": "La clé se crée dans l'espace client : Public Cloud, puis AI Endpoints."
+    },
+    {
+      "id": "elevenlabs",
+      "nom": "ElevenLabs",
+      "logo": "",
+      "description": "Des voix de synthèse très naturelles en français, pour la voix off (pas un modèle pour les agents). Le modèle choisi ici est la voix par défaut.",
+      "url_doc": "https://elevenlabs.io/docs/api-reference/text-to-speech/convert",
+      "url_inscription": "https://elevenlabs.io/app/sign-up",
+      "url_cle": "https://elevenlabs.io/app/settings/api-keys",
+      "url_base": "https://api.elevenlabs.io",
+      "format": "voix",
+      "auth": "xi-api-key",
+      "chemin_modeles": "/v1/voices",
+      "gratuit": false,
+      "modeles_conseilles": [],
+      "note": "Droits commerciaux (publicité) dès l'offre Starter, 6 $ par mois ; l'offre gratuite ne les donne pas. KoraCut envoie seulement le texte à dire."
+    },
+    {
+      "id": "compatible_openai",
+      "nom": "Autre service compatible OpenAI",
+      "logo": "",
+      "description": "Tout service qui parle le format chat/completions d'OpenAI (vLLM, llama.cpp, LocalAI, un serveur d'entreprise…).",
+      "url_doc": "",
+      "url_inscription": "",
+      "url_cle": "",
+      "url_base": "http://localhost:8000/v1",
+      "url_base_modifiable": true,
+      "url_base_aide": "L'adresse qui précède /chat/completions.",
+      "format": "openai",
+      "auth": "bearer",
+      "cle_requise": false,
+      "gratuit": false,
+      "modeles_conseilles": []
+    }
+  ]
+}

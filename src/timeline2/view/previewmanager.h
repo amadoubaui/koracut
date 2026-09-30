@@ -12,6 +12,7 @@
 #include <QFuture>
 #include <QMutex>
 #include <QProcess>
+#include <QSet>
 #include <QTimer>
 #include <QUuid>
 
@@ -80,6 +81,27 @@ public:
     /** @brief Returns true if the render process is still running */
     bool isRunning() const;
 
+    // KoraCut, rendu d'aperçu (24 septembre 2026, chantier 10)
+    /** @brief Les morceaux rendus et ceux qui restent à rendre (copies). */
+    QVariantList renderedList() const;
+    QVariantList dirtyList() const;
+    /** @brief Avancement du rendu en cours, en millièmes. */
+    int progressPermille() const;
+    /** @brief Vrai si un rendu tourne ou va partir (minuterie armée). */
+    bool isPending() const;
+    /** @brief Taille des fichiers rendus de cette séquence, et plafond du cache du projet. */
+    qint64 cacheBytes() const;
+    qint64 cacheCapBytes() const;
+    /** @brief Les paramètres d'encodage du rendu, tels que koracut_render les reçoit. */
+    QString consumerParameters() const;
+    /** @brief Rendu automatique : les morceaux qui portent des effets, de l'étalonnage, des
+     * compositions ou du Motion. Ceux qui manquent sont mis en file, ceux qui n'en portent plus
+     * sont retirés (et leur fichier effacé), puis le rendu part s'il ne tourne pas. */
+    void setAutoChunks(const QList<int> &heavyChunks);
+    /** @brief « Effacer les rendus » : tous les fichiers de la séquence partent, zones comprises.
+     * Le rendu automatique ne les refait qu'au prochain changement. */
+    void clearRenderFiles(int duration);
+
 private:
     Mlt::Tractor *m_tractor;
     QUuid m_uuid;
@@ -116,12 +138,38 @@ private:
     /** @brief: Get a compressed list of chunks, like: "0-500,525,575". */
     const QStringList getCompressedList(const QVariantList items) const;
 
+    // KoraCut : morceaux mis en file par le rendu automatique, et morceaux écartés (cache plein,
+    // « Effacer les rendus ») que le rendu automatique ne remet pas en file avant un changement.
+    QSet<int> m_autoChunks;
+    QSet<int> m_evictedChunks;
+    /** @brief Les morceaux demandés au dernier lancement de koracut_render. */
+    QSet<int> m_lastRequested;
+    /** @brief Octets du cache du projet, estimés au lancement puis tenus à jour morceau par morceau. */
+    qint64 m_cacheEstimate{0};
+    bool m_capWarned{false};
+    /** @brief Le rendu se met en pause pendant la lecture et pendant un geste (souris enfoncée), puis reprend. */
+    QTimer m_playbackWatch;
+    bool m_suspended{false};
+    /** @brief Vrai si la personne lit ou fait un geste : le rendu attend. */
+    static bool userIsBusy();
+    /** @brief Range un fichier rendu dans l'historique d'annulation, ou l'efface (réglage apercuEtapesAnnulation). */
+    bool archiveChunkFile(const QString &fileName, int undoIndex);
+    /** @brief Fait de la place avant un rendu : les plus vieux fichiers du projet partent d'abord. */
+    void makeRoomFor(int chunkCount);
+    /** @brief Choisit le profil de rendu KoraCut (H.264 tout-intra) pour un document qui n'en a pas. */
+    bool selectKoraCutPreviewProfile();
+    /** @brief Ordonne les morceaux à rendre depuis la tête de lecture. */
+    QStringList orderedChunkList();
+
     /** @brief Compare two chunks for usage by std::sort
      * @returns true if @param c1 is less than @param c2
      */
     static bool chunkSort(const QVariant &c1, const QVariant &c2) { return c1.toInt() < c2.toInt(); };
 
 private Q_SLOTS:
+    /** @brief KoraCut : départ du rendu après la minuterie, sauf si la souris est enfoncée (un geste
+     * en cours) ou, sur machine modeste, si la lecture tourne : on attend encore. */
+    void slotAutoStart();
     /** @brief: To avoid filling the hard drive, remove preview undo history after 5 steps. */
     void doCleanupOldPreviews();
     /** @brief: Start the real rendering process. */

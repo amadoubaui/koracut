@@ -25,7 +25,10 @@ DCResolveDialog::DCResolveDialog(std::vector<DocumentChecker::DocumentResource> 
     m_sortModel = std::make_unique<QSortFilterProxyModel>(new QSortFilterProxyModel(this));
     m_sortModel->setSourceModel(m_model.get());
     treeView->setModel(m_sortModel.get());
-    treeView->setAlternatingRowColors(true);
+    // KoraCut : pas de zébrure. Elle alternait #1E1E1E et #2C2C2C, soit deux des quatre
+    // marches de surface : on ne savait plus si une ligne claire était une ligne paire
+    // ou une surface différente. La hauteur de ligne suffit à suivre une ligne.
+    treeView->setAlternatingRowColors(false);
     treeView->setSortingEnabled(true);
     treeView->header()->setSectionResizeMode(2, QHeaderView::Stretch);
     // treeView->header()->resizeSections(QHeaderView::ResizeToContents);

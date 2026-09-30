@@ -29,6 +29,8 @@ public:
     bool isMasterOnly(const QString &assetId) const;
     void editCustomAsset(const QString &newName, const QString &newDescription, const QModelIndex &index) override;
     QMimeData *mimeData(const QModelIndexList &indexes) const override;
+    /** @brief KoraCut : l'icône d'un effet est sa vignette (KoraCutEffectPreviews). */
+    QVariant data(const QModelIndex &index, int role) const override;
 
 protected:
     std::shared_ptr<TreeItem> m_customCategory;

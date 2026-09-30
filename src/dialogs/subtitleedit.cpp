@@ -283,7 +283,7 @@ SubtitleEdit::SubtitleEdit(QWidget *parent)
     buttonPrev->setWhatsThis(xi18nc("@info:whatsthis", "Moves the playhead in the timeline to the beginning of the subtitle to the left."));
     buttonAdd->setToolTip(i18n("Add subtitle"));
     buttonAdd->setWhatsThis(xi18nc("@info:whatsthis", "Creates a new subtitle with the default length (set in <interface>Settings->Configure "
-                                                      "Kdenlive…->Misc</interface>) at the current playhead position/frame."));
+                                                      "KoraCut…->Misc</interface>) at the current playhead position/frame."));
     buttonCut->setToolTip(i18n("Split subtitle at cursor position"));
     buttonCut->setWhatsThis(
         xi18nc("@info:whatsthis", "Cuts the subtitle text at the cursor position and creates a new subtitle to the right (like cutting a clip)."));

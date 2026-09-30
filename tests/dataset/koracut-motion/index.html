@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080, height=1920">
+<!-- Composition d'essai du module Motion de KoraCut : un titre, une image, un son. -->
+<script src="assets/gsap.min.js"></script>
+<style>
+  body { margin: 0; background: transparent; }
+  #root { position: relative; width: 1080px; height: 1920px; overflow: hidden; }
+  .clip { position: absolute; inset: 0; display: grid; place-items: center; }
+  #titre { color: #FFFFFF; font: 700 120px system-ui, sans-serif; text-align: center; margin: 0; text-shadow: 0 4px 24px rgba(0, 0, 0, .5); }
+  #logo { inset: auto; left: 340px; top: 1100px; width: 400px; height: 400px; display: block; }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="essai" data-start="0" data-duration="6" data-fps="25" data-width="1080" data-height="1920">
+  <section id="titre-1" class="clip" data-start="0.5" data-duration="3" data-track-index="1">
+    <h1 id="titre">Bonjour KoraCut</h1>
+  </section>
+  <img id="logo" class="clip" src="assets/logo.png" data-start="titre-1 + 0.5" data-duration="2" data-track-index="2">
+  <audio id="son" src="assets/son.wav" data-start="1" data-duration="2" data-media-start="0.5"></audio>
+</div>
+<script>
+  window.__timelines = window.__timelines || {};
+  const tl = gsap.timeline({ paused: true });
+  tl.fromTo("#titre", { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "power3.out" }, 0.6);
+  tl.fromTo("#logo", { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: "back.out(1.4)" }, 4);
+  window.__timelines["essai"] = tl;
+</script>
+</body>
+</html>

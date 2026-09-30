@@ -20,20 +20,30 @@ install(FILES
   meta_magiclantern.png
   encodingprofiles.rc
   externalproxies.rc
-  kdenliveeffectscategory.rc
-  kdenlivetranscodingrc
+  koracuteffectscategory.rc
+  koracuttranscodingrc
   slideanimations.rc
   clipjobsettings.rc
 
   DESTINATION ${KDE_INSTALL_DATADIR}${DATA_INSTALL_PREFIX})
 
-install(FILES kdenlive.notifyrc DESTINATION ${KDE_INSTALL_KNOTIFYRCDIR})
+install(FILES koracut.notifyrc DESTINATION ${KDE_INSTALL_KNOTIFYRCDIR})
+
+# KoraCut : schémas de couleurs KColorScheme (lus par KColorSchemeManager dans share/color-schemes)
+install(FILES
+  color-schemes/KoraCutDark.colors
+  color-schemes/KoraCutLight.colors
+
+  DESTINATION ${KDE_INSTALL_DATADIR}/color-schemes)
+
+# KoraCut : thème d'icônes en trait fin (Lucide, ISC). Aussi embarqué dans :/icons/koracut
+install(DIRECTORY icons/koracut DESTINATION ${KDE_INSTALL_ICONDIR})
 
 install(FILES profiles.xml DESTINATION ${KDE_INSTALL_DATADIR}${DATA_INSTALL_PREFIX}/export)
-install(FILES org.kde.kdenlive.appdata.xml DESTINATION ${KDE_INSTALL_METAINFODIR})
-install(FILES org.kde.kdenlive.desktop DESTINATION ${KDE_INSTALL_APPDIR})
+install(FILES pro.pixework.koracut.appdata.xml DESTINATION ${KDE_INSTALL_METAINFODIR})
+install(FILES pro.pixework.koracut.desktop DESTINATION ${KDE_INSTALL_APPDIR})
 
 find_package(SharedMimeInfo REQUIRED)
-install(FILES org.kde.kdenlive.xml westley.xml DESTINATION ${KDE_INSTALL_MIMEDIR})
+install(FILES pro.pixework.koracut.xml westley.xml DESTINATION ${KDE_INSTALL_MIMEDIR})
 update_xdg_mimetypes(${KDE_INSTALL_MIMEDIR})
 

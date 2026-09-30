@@ -626,7 +626,7 @@ void TemporaryData::gotFolderSize(KIO::filesize_t total)
     // Check last save path for this cache folder
     QDir dir(m_globalDir.absoluteFilePath(m_processingDirectory));
     QStringList filters;
-    filters << QStringLiteral("*.kdenlive");
+    filters << QStringLiteral("*.koracut") << QStringLiteral("*.kdenlive");
     QStringList str = dir.entryList(filters, QDir::Files | QDir::Hidden, QDir::Time);
     if (!str.isEmpty()) {
         QString path = QUrl::fromPercentEncoding(str.at(0).toUtf8());

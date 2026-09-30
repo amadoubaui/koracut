@@ -229,7 +229,11 @@ void AbstractPythonInterface::deleteVenv()
     QDir pluginDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation));
     const QString binaryPath = getVenvPath();
     if (pluginDir.cd(binaryPath)) {
-        if (pluginDir.dirName().contains(QLatin1String("venv")) && pluginDir.absolutePath().contains(QLatin1String("kdenlive"))) {
+        // KoraCut, 23 septembre 2026 : la garde vérifiait que le chemin contient « kdenlive ». Depuis le
+        // renommage, le dossier est …/koracut/venv : le bouton de désinstallation ne supprimait plus rien.
+        // La garde reste (ne jamais effacer un dossier qui ne serait pas le nôtre), avec le bon nom.
+        if (pluginDir.dirName().contains(QLatin1String("venv")) &&
+            pluginDir.absolutePath().startsWith(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation))) {
             pluginDir.removeRecursively();
         }
         setStatus(NotInstalled);
@@ -359,7 +363,7 @@ bool AbstractPythonInterface::checkVenv(bool calculateSize, bool forceInstall)
         PythonExec execs = venvPythonExecs(true);
         if (execs.python.isEmpty() || !QFile::exists(execs.python)) {
             setStatus(Broken);
-            Q_EMIT setupError(i18n("Cannot find python3 in the kdenlive venv.\n"
+            Q_EMIT setupError(i18n("Cannot find python3 in the KoraCut venv.\n"
                                    "Try to uninstall and then reinstall the plugin."));
             if (calculateSize) {
                 Q_EMIT gotPythonSize(QString());
@@ -367,7 +371,7 @@ bool AbstractPythonInterface::checkVenv(bool calculateSize, bool forceInstall)
             return false;
         }
         if (execs.pip.isEmpty() || !QFile::exists(execs.pip)) {
-            Q_EMIT setupError(i18n("Cannot find pip3 in the kdenlive venv.\n"
+            Q_EMIT setupError(i18n("Cannot find pip3 in the KoraCut venv.\n"
                                    "Try to uninstall and then reinstall the plugin."));
             if (calculateSize) {
                 Q_EMIT gotPythonSize(QString());

@@ -7,6 +7,9 @@
 #include "../model/effectfilter.hpp"
 #include "../model/effecttreemodel.hpp"
 #include "utils/uiutils.h"
+#include "kdenlivesettings.h"
+#include "koracut/koracutassetcards.h"
+#include "koracut/koracuteffectpreviews.h"
 
 #include <KActionCategory>
 #include <KIO/FileCopyJob>
@@ -22,6 +25,9 @@
 #include <QMenu>
 #include <QStandardPaths>
 #include <QTextEdit>
+#include <QStyle>
+#include <QTimer>
+#include <QVBoxLayout>
 
 #include <memory>
 #include <qsplitter.h>
@@ -30,7 +36,7 @@
 EffectListWidget::EffectListWidget(QAction *includeList, QAction *tenBit, QWidget *parent)
     : AssetListWidget(true, includeList, tenBit, parent)
 {
-    QString effectCategory = QStandardPaths::locate(QStandardPaths::AppDataLocation, QStringLiteral("kdenliveeffectscategory.rc"));
+    QString effectCategory = QStandardPaths::locate(QStandardPaths::AppDataLocation, QStringLiteral("koracuteffectscategory.rc"));
     m_model = EffectTreeModel::construct(effectCategory, this);
     m_proxyModel = std::make_unique<EffectFilter>(this);
     m_proxyModel->setSourceModel(m_model.get());
@@ -46,6 +52,85 @@ EffectListWidget::EffectListWidget(QAction *includeList, QAction *tenBit, QWidge
     m_effectsTree->header()->setStretchLastSection(true);
     QItemSelectionModel *sel = m_effectsTree->selectionModel();
     connect(sel, &QItemSelectionModel::currentChanged, this, &AssetListWidget::updateAssetInfo);
+
+    // KoraCut, 23 septembre 2026 (demande URGENTE d'Amadou Ba) : les effets en cartes, avec une
+    // vignette qui montre le résultat, ou en liste, avec la même vignette en petit.
+    m_effectsTree->setIconSize(QSize(48, 27));
+    auto *cards = new KoraCutFlatAssetProxy(this);
+    cards->setSourceModel(m_proxyModel.get());
+    m_effectsIcon->setModel(cards);
+    // Au-dessus des cartes, les catégories en pastilles, qui passent à la ligne quand le panneau est
+    // étroit : la liste aplatie les avait perdues.
+    m_effectsView->removeWidget(m_effectsIcon);
+    auto *cardsPage = new QWidget(this);
+    auto *cardsLayout = new QVBoxLayout(cardsPage);
+    cardsLayout->setContentsMargins(0, 0, 0, 0);
+    cardsLayout->setSpacing(0);
+    cardsLayout->addWidget(new KoraCutCategoryChips(cards, cardsPage));
+    cardsLayout->addWidget(m_effectsIcon, 1);
+    // Sorti de la pile, le widget garde son état « caché » de page non affichée : on le remontre,
+    // sinon la mise en page donne toute la place aux pastilles.
+    m_effectsIcon->show();
+    m_effectsView->insertWidget(1, cardsPage);
+    auto *cardDelegate = new KoraCutAssetCardDelegate(m_effectsIcon);
+    m_effectsIcon->setItemDelegate(cardDelegate);
+    m_effectsIcon->setGridSize(KoraCutAssetCardDelegate::cardSize() + QSize(6, 6));
+    m_effectsIcon->setSpacing(0);
+    m_effectsIcon->setMouseTracking(true);
+    m_effectsIcon->setSelectionMode(QAbstractItemView::SingleSelection);
+    connect(m_effectsIcon->selectionModel(), &QItemSelectionModel::currentChanged, this,
+            [this](const QModelIndex &current, const QModelIndex &previous) { updateAssetInfo(toTreeIndex(current), toTreeIndex(previous)); });
+    // Une vignette calculée en direct (essais) : on repeint.
+    connect(KoraCutEffectPreviews::instance(), &KoraCutEffectPreviews::previewReady, this, [this]() {
+        m_effectsIcon->viewport()->update();
+        m_effectsTree->viewport()->update();
+    });
+    // Outil de développement : KORACUT_SHOT_EXPAND_EFFECTS déplie toutes les catégories de la liste,
+    // pour relire les petites vignettes sur une capture.
+    if (qEnvironmentVariableIsSet("KORACUT_SHOT_EXPAND_EFFECTS")) {
+        QTimer::singleShot(2000, this, [this]() { m_effectsTree->expandAll(); });
+    }
+    // KoraCut, 27 septembre 2026 (demande d'Amadou Ba) : − et + dans la barre, ⌘− et ⌘+ au clavier.
+    // Cinq crans : la liste, puis des grilles de plus en plus grandes. La bascule cartes / liste
+    // reste, et passe de la liste au dernier cran de grille choisi.
+    auto *zoom = new KoraCutAssetZoom(QStringLiteral("effetsTaille"), 5, KdenliveSettings::effectViewAsIcon() ? 2 : 0, this);
+    zoom->install(m_toolbar, m_toggleView);
+    zoom->watch(m_effectsIcon);
+    zoom->watch(m_effectsTree);
+    zoom->followWidth(m_effectsIcon);
+    auto lastGrid = std::make_shared<int>(zoom->level() > 0 ? zoom->level() : 2);
+    auto layoutCards = [this, cardDelegate, lastGrid]() {
+        // La largeur utile, barre de défilement toujours comptée : la grille ne change pas quand elle
+        // apparaît, sinon les deux se relanceraient l'une l'autre.
+        const int available = m_effectsIcon->contentsRect().width() - m_effectsIcon->style()->pixelMetric(QStyle::PM_ScrollBarExtent) - 2;
+        int thumb = 0;
+        const QSize cell = KoraCutAssetCardDelegate::gridFor(*lastGrid, std::max(80, available), &thumb);
+        if (cell != m_effectsIcon->gridSize() || thumb != cardDelegate->thumbWidth()) {
+            cardDelegate->setThumbWidth(thumb);
+            m_effectsIcon->setGridSize(cell);
+            m_effectsIcon->doItemsLayout();
+            m_effectsIcon->viewport()->update();
+        }
+    };
+    auto applyLevel = [this, lastGrid, layoutCards](int level) {
+        if (level > 0) {
+            *lastGrid = level;
+        }
+        const bool cardsView = level > 0;
+        if (m_toggleView && m_toggleView->isChecked() != cardsView) {
+            m_toggleView->setChecked(cardsView);
+        }
+        if (isIconView() != cardsView) {
+            toggleViewMode(cardsView);
+        }
+        layoutCards();
+    };
+    connect(zoom, &KoraCutAssetZoom::levelChanged, this, applyLevel);
+    connect(zoom, &KoraCutAssetZoom::widthChanged, this, [this, layoutCards]() { QTimer::singleShot(0, this, layoutCards); });
+    if (m_toggleView) {
+        connect(m_toggleView, &QAction::triggered, this, [zoom, lastGrid](bool checked) { zoom->setLevel(checked ? *lastGrid : 0); });
+    }
+    applyLevel(zoom->level());
 
     if (!KdenliveSettings::showEffectsInfo()) {
         m_viewSplitter->setSizes({50, 0});
@@ -169,7 +254,7 @@ void EffectListWidget::exportCustomEffect(const QModelIndex &index)
         return;
     }
 
-    QString filter = QStringLiteral("%1 (*.xml);;%2 (*)").arg(i18n("Kdenlive Effect definitions"), i18n("All Files"));
+    QString filter = QStringLiteral("%1 (*.xml);;%2 (*)").arg(i18n("KoraCut Effect definitions"), i18n("All Files"));
     QString startFolder = KRecentDirs::dir(QStringLiteral(":KdenliveExportCustomEffect"));
     QUrl source = QUrl::fromLocalFile(EffectsRepository::get()->getCustomPath(assetId));
     startFolder.append(source.fileName());

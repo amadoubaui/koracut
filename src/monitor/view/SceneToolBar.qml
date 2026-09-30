@@ -82,14 +82,11 @@ MouseArea {
             K.MonitorToolButton {
                 id: switchOverlay
                 iconName: "view-grid"
-                toolTipText: KI18n.i18n("Composition Guides")
+                toolTipText: KI18n.i18n("Guides and overlays")
+                // KoraCut, document 20 : un menu (superpositions, zone de sécurité, règles, repères,
+                // repères de plateforme) à la place du cycle des superpositions.
                 onClicked: {
-                    if (barZone.monitorController.overlayType >= 5) {
-                        barZone.monitorController.overlayType = 0
-                    } else {
-                        barZone.monitorController.overlayType = barZone.monitorController.overlayType + 1;
-                    }
-                    root.overlayType = barZone.monitorController.overlayType
+                    barZone.monitorController.openOverlayMenu()
                 }
             }
             K.MonitorZoomButton {

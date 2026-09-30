@@ -220,7 +220,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
             <string>Click to open cache folder.</string>
            </property>
            <property name="text">
-            <string>&lt;a href='#'&gt;/home/user/.cache/kdenlive/1617522274308&lt;/a&gt;</string>
+            <string>&lt;a href='#'&gt;/home/user/.cache/koracut/1617522274308&lt;/a&gt;</string>
            </property>
           </widget>
          </item>
@@ -523,7 +523,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
             <string>Click to open backup folder.</string>
            </property>
            <property name="text">
-            <string>&lt;a href='#'&gt;/home/user/.local/share/kdenlive/.backup&lt;/a&gt;</string>
+            <string>&lt;a href='#'&gt;/home/user/.local/share/koracut/.backup&lt;/a&gt;</string>
            </property>
           </widget>
          </item>
@@ -620,7 +620,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
             <string>Click to open proxy folder.</string>
            </property>
            <property name="text">
-            <string>&lt;a href='#'&gt;/home/user/.cache/kdenlive/proxy&lt;/a&gt;</string>
+            <string>&lt;a href='#'&gt;/home/user/.cache/koracut/proxy&lt;/a&gt;</string>
            </property>
           </widget>
          </item>

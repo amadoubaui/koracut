@@ -201,7 +201,7 @@ const QString SequenceClip::getSequenceResource()
 
 QTemporaryFile *SequenceClip::getSequenceTmpResource()
 {
-    QTemporaryFile *tmp = new QTemporaryFile(QDir::temp().absoluteFilePath(QStringLiteral("kdenlive-XXXXXX.mlt")));
+    QTemporaryFile *tmp = new QTemporaryFile(QDir::temp().absoluteFilePath(QStringLiteral("koracut-XXXXXX.mlt")));
     if (tmp->open()) {
         tmp->close();
         cloneProducerToFile(tmp->fileName(), false, true);
@@ -245,8 +245,8 @@ void SequenceClip::setProperties(const QMap<QString, QString> &properties, bool 
     bool durationChanged = properties.contains("length") && properties.value("length").toInt() != getFramePlaytime();
     ProjectClip::setProperties(properties, refreshPanel);
     if (properties.contains(QStringLiteral("kdenlive:clipname"))) {
-        if (!m_sequenceUuid.isNull()) {
-            // This is a timeline clip, update tab name
+        if (!m_sequenceUuid.isNull() && pCore->bin()) {
+            // This is a timeline clip, update tab name (KoraCut : pas de chutier dans les tests)
             Q_EMIT pCore->bin()->updateTabName(m_sequenceUuid, m_name);
         }
     }

@@ -23,6 +23,7 @@
 #include "widgets/doublewidget.h"
 #include "widgets/geometrywidget.h"
 #include "widgets/timecodedisplay.h"
+#include "koracut/koracutmetrics.h"
 
 #include <KActionCategory>
 #include <KActionMenu>
@@ -140,7 +141,7 @@ KeyframeContainer::KeyframeContainer(std::shared_ptr<AssetParameterModel> model,
 
     m_viewswitch = new QToolButton(parent);
     m_viewswitch->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    int size = QApplication::style()->pixelMetric(QStyle::PM_SmallIconSize);
+    const int size = KoraCutMetrics::IconInspector;
     m_viewswitch->setIconSize(QSize(size, size));
     m_viewswitch->setDefaultAction(m_toggleViewAction);
 

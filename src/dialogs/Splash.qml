@@ -32,6 +32,7 @@ Window {
     property bool actionsEnabled: false
     property bool wasUpgraded: false
     property bool palFps: true
+    property bool alwaysDark: false
     property int border: 10
 
     signal timeout()
@@ -81,7 +82,6 @@ Window {
         loadingLabel.text = message
         loadingBox.visible = message.length > 0
         recentProjects.enabled = false
-        donateBar.visible = false
     }
 
     Component.onCompleted: {
@@ -106,7 +106,7 @@ Window {
         implicitWidth: newProjectButton.height * 17
         radius: 5
         border.width: 2
-        border.color: "#d7566e"
+        border.color: "#2B1AD6" /* KoraCut: Violet Kora, seul moment de marque dans l'application */
         color: activePalette.window
         clip: true
         focus: true
@@ -204,27 +204,6 @@ Window {
                 source: "qrc:/pics/splash-background.webp"
                 verticalAlignment: Image.AlignTop
                 fillMode: Image.PreserveAspectCrop
-
-                Text {
-                    id: kdelabel
-                    anchors.bottom: parent.bottom
-                    anchors.right: parent.right
-                    anchors.margins: 10
-                    color: "#FFFFFF"
-                    text: KI18n.i18n("Made by KDE")
-                }
-
-                // Made By KDE
-                Image {
-                    id: kdelogo
-                    asynchronous: true
-                    anchors.verticalCenter: kdelabel.verticalCenter
-                    anchors.right: kdelabel.left
-                    height: kdelabel.height
-                    width: height
-                    source: "qrc:/pics/kde-logo.png"
-                    fillMode: Image.PreserveAspectFit
-                }
             }
             // rounded corners for image
 
@@ -626,10 +605,17 @@ Window {
                 }
 
                 Label {
+                    // KoraCut : le bas de l'écran de démarrage, d'après la charte.
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.verticalCenter: parent.verticalCenter
+                    opacity: 0.62
+                    text: KI18n.i18nc("@info écran de démarrage", "Free software · GPL-3.0 · koracut.org")
+                }
+                Label {
                     id: kdenliveid
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: KI18n.i18n("Kdenlive") + " " + splash.version
+                    text: KI18n.i18n("KoraCut") + " " + splash.version
                 }
 
             }
@@ -652,7 +638,7 @@ Window {
                     anchors.left: parent.left
                     anchors.leftMargin: 10
                     anchors.right: restartButton.left
-                    text: KI18n.i18n("Kdenlive crashed on last start. Reset config and restart?")
+                    text: KI18n.i18n("KoraCut crashed on last start. Reset config and restart?")
                     Layout.alignment: Qt.AlignVCenter
                     wrapMode: Text.Wrap
                 }
@@ -688,9 +674,7 @@ Window {
                     anchors.left: parent.left
                     anchors.leftMargin: 10
                     anchors.right: notesButton.left
-                    text: KI18n.i18n("Kdenlive was upgraded. If you like it, consider <a href=\"%1\">getting involved</a> or help <a href=\"%2\">funding</a>.",
-                               "https://kdenlive.org/get-involved/?mtm_campaign=kdenlive_inapp&mtm_kwd=splash_upgraded_contribute&mtm_content=" + splash.version,
-                               "https://kdenlive.org/fund/?mtm_campaign=kdenlive_inapp&mtm_kwd=splash_upgraded_donate&mtm_content=" + splash.version)
+                    text: KI18n.i18n("KoraCut has just been updated.")
                     wrapMode: Text.Wrap
                     onLinkActivated: (link)=> splash.openLink(link)
                     textFormat: Text.RichText
@@ -707,53 +691,11 @@ Window {
                     enabled: splash.actionsEnabled
                     text: KI18n.i18n("What's New")
                     icon.name: "help-contents"
-                    onClicked: splash.openLink("https://kdenlive.org/news/releases/" + splash.version + "?mtm_campaign=kdenlive_inapp&mtm_kwd=splash_upgraded_notes&mtm_content=" + splash.version)
+                    onClicked: splash.openLink("https://koracut.org/blog")
                     KeyNavigation.tab: listView
                 }
             }
 
-            Rectangle {
-                id: donateBar
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: buttonBar.top
-                height: donateText.height + 8
-                anchors.margins: 10
-                visible: splash.urls.length > 2 && !splash.crashRecovery && !upgradeBox.visible
-                radius: 5
-                color: Qt.darker(splashContent.color, 1.5)
-
-                RowLayout {
-                    anchors.right: parent.right
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 10
-
-                    Label {
-                        id: donateText
-                        Layout.fillWidth: true
-                        leftPadding: 10
-                        text: KI18n.i18n("Help us make Kdenlive even better")
-                        wrapMode: Text.WordWrap
-                    }
-                    ToolButton {
-                        icon.name: "user-group-new"
-                        text: KI18n.i18n("Contribute…")
-                        enabled: splash.actionsEnabled
-                        onClicked: splash.openLink("https://kdenlive.org/get-involved?mtm_campaign=kdenlive_inapp&mtm_kwd=splash_donatebar_contribute&mtm_content=" + splash.version)
-                    }
-
-                    ToolButton {
-                        text: KI18n.i18n("Donate…")
-                        icon.name: "donate"
-                        enabled: splash.actionsEnabled
-                        onClicked: splash.openLink("https://kdenlive.org/fund?mtm_campaign=kdenlive_inapp&mtm_kwd=splash_donatebar_donate&mtm_content=" + splash.version)
-                        KeyNavigation.tab: listView
-                    }
-
-                }
-
-            }
             // Loading progress info
             Rectangle {
                 id: loadingBox
@@ -773,6 +715,31 @@ Window {
                 anchors.margins: 5
                 wrapMode: Text.Wrap
                 color: activePalette.highlightedText
+            }
+            // KoraCut, 23 septembre 2026 : barre de chargement Violet Kora de 3 px (charte, écran de
+            // démarrage). Kdenlive ne donne que des messages, pas d'avancement : la barre est donc
+            // indéterminée, un segment qui va et vient pendant que le message s'affiche.
+            Rectangle {
+                id: koracutProgress
+                visible: loadingBox.visible
+                anchors.left: loadingBox.left
+                anchors.right: loadingBox.right
+                anchors.bottom: loadingBox.top
+                anchors.bottomMargin: 2
+                height: 3
+                color: "transparent"
+                clip: true
+                Rectangle {
+                    id: koracutProgressSegment
+                    width: parent.width * 0.3
+                    height: parent.height
+                    color: "#2B1AD6"
+                    SequentialAnimation on x {
+                        running: koracutProgress.visible
+                        loops: Animation.Infinite
+                        NumberAnimation { from: -koracutProgressSegment.width; to: koracutProgress.width; duration: 1400; easing.type: Easing.InOutQuad }
+                    }
+                }
             }
 
         }
@@ -797,14 +764,17 @@ Window {
                         Layout.fillWidth: true
                         textFormat: Text.StyledText
                         horizontalAlignment: Text.AlignJustify
-                        text: KI18n.i18n("<h3>Welcome to Kdenlive Quick Setup</h3>")
+                        text: KI18n.i18n("<h3>Welcome to KoraCut Quick Setup</h3>")
                     }
 
                     Switch {
                         id: themeSwitch
                         enabled: !splash.crashRecovery
-                        text: KI18n.i18n("Always Use Dark Color Theme")
-                        checked: true
+                        // KoraCut, 23 septembre 2026 : l'interrupteur dit le vrai mode. Allumé :
+                        // toujours sombre ; éteint : on suit le système (le défaut). Avant, il était
+                        // allumé d'office et ne faisait rien en mode « système ».
+                        text: KI18n.i18nc("@option:check assistant de premier lancement", "Always dark, even when the system is light")
+                        checked: splash.alwaysDark
                         onCheckedChanged: {
                             splash.switchPalette(checked);
                         }
@@ -1041,7 +1011,7 @@ Window {
                             anchors.rightMargin: parent.radius * 2
                             Label {
                                 id: restartWelcomeLabel
-                                text: KI18n.i18n("Kdenlive crashed on last start. Reset config and restart?")
+                                text: KI18n.i18n("KoraCut crashed on last start. Reset config and restart?")
                                 Layout.alignment: Qt.AlignVCenter
                                 wrapMode: Text.Wrap
                             }
@@ -1065,7 +1035,7 @@ Window {
                         text: KI18n.i18n("Check Online Documentation")
                         enabled: splash.actionsEnabled
                         Layout.alignment: Qt.AlignLeft
-                        onClicked: splash.openLink("https://docs.kdenlive.org?mtm_campaign=kdenlive_inapp&mtm_kwd=splash_dcumentation")
+                        onClicked: splash.openLink("https://koracut.org/docs")
                     }
 
                     Button {

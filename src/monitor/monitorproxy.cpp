@@ -17,6 +17,7 @@
 #include "profiles/profilemodel.hpp"
 
 #include <QUuid>
+#include <cmath>
 
 #include <mlt++/MltConsumer.h>
 #include <mlt++/MltFilter.h>
@@ -827,4 +828,167 @@ void MonitorProxy::setAudioSynced(bool synced)
 void MonitorProxy::refreshAudio()
 {
     Q_EMIT rebuildAudio(m_clipId);
+}
+
+// KoraCut, document 20 : règles, repères, plateforme, aimantation.
+#include "koracutmonitorguides.h"
+
+bool MonitorProxy::rulersVisible() const
+{
+    return m_rulersVisible;
+}
+
+void MonitorProxy::setRulersVisible(bool visible)
+{
+    if (m_rulersVisible == visible) {
+        return;
+    }
+    m_rulersVisible = visible;
+    Q_EMIT rulersVisibleChanged();
+}
+
+bool MonitorProxy::guidesVisible() const
+{
+    return m_guidesVisible;
+}
+
+void MonitorProxy::setGuidesVisible(bool visible)
+{
+    if (m_guidesVisible == visible) {
+        return;
+    }
+    m_guidesVisible = visible;
+    Q_EMIT guidesChanged();
+    Q_EMIT guidesEdited();
+}
+
+bool MonitorProxy::guidesLocked() const
+{
+    return m_guidesLocked;
+}
+
+void MonitorProxy::setGuidesLocked(bool locked)
+{
+    if (m_guidesLocked == locked) {
+        return;
+    }
+    m_guidesLocked = locked;
+    Q_EMIT guidesChanged();
+    Q_EMIT guidesEdited();
+}
+
+QVariantList MonitorProxy::guides() const
+{
+    QVariantList list;
+    for (const auto &g : m_guides) {
+        QVariantMap m;
+        m.insert(QStringLiteral("vertical"), g.first);
+        m.insert(QStringLiteral("pos"), g.second);
+        list << m;
+    }
+    return list;
+}
+
+int MonitorProxy::addGuide(bool vertical, double pos)
+{
+    m_guides.append({vertical, std::round(pos)});
+    if (!m_guidesVisible) {
+        m_guidesVisible = true;
+    }
+    Q_EMIT guidesChanged();
+    Q_EMIT guidesEdited();
+    return m_guides.size() - 1;
+}
+
+void MonitorProxy::moveGuide(int index, double pos)
+{
+    if (index < 0 || index >= m_guides.size() || m_guidesLocked) {
+        return;
+    }
+    m_guides[index].second = std::round(pos);
+    Q_EMIT guidesChanged();
+    Q_EMIT guidesEdited();
+}
+
+void MonitorProxy::removeGuide(int index)
+{
+    if (index < 0 || index >= m_guides.size() || m_guidesLocked) {
+        return;
+    }
+    m_guides.removeAt(index);
+    Q_EMIT guidesChanged();
+    Q_EMIT guidesEdited();
+}
+
+void MonitorProxy::clearGuides()
+{
+    if (m_guides.isEmpty()) {
+        return;
+    }
+    m_guides.clear();
+    Q_EMIT guidesChanged();
+    Q_EMIT guidesEdited();
+}
+
+void MonitorProxy::setGuides(const QList<std::pair<bool, double>> &guides, bool visible, bool locked)
+{
+    m_guides = guides;
+    m_guidesVisible = visible;
+    m_guidesLocked = locked;
+    Q_EMIT guidesChanged();
+}
+
+QVariantList MonitorProxy::platformZones() const
+{
+    return m_platformZones;
+}
+
+QString MonitorProxy::platformName() const
+{
+    return m_platformName;
+}
+
+void MonitorProxy::setPlatform(const QString &id, const QString &name, const QVariantList &zones)
+{
+    Q_UNUSED(id)
+    m_platformName = name;
+    m_platformZones = zones;
+    Q_EMIT platformChanged();
+}
+
+QVariantMap MonitorProxy::snapRect(const QRectF &rect, double threshold) const
+{
+    const QPoint size = const_cast<MonitorProxy *>(this)->profile();
+    QList<double> gx, gy;
+    for (const auto &g : m_guides) {
+        if (!m_guidesVisible) {
+            break;
+        }
+        (g.first ? gx : gy) << g.second;
+    }
+    const auto r = KoraCutMonitorGuides::snapRect(rect, KoraCutMonitorGuides::axisTargets(size.x(), gx), KoraCutMonitorGuides::axisTargets(size.y(), gy),
+                                                  threshold);
+    QVariantMap m;
+    m.insert(QStringLiteral("x"), r.rect.x());
+    m.insert(QStringLiteral("y"), r.rect.y());
+    m.insert(QStringLiteral("w"), r.rect.width());
+    m.insert(QStringLiteral("h"), r.rect.height());
+    m.insert(QStringLiteral("lineX"), r.lineX);
+    m.insert(QStringLiteral("lineY"), r.lineY);
+    return m;
+}
+
+double MonitorProxy::rulerStep(double scale) const
+{
+    return KoraCutMonitorGuides::rulerStep(scale);
+}
+
+void MonitorProxy::openOverlayMenu()
+{
+    Q_EMIT overlayMenuRequested();
+}
+
+void MonitorProxy::transformDragEnded()
+{
+    Q_EMIT transformDragFinished();
 }

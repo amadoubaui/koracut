@@ -256,6 +256,8 @@ Item {
                 }
             }
             anchors.fill: parent
+            // KoraCut : un pixel d'écart entre deux sous-titres voisins, comme entre deux clips.
+            anchors.rightMargin: subtitleBase.width >= 6 ? 1 : 0
             //visible: timeScale >= 6
             enabled: parent.textEditBegin
             opacity: root.subtitlesDisabled ? 0.5 : 1
@@ -266,19 +268,27 @@ Item {
                     forceActiveFocus()
                 }
             }
-            text: subtitleRoot.subtitle
+            // KoraCut : hors saisie, le texte lisible, sans les balises de style ASS ({\fscx120},
+            // {\c&HFFD2FF&}…) que posent les sous-titres rythmés ; en saisie, le texte complet.
+            text: enabled ? subtitleRoot.subtitle : subtitleRoot.subtitle.replace(/\{[^}]*\}/g, '').replace(/\\[Nn]/g, ' ')
             height: subtitleBase.height
             width: subtitleBase.width
             wrapMode: TextField.WordWrap
             horizontalAlignment: displayText == text ? TextInput.AlignHCenter : TextInput.AlignLeft
+            // KoraCut, 25 septembre 2026 : plus de contour noir de 2 px, qui transformait la piste
+            // en grille noire au dézoom. Un liseré d'un pixel dans le ton du sous-titre, l'accent
+            // quand il est sélectionné, des coins arrondis comme les clips.
             background: Rectangle {
-                color: root.subtitlesLocked ? "#ff6666" : enabled ? "#fff" : '#ccccff'
+                id: subtitleBack
+                color: root.subtitlesLocked ? "#ff6666" : subtitleEdit.enabled ? "#fff" : '#ccccff'
+                radius: subtitleBase.width < 12 ? 0 : (subtitleBase.width < 24 ? 2 : 4)
                 border {
-                    color: subtitleRoot.selected ? subtitleRoot.timeline.selectionColor : "#000"
-                    width: subtitleRoot.isGrabbed ? 8 : 2
+                    color: subtitleRoot.selected ? subtitleRoot.timeline.selectionColor : Qt.darker(subtitleBack.color, 1.25)
+                    width: subtitleRoot.isGrabbed ? 3 : (subtitleRoot.selected ? 2 : 1)
                 }
             }
-            color: 'black'
+            // Trop étroit pour être lu, le texte n'est plus écrit : le bloc de couleur suffit.
+            color: (enabled || subtitleBase.width >= 36) ? 'black' : 'transparent'
             padding: 0
         }
     }

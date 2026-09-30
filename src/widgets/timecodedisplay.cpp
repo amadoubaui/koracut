@@ -5,6 +5,7 @@
 */
 
 #include "timecodedisplay.h"
+#include "koracut/koracutfonts.h"
 #include "core.h"
 #include "kdenlivesettings.h"
 
@@ -123,7 +124,7 @@ TimecodeDisplay::TimecodeDisplay(QWidget *parent, const Timecode &t)
 {
     installEventFilter(this);
     lineEdit()->installEventFilter(this);
-    const QFont ft = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    const QFont ft = KoraCutFonts::numbers();
     lineEdit()->setFont(ft);
     setFont(ft);
     lineEdit()->setAlignment(Qt::AlignRight | Qt::AlignVCenter);

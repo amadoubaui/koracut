@@ -71,6 +71,9 @@ public:
 
     /** @brief Returns the clip's MLT resource */
     const QString clipUrl() const;
+    /** @brief KoraCut, porte de commande (document 18) : le fichier a été renommé ou déplacé sur le disque,
+     *  le clip suit tout de suite (chemin, resource, kdenlive:originalurl), sans rechargement. */
+    void koraCutRelocate(const QString &path);
 
     /** @brief Returns the clip's type as defined in definitions.h */
     ClipType::ProducerType clipType() const;

@@ -11,7 +11,11 @@ import QtQml.Models 2.15
 
 import org.kde.kdenlive as K
 
-Row {
+// KoraCut, 25 septembre 2026 : des vignettes « comme un film ». Chaque image remplit sa case,
+// recadrée au centre plutôt que réduite (plus de bandes noires quand le média n'a pas la forme
+// du projet), sans séparateur entre deux cases. Une case est au moins carrée : sur un projet
+// vertical, une case de 9:16 ne montrait qu'une tranche illisible.
+Item {
     id: thumbRow
     anchors.fill: parent
     visible: !isAudio
@@ -23,7 +27,7 @@ Row {
     property real initialSpeed: 1
     opacity: clipState === K.PlaylistState.Disabled ? 0.2 : 1
     property bool fixedThumbs: parentClip.itemType === K.ClipType.Image || parentClip.itemType === K.ClipType.Text || parentClip.itemType === K.ClipType.TextTemplate
-    property int thumbWidth: container.height * K.Core.getCurrentDar()
+    property int thumbWidth: Math.max(1, Math.round(thumbRow.height * Math.max(K.Core.getCurrentDar(), 1.0)))
     property bool enableCache: parentClip.itemType === K.ClipType.Video || parentClip.itemType === K.ClipType.AV
 
     Repeater {
@@ -33,7 +37,7 @@ Row {
         model: switch (parentTrack.trackThumbsFormat) {
                    case 0:
                        // in/out
-                       if (parent.width > thumbRow.thumbWidth) {
+                       if (thumbRow.width > 2 * thumbRow.thumbWidth) {
                            2 // 2: will display start / end thumbs
                        } else {
                            1 // 1: if the width of the container is to small, only show first thumbnail
@@ -42,7 +46,7 @@ Row {
                    case 1:
                        // All frames
                        // display as many thumbnails as can fit into the container
-                       Math.ceil(parent.width / thumbRow.thumbWidth)
+                       Math.ceil(thumbRow.width / thumbRow.thumbWidth)
                        break;
                    case 2:
                        // In frame only
@@ -55,7 +59,8 @@ Row {
                }
         property int startFrame: thumbRow.parentClip.inPoint
         property int endFrame: thumbRow.parentClip.outPoint
-        property real imageWidth: Math.max(thumbRow.thumbWidth, parent.width / thumbRepeater.count)
+        // Des cases de largeur entière, collées : pas de jour entre deux images.
+        property real imageWidth: thumbRow.thumbWidth
         property int thumbStartFrame: thumbRow.fixedThumbs ? 0 :
                                                     (thumbRow.parentClip.speed >= 0)
                                                     ? Math.round(thumbRow.parentClip.inPoint * thumbRow.initialSpeed)
@@ -69,20 +74,17 @@ Row {
             id: thumbImage
             required property int index
             width: thumbRepeater.imageWidth
-            height: container.height
-            fillMode: Image.PreserveAspectFit
+            height: thumbRow.height
+            // Première et dernière image aux deux bouts ; sinon une case après l'autre.
+            x: thumbRepeater.count < 3 && index > 0 ? thumbRow.width - width : index * width
+            fillMode: Image.PreserveAspectCrop
             asynchronous: true
             cache: thumbRow.enableCache
-            //sourceSize.width: width
-            //sourceSize.height: height
             property int currentThumbFrame: thumbRow.fixedThumbs
                                        ? 0
                                        : thumbRepeater.count < 3
                                          ? (index === 0 ? thumbRepeater.thumbStartFrame : thumbRepeater.thumbEndFrame)
                                          : Math.floor(clipRoot.inPoint * thumbRow.initialSpeed + Math.round((index) * width / timeline.scaleFactor)* clipRoot.speed)
-            horizontalAlignment: thumbRepeater.count < 3
-                                 ? (index === 0 ? Image.AlignLeft : Image.AlignRight)
-                                 : Image.AlignLeft
             source: thumbRepeater.count < 3
                     ? (thumbRow.parentClip.baseThumbPath + currentThumbFrame)
                     : (index * width < thumbRow.parentClip.scrollStart - width || index * width > thumbRow.parentClip.scrollStart + scrollView.width)
@@ -93,23 +95,12 @@ Row {
                 }
             }
             Image {
+                // L'image d'avant reste affichée pendant que la nouvelle se charge.
                 id: thumbPlaceholder
                 visible: parent.status != Image.Ready && (thumbImage.index === 0  || thumbImage.index === thumbRepeater.count - 1)
-                anchors.left: parent.left
-                anchors.leftMargin: thumbImage.index < thumbRepeater.count - 1 ? 0 : parent.width - thumbRow.thumbWidth - 1
-                width: parent.width
-                height: parent.height
-                horizontalAlignment: Image.AlignLeft
-                fillMode: Image.PreserveAspectFit
+                anchors.fill: parent
+                fillMode: Image.PreserveAspectCrop
                 asynchronous: true
-            }
-            Rectangle {
-                visible: thumbRepeater.count < 3
-                anchors.left: parent.left
-                anchors.leftMargin: thumbImage.index === 0 ? thumbRow.thumbWidth: parent.width - thumbRow.thumbWidth - 1
-                color: thumbRow.parentClip.color.darker()
-                width: 2
-                height: parent.height
             }
         }
     }

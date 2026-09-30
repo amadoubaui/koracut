@@ -225,24 +225,44 @@ Rectangle {
         root.timeline.activeTrack = (tracksRepeater.itemAt(newTrack) as Track).trackInternalId
     }
 
+    // KoraCut, 21 septembre 2026 : vrai quand l'évènement vient d'un trackpad.
+    // Qt remplit pixelDelta sur un trackpad (défilement pixel par pixel, avec inertie) et
+    // angleDelta sur une souris à crans. On suit le doigt exactement, sans accumulateur ni
+    // seuil : c'est ce qui donne la sensation de tenir la timeline sous les doigts.
+    // Chantier 12 (30 septembre 2026) : sous Windows et sous X11, Qt ne remplit jamais pixelDelta.
+    // Un pavé tactile y envoie des crans fractionnés (moins de 120 unités) : on les reconnaît à ça,
+    // et on les convertit en pixels (120 unités, trois lignes, environ 50 px), pour que la timeline
+    // suive les doigts comme sur Mac. Pas sur Mac : la molette y donne aussi des crans fractionnés.
+    readonly property bool wheelNeedsPixelGuess: Qt.platform.os !== "osx" && Qt.platform.os !== "macos"
+    function wheelIsFromTrackpad(wheel) {
+        if (wheel.pixelDelta.x !== 0 || wheel.pixelDelta.y !== 0) {
+            return true
+        }
+        return root.wheelNeedsPixelGuess && ((wheel.angleDelta.x % 120) !== 0 || (wheel.angleDelta.y % 120) !== 0)
+    }
+    function wheelPixels(wheel) {
+        if (wheel.pixelDelta.x !== 0 || wheel.pixelDelta.y !== 0) {
+            return wheel.pixelDelta
+        }
+        return Qt.point(wheel.angleDelta.x / 2.4, wheel.angleDelta.y / 2.4)
+    }
+
+    // KoraCut : le seul point d'entrée de la molette et du trackpad pour la timeline.
+    // Tableau du § 3 de « 12 - Passe montage » :
+    //   deux doigts (ou molette seule) : la vue défile, la tête de lecture ne bouge pas
+    //   ⌘ (Ctrl) : zoom, centré sur le pointeur
+    //   ⌥ (Alt) : tête de lecture, image par image (une seconde avec ⇧)
+    //   ⇧ (Shift) : l'autre axe, pour les souris qui n'ont qu'une molette
     function zoomByWheel(wheel) {
-        if (wheel.modifiers & Qt.AltModifier) {
-            // Seek to next snap
-            if (wheel.angleDelta.x > 0) {
-                K.Core.triggerAction('monitor_seek_snap_backward')
-            } else {
-                K.Core.triggerAction('monitor_seek_snap_forward')
-            }
-        } else if (wheel.modifiers & Qt.ControlModifier) {
-            root.wheelAccumulatedDelta += wheel.angleDelta.y;
-            // Zoom
-            if (root.wheelAccumulatedDelta >= defaultDeltasPerStep) {
-                root.zoomIn(true);
-                root.wheelAccumulatedDelta = 0;
-            } else if (root.wheelAccumulatedDelta <= -defaultDeltasPerStep) {
-                root.zoomOut(true);
-                root.wheelAccumulatedDelta = 0;
-            }
+        var fromTrackpad = root.wheelIsFromTrackpad(wheel)
+        if (wheel.modifiers & Qt.ControlModifier) {
+            root.zoomByWheelStep(wheel, fromTrackpad)
+        } else if (wheel.modifiers & Qt.AltModifier) {
+            root.seekByWheelStep(wheel, fromTrackpad)
+        } else if (fromTrackpad) {
+            // Deux doigts : la vue suit le doigt sur les deux axes à la fois.
+            root.scrollHorizontallyBy(-root.wheelPixels(wheel).x)
+            root.scrollVerticallyBy(-root.wheelPixels(wheel).y)
         } else if (wheel.modifiers & Qt.ShiftModifier) {
             if (K.KdenliveSettings.scrollvertically || rubberSelect.visible) {
                 horizontalScroll(wheel)
@@ -259,12 +279,70 @@ Rectangle {
         wheel.accepted = true
     }
 
-    function horizontalScroll(wheel) {
-        var initialX = scrollView.contentX
-        if (wheel.angleDelta.y < 0) {
-            scrollView.contentX = Math.max(0, Math.min(scrollView.contentX - wheel.angleDelta.y, root.timeline.fullDuration * root.timeScale - scrollView.width))
+    // KoraCut : le zoom. Au trackpad on compte les pixels parcourus, à la souris les crans.
+    function zoomByWheelStep(wheel, fromTrackpad) {
+        if (fromTrackpad) {
+            root.pixelAccumulatedDelta += root.wheelPixels(wheel).y
+            while (root.pixelAccumulatedDelta >= root.pixelsPerZoomStep) {
+                root.pixelAccumulatedDelta -= root.pixelsPerZoomStep
+                root.zoomIn(true)
+            }
+            while (root.pixelAccumulatedDelta <= -root.pixelsPerZoomStep) {
+                root.pixelAccumulatedDelta += root.pixelsPerZoomStep
+                root.zoomOut(true)
+            }
+            return
+        }
+        root.pixelAccumulatedDelta = 0
+        root.wheelAccumulatedDelta += wheel.angleDelta.y
+        if (root.wheelAccumulatedDelta >= root.defaultDeltasPerStep) {
+            root.zoomIn(true)
+            root.wheelAccumulatedDelta = 0
+        } else if (root.wheelAccumulatedDelta <= -root.defaultDeltasPerStep) {
+            root.zoomOut(true)
+            root.wheelAccumulatedDelta = 0
+        }
+    }
+
+    // KoraCut : ⌥ déplace la tête de lecture. Au trackpad, une image par cran de pixels
+    // parcourus, sinon la tête part en vrille dès qu'on pose deux doigts.
+    function seekByWheelStep(wheel, fromTrackpad) {
+        if (K.Core.activeTool === K.ToolType.SlipTool) {
+            return
+        }
+        var steps = 0
+        if (fromTrackpad) {
+            var travel = Math.abs(root.wheelPixels(wheel).y) >= Math.abs(root.wheelPixels(wheel).x) ? root.wheelPixels(wheel).y : root.wheelPixels(wheel).x
+            root.seekAccumulatedDelta += travel
+            while (root.seekAccumulatedDelta >= root.pixelsPerFrameStep) {
+                root.seekAccumulatedDelta -= root.pixelsPerFrameStep
+                steps -= 1
+            }
+            while (root.seekAccumulatedDelta <= -root.pixelsPerFrameStep) {
+                root.seekAccumulatedDelta += root.pixelsPerFrameStep
+                steps += 1
+            }
         } else {
-            scrollView.contentX = Math.max(scrollView.contentX - wheel.angleDelta.y, 0)
+            root.seekAccumulatedDelta = 0
+            steps = wheel.angleDelta.y > 0 ? -1 : (wheel.angleDelta.y < 0 ? 1 : 0)
+        }
+        if (steps === 0) {
+            return
+        }
+        var frames = steps * ((wheel.modifiers & Qt.ShiftModifier) ? K.Core.getCurrentFps() : 1)
+        root.proxy.position = Math.max(0, Math.min(root.consumerPosition + frames, root.timeline.fullDuration - 1))
+    }
+
+    // KoraCut : dx en pixels, positif quand le contenu part vers la gauche (on avance dans le temps).
+    function scrollHorizontallyBy(dx) {
+        if (dx === 0) {
+            return
+        }
+        var initialX = scrollView.contentX
+        if (dx > 0) {
+            scrollView.contentX = Math.max(0, Math.min(scrollView.contentX + dx, root.timeline.fullDuration * root.timeScale - scrollView.width))
+        } else {
+            scrollView.contentX = Math.max(scrollView.contentX + dx, 0)
         }
         if (dragProxyArea.pressed && dragProxy.draggedItem > -1) {
             dragProxy.x += scrollView.contentX - initialX
@@ -281,16 +359,38 @@ Rectangle {
         }
     }
 
-    function verticalScroll(wheel) {
-        var initialY = scrollView.contentY
-        if (wheel.angleDelta.y < 0) {
-            scrollView.contentY = Math.max(0, Math.min(scrollView.contentY - wheel.angleDelta.y, trackHeaders.height + subtitleTrackHeader.height - tracksArea.height + horZoomBar.height + ruler.height))
+    // KoraCut : dy en pixels, positif quand le contenu remonte (on descend dans les pistes).
+    function scrollVerticallyBy(dy) {
+        if (dy === 0) {
+            return
+        }
+        if (dy > 0) {
+            scrollView.contentY = Math.max(0, Math.min(scrollView.contentY + dy, trackHeaders.height + subtitleTrackHeader.height - tracksArea.height + horZoomBar.height + ruler.height))
         } else {
-            scrollView.contentY = Math.max(scrollView.contentY - wheel.angleDelta.y, 0)
+            scrollView.contentY = Math.max(scrollView.contentY + dy, 0)
         }
         if (dragProxyArea.pressed && dragProxy.draggedItem > -1) {
             dragProxyArea.moveItem()
         }
+    }
+
+    function horizontalScroll(wheel) {
+        if (root.wheelIsFromTrackpad(wheel)) {
+            // Au trackpad on a les deux axes : on ne force plus un seul sens.
+            root.scrollHorizontallyBy(-root.wheelPixels(wheel).x)
+            root.scrollVerticallyBy(-root.wheelPixels(wheel).y)
+            return
+        }
+        root.scrollHorizontallyBy(-wheel.angleDelta.y)
+    }
+
+    function verticalScroll(wheel) {
+        if (root.wheelIsFromTrackpad(wheel)) {
+            root.scrollVerticallyBy(-root.wheelPixels(wheel).y)
+            root.scrollHorizontallyBy(-root.wheelPixels(wheel).x)
+            return
+        }
+        root.scrollVerticallyBy(-wheel.angleDelta.y)
     }
 
     function continuousScrolling(x, y, upMove = 10) {
@@ -365,18 +465,14 @@ Rectangle {
     }
 
 function getTrackColor(audio, header) {
-    var isDarkTheme = activePalette.window.hslLightness < activePalette.windowText.hslLightness
+    // KoraCut : la tête de piste prend la marche « surface », le canevas de la piste prend la
+    // marche « contenu de panneau » (« 11 - Refonte UI-UX », 3.3). Avant, les deux valaient
+    // #2C2C2C et #2A2A2A, soit un écart de 1,03:1 : l'oeil ne séparait rien.
+    // Dans les deux thèmes, la surface est la plus claire des deux valeurs (#2C2C2C contre
+    // #252525 en sombre, #FFFFFF contre #F4F4F4 en clair), donc une seule règle suffit.
     var lighterColor = activePalette.base.hslLightness > activePalette.alternateBase.hslLightness ? activePalette.base : activePalette.alternateBase;
     var darkerColor = activePalette.base.hslLightness > activePalette.alternateBase.hslLightness ? activePalette.alternateBase : activePalette.base;
-
-    if (isDarkTheme) {
-        // For dark themes, choose the lighter color
-        return header ? Qt.darker(lighterColor, 1.05) : lighterColor;
-    } else {
-        // For light themes, choose the darker color
-        return header ? Qt.darker(darkerColor, 1.05) : darkerColor;
-    }
-
+    return header ? lighterColor : darkerColor;
 }
 
     function centerViewOnCursor() {
@@ -525,7 +621,10 @@ function getTrackColor(audio, header) {
     readonly property int activeTool: K.Core.activeTool
     readonly property int minClipWidthForViews: 1.5 * K.UiUtils.baseSizeMedium
     readonly property int collapsedHeight: Math.max(28, K.UiUtils.baseSizeMedium * 1.8)
-    readonly property int minHeaderWidth: 6 * collapsedHeight
+    // KoraCut, 25 septembre 2026 : de quoi lire un nom de piste d'une douzaine de lettres entre
+    // le chevron, le tag et les trois boutons (« Animations », « Transitions », « Musique »).
+    // À 6 hauteurs, les noms tombaient à trois lettres (« Ani… »).
+    readonly property int minHeaderWidth: 8 * collapsedHeight
     readonly property bool autoTrackHeight: root.timeline.autotrackHeight
     readonly property color selectedTrackColor: Qt.rgba(activePalette.highlight.r, activePalette.highlight.g, activePalette.highlight.b, 0.2)
     readonly property color frameColor: Qt.rgba(activePalette.shadow.r, activePalette.shadow.g, activePalette.shadow.b, 0.5)
@@ -543,7 +642,11 @@ function getTrackColor(audio, header) {
     property int droppedTrack: -1
     property int lastDropTrack: -1
     property int clipBeingMovedId: -1
-    property int consumerPosition: proxy ? proxy.position : -1
+    // KoraCut, 24 septembre 2026 : une séquence affichée à côté de la séquence active garde sa tête
+    // de lecture où on l'a laissée (TimelineTabs::park), au lieu de suivre le moniteur.
+    property bool koraCutParked: false
+    property int koraCutParkedPosition: -1
+    property int consumerPosition: koraCutParked ? koraCutParkedPosition : (proxy ? proxy.position : -1)
     property int spacerGroup: -1
     property int spacerTrack: -1
     property int spacerFrame: -1
@@ -564,6 +667,11 @@ function getTrackColor(audio, header) {
     property int viewActiveTrack: root.timeline.activeTrack
     property int wheelAccumulatedDelta: 0
     readonly property int defaultDeltasPerStep: 120
+    // KoraCut : accumulateurs propres au trackpad, en pixels et non en crans de molette.
+    property real pixelAccumulatedDelta: 0
+    property real seekAccumulatedDelta: 0
+    readonly property int pixelsPerZoomStep: 48
+    readonly property int pixelsPerFrameStep: 24
     property bool seekingFinished : proxy ? proxy.seekFinished : true
     property int scrollMin: scrollView.contentX / root.timeScale
     property int scrollMax: scrollMin + scrollView.contentItem.width / root.timeScale
@@ -854,6 +962,9 @@ function getTrackColor(audio, header) {
 
         property int fakeFrame: -1
         property int fakeTrack: -1
+        // KoraCut : vrai quand le média est tenu sous la dernière piste. Au lâcher, une piste est
+        // créée pour l'accueillir (document 13, § 10.3, geste de CapCut).
+        property bool newTrackDrop: false
         property int lastCheckedFrame: -1
         property int dragPixmapHeight: 0  // logical height of the bin drag thumbnail pixmap
         width: root.width - root.headerWidth
@@ -873,6 +984,10 @@ function getTrackColor(audio, header) {
                     yOffset = subtitleTrack.height
                 }
                 var track = Logic.getTrackIndexFromPos(drag.y + voffset + scrollView.contentY - yOffset)
+                var lastTrackItem = tracksRepeater.count > 0 ? tracksRepeater.itemAt(tracksRepeater.count - 1) : null
+                newTrackDrop = normalEditDropOnly() && lastTrackItem !== null
+                        && root.clipBeingDroppedData.indexOf(";") === -1
+                        && drag.y + voffset + scrollView.contentY - yOffset >= lastTrackItem.y + lastTrackItem.height
                 if (track >= 0  && track < tracksRepeater.count) {
                     var targetTrack = (tracksRepeater.itemAt(track) as Track).trackInternalId
                     var frame = Math.floor((drag.x + scrollView.contentX + offset) / root.timeScale)
@@ -929,6 +1044,12 @@ function getTrackColor(audio, header) {
                     if (!root.controller.normalEdit()) {
                         root.controller.requestFakeClipMove(root.clipBeingDroppedId, fakeTrack, fakeFrame, true, false, false)
                     }
+                    if (newTrackDrop) {
+                        bubbleHelp.text = KI18n.i18nc("@info:tooltip lâcher un média sous la dernière piste", "New track")
+                        if (bubbleHelp.state !== 'visible') bubbleHelp.state = 'visible'
+                        bubbleHelp.x = drag.x + root.headerWidth + 8
+                        bubbleHelp.y = drag.y + ruler.height + dragPixmapHeight + 6
+                    }
                     root.continuousScrolling(drag.x + scrollView.contentX, drag.y + scrollView.contentY, upMove)
                 }
                 if (offset != 0) {
@@ -939,9 +1060,28 @@ function getTrackColor(audio, header) {
                 drag.accepted=false
             }
         }
+        /** KoraCut : la piste neuve ne vaut qu'en mode normal (ni insertion ni écrasement). */
+        function normalEditDropOnly()
+        {
+            return root.controller.normalEdit()
+        }
         function processDrop()
         {
             // Process the drop event, useful if drop event happens outside of drop area
+            if (root.clipBeingDroppedId != -1 && newTrackDrop) {
+                // KoraCut : lâché sous la dernière piste. L'aperçu est retiré sans laisser de trace
+                // dans l'historique, puis piste et clip sont créés en une seule étape d'annulation.
+                var previewId = root.clipBeingDroppedId
+                var dropFrame = root.controller.getClipPosition(previewId)
+                var dropData = root.clipBeingDroppedData
+                root.clearDropData()
+                root.controller.requestItemDeletion(previewId, false)
+                newTrackDrop = false
+                fakeTrack = -1
+                fakeFrame = -1
+                root.controller.insertClipOnNewTrack(dropFrame, dropData)
+                return
+            }
             if (root.clipBeingDroppedId != -1) {
                 var cid = root.clipBeingDroppedId
                 root.clearDropData()
@@ -1034,6 +1174,7 @@ function getTrackColor(audio, header) {
         onExited: {
             lastYPos = -1
             upMove = 0
+            newTrackDrop = false
             bubbleHelp.hide()
             root.timeline.keepAudioTargets(false)
             if (root.clipBeingDroppedId != -1 && (lastDragPos.y < lastDragPos.x || (clipDropArea.height - lastDragPos.y < lastDragPos.x))) {
@@ -1176,28 +1317,51 @@ function getTrackColor(audio, header) {
                 // Padding between toolbar and track headers.
                 width: parent.width
                 height: ruler.height
+                // KoraCut, 25 septembre 2026 : l'icône et le nom sont posés à part. Dessinés par
+                // le style dans un même bouton, le nom était rogné sans points de suspension
+                // (« Séquenc »), quelle que soit la largeur de l'en-tête.
+                Rectangle {
+                    // Le survol de toute la zone, comme un bouton.
+                    anchors.fill: parent
+                    anchors.margins: 2
+                    radius: 4
+                    color: Qt.rgba(activePalette.text.r, activePalette.text.g, activePalette.text.b, 0.07)
+                    visible: sequenceArea.containsMouse
+                }
                 ToolButton {
-                    text: metrics.elidedText
-                    font: K.UiUtils.smallestReadableFont
+                    id: sequenceIcon
                     flat: true
                     icon.name: 'tools-wizard'
-                    anchors.fill: parent
+                    // KoraCut : taille de la charte, sinon le style prend PM_SmallIconSize et les icônes grossissent
+                    icon.width: 14
+                    icon.height: 14
+                    display: AbstractButton.IconOnly
+                    width: height
+                    height: parent.height
+                    x: Math.max(2, (parent.width - width - 2 - sequenceLabel.width) / 2)
+                    onClicked: root.timeline.showMasterEffects()
+                }
+                Label {
+                    id: sequenceLabel
+                    anchors.left: sequenceIcon.right
                     anchors.leftMargin: 2
-                    anchors.rightMargin: 2
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(implicitWidth, parent.width - sequenceIcon.width - 8)
+                    text: root.addedSequenceName.length == 0 ? KI18n.i18n("Sequence") : root.addedSequenceName
+                    elide: Text.ElideRight
+                    font: K.UiUtils.smallestReadableFont
+                    color: activePalette.text
+                }
+                MouseArea {
+                    id: sequenceArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.timeline.showMasterEffects()
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
-                    ToolTip.visible: hovered
+                    ToolTip.visible: containsMouse
                     ToolTip.text: KI18n.i18n("Show sequence effects")
-                    TextMetrics {
-                        id: metrics
-                        font: K.UiUtils.smallestReadableFont
-                        elide: Text.ElideRight
-                        elideWidth: root.headerWidth * 0.8
-                        text: root.addedSequenceName.length == 0 ? KI18n.i18n("Sequence") : root.addedSequenceName
-                    }
-                    onClicked: {
-                        root.timeline.showMasterEffects()
-                    }
                     DropArea { //Drop area for tracks
                         id: trackEffectDrop
                         anchors.fill: parent
@@ -1270,6 +1434,7 @@ function getTrackColor(audio, header) {
                             trackName: model.name
                             thumbsFormat: model.thumbsFormat
                             trackTag: model.trackTag
+                            trackColor: model.koracutColor
                             isDisabled: model.disabled
                             isComposite: model.composite
                             isLocked: model.locked
@@ -1376,14 +1541,9 @@ function getTrackColor(audio, header) {
                     return Qt.SizeHorCursor;
                 }
             }
-            onWheel: wheel => {
-                if (wheel.modifiers & Qt.AltModifier || wheel.modifiers & Qt.ControlModifier || mouseY > trackHeaders.height) {
-                    root.zoomByWheel(wheel)
-                } else if (K.Core.activeTool !== K.ToolType.SlipTool) {
-                    var delta = wheel.modifiers & Qt.ShiftModifier ? K.Core.getCurrentFps() : 1
-                    root.proxy.position = wheel.angleDelta.y > 0 ? Math.max(root.consumerPosition - delta, 0) : Math.min(root.consumerPosition + delta, root.timeline.fullDuration - 1)
-                }
-            }
+            // KoraCut : la molette et le trackpad font défiler la vue. La tête de lecture ne
+            // bouge plus qu'avec ⌥ : au trackpad, elle partait en vrille au moindre glissement.
+            onWheel: wheel => root.zoomByWheel(wheel)
             onPressed: mouse => {
                 focus = true
                 shiftPress = (mouse.modifiers & Qt.ShiftModifier) && (mouse.y > ruler.height) && !(mouse.modifiers & Qt.AltModifier)
@@ -2196,6 +2356,9 @@ function getTrackColor(audio, header) {
                                             root.timeline.ungrabHack()
                                             if(dragProxy.masterObject.itemType === K.ClipType.Timeline) {
                                                 root.timeline.focusTimelineSequence(dragProxy.draggedItem)
+                                            } else if (root.timeline.isMotionClip(dragProxy.draggedItem)) {
+                                                // KoraCut, document 19 : le texte d'un clip Motion se change dans l'inspecteur.
+                                                root.timeline.editMotionClip(dragProxy.draggedItem)
                                             } else if(dragProxy.masterObject.itemType === K.ClipType.Text || dragProxy.masterObject.itemType === K.ClipType.TextTemplate) {
                                                 root.timeline.editTitleClip(dragProxy.draggedItem)
                                             } else if (dragProxy.masterObject.itemType === K.ClipType.Animation) {

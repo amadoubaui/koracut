@@ -671,6 +671,11 @@ bool constructTrackFromMelt(const std::shared_ptr<TimelineItemModel> &timeline, 
             if (!trackName.isEmpty()) {
                 timeline->setTrackProperty(tid, QStringLiteral("kdenlive:track_name"), trackName.toUtf8().constData());
             }
+            // KoraCut : la couleur choisie pour la piste (document 13).
+            const QString koraCutColor = track.get("kdenlive:koracut_color");
+            if (!koraCutColor.isEmpty()) {
+                timeline->setTrackProperty(tid, QStringLiteral("kdenlive:koracut_color"), koraCutColor);
+            }
             if (audioTrack) {
                 // This is an audio track
                 timeline->setTrackProperty(tid, QStringLiteral("kdenlive:audio_track"), QStringLiteral("1"));

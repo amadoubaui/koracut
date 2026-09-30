@@ -3,6 +3,7 @@
 
 INSTALL(FILES 
     whispertotext.py
+    koracut_mots.py
     whispertosrt.py
     whisperquery.py
     seamlessquery.py

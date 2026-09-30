@@ -75,7 +75,7 @@ ClipTranscode::ClipTranscode(QStringList urls, const QString &params, QStringLis
         }
     } else {
         // load Profiles
-        KSharedConfigPtr config = KSharedConfig::openConfig(QStringLiteral("kdenlivetranscodingrc"), KConfig::CascadeConfig, QStandardPaths::AppDataLocation);
+        KSharedConfigPtr config = KSharedConfig::openConfig(QStringLiteral("koracuttranscodingrc"), KConfig::CascadeConfig, QStandardPaths::AppDataLocation);
         KConfigGroup transConfig(config, "Transcoding");
         // read the entries
         QMap<QString, QString> profiles = transConfig.entryMap();
@@ -119,7 +119,7 @@ void ClipTranscode::slotStartTransCode()
     }
     if (KdenliveSettings::ffmpegpath().isEmpty()) {
         // FFmpeg not detected, cannot process the Job
-        log_text->setPlainText(i18n("FFmpeg not found, please set path in Kdenlive's settings Environment"));
+        log_text->setPlainText(i18n("FFmpeg not found, please set path in KoraCut's settings Environment"));
         slotTranscodeFinished(1, QProcess::CrashExit);
         return;
     }
@@ -143,7 +143,7 @@ void ClipTranscode::slotStartTransCode()
     }
     QString extension = params.section(QStringLiteral("%1"), 1, 1).section(QLatin1Char(' '), 0, 0);
     QString s_url = source_url->url().toLocalFile();
-    bool mltEncoding = s_url.endsWith(QLatin1String(".mlt")) || s_url.endsWith(QLatin1String(".kdenlive"));
+    bool mltEncoding = s_url.endsWith(QLatin1String(".mlt")) || s_url.endsWith(QLatin1String(".koracut")) || s_url.endsWith(QLatin1String(".kdenlive"));
 
     if (QFile::exists(destination + extension)) {
         if (destination + extension == s_url) { // If the source and destination are the same, ffmpeg will fail

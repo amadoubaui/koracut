@@ -140,6 +140,7 @@ avfilter_vaguedenoiser.xml
 avfilter_vectorscope.xml
 avfilter_vflip.xml
 avfilter_vibrance.xml
+avfilter_tremolo.xml
 avfilter_vibrato.xml
 avfilter_w3fdif.xml
 avfilter_waveform.xml

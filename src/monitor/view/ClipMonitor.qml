@@ -251,6 +251,9 @@ Item {
                     id: clipNameLabel
                     hoverEnabled: true
                     icon.name: root.controller.lastClips.length > 1 ? "arrow-down" : ""
+                    // KoraCut : taille de la charte, sinon le style prend PM_SmallIconSize et les icônes grossissent
+                    icon.width: 14
+                    icon.height: 14
                     text: root.controller.clipName
                     enabled: labelContainer.opacity > 0.5
                     onTextChanged: {
@@ -368,7 +371,8 @@ Item {
                 text: "x" + root.controller.speed
                 color: "white"
                 background: Rectangle {
-                    color: "darkgreen"
+                    color: Qt.rgba(0, 0, 0, 0.6)
+                    radius: 4
                 }
                 padding: 5
                 horizontalAlignment: TextInput.AlignHCenter
@@ -385,7 +389,16 @@ Item {
                 text: root.controller.zoneIn == root.controller.zoneOut ? KI18n.i18n("In/Out Point") : KI18n.i18n("In Point")
                 color: "white"
                 background: Rectangle {
-                    color: "#228b22"
+                    // KoraCut : surincrustation sur l'image, pas un aplat de couleur nommée.
+                    color: Qt.rgba(0, 0, 0, 0.6)
+                    radius: 4
+                    Rectangle {
+                        width: 2
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        color: activePalette.highlight
+                    }
                 }
                 padding: 4
                 horizontalAlignment: TextInput.AlignHCenter
@@ -408,7 +421,15 @@ Item {
                 text: KI18n.i18n("Out Point")
                 color: "white"
                 background: Rectangle {
-                    color: "#770000"
+                    color: Qt.rgba(0, 0, 0, 0.6)
+                    radius: 4
+                    Rectangle {
+                        width: 2
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        color: activePalette.highlight
+                    }
                 }
                 padding: 4
                 horizontalAlignment: TextInput.AlignHCenter
@@ -573,8 +594,10 @@ Item {
                     width: childrenRect.width + 4
                     Layout.fillWidth: true
                     height: jobLabel.height + progressBar.height + 4
-                    color: "#80333333"
-                    radius: 5
+                    // KoraCut : surincrustation sur l'image, exprimée en tokens et non en
+                    // littéral. Rayon 4, le cran « contrôle » de la charte.
+                    color: Qt.rgba(0, 0, 0, 0.5)
+                    radius: 4
                     MouseArea {
                         id: jobsArea
                         hoverEnabled: true
@@ -611,9 +634,9 @@ Item {
                         anchors.rightMargin: 4
                         height: 6
                         radius: 2
-                        color: "#33ffffff"
+                        color: Qt.rgba(1, 1, 1, 0.2)
                         border {
-                            color: "#99000000"
+                            color: Qt.rgba(0, 0, 0, 0.6)
                             width: 1
                         }
                         Rectangle {
@@ -652,6 +675,31 @@ Item {
                 height: 2
                 color: 'goldenrod'
             }
+        }
+    }
+
+    // KoraCut : l'état vide du moniteur de source. Un moniteur vide n'appelle pas la même chose
+    // qu'un chutier vide : il n'y a rien à y glisser, il faut dire ce qui s'y affichera et comment
+    // l'y amener. Donc un titre et une phrase, pas de bouton.
+    Column {
+        id: etatVideSource
+        // `root.duration` vaut 300 par défaut tant que le contrôleur n'a rien chargé : le tester
+        // rendait l'état vide invisible. Le nom du clip suffit, il est vide quand rien n'est ouvert.
+        visible: root.clipName.length === 0
+        anchors.centerIn: parent
+        spacing: 4
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: KI18n.i18n("No media open")
+            color: "white"
+            font.pixelSize: 16
+            font.weight: Font.DemiBold
+        }
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: KI18n.i18n("Double-click a media in the Media panel to view it here.")
+            color: Qt.rgba(1, 1, 1, 0.62)
+            font.pixelSize: 12
         }
     }
 }

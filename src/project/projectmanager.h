@@ -170,6 +170,12 @@ public:
 public Q_SLOTS:
     void newFile(QString profileName, bool showProjectSettings = true);
     void newFile(bool showProjectSettings = true);
+    /** @brief KoraCut, 23 septembre 2026 : « Nouveau projet » par type de vidéo (⌘N). La fenêtre
+     * choisit le type, le projet est créé avec son format, ses images par seconde et ses pistes
+     * nommées. « Réglages avancés… » renvoie à l'ancienne fenêtre. */
+    void newProjectWizard();
+    /** @brief Crée un projet neuf d'après un plan de l'assistant. */
+    void newFileFromPlan(const struct KoraCutProjectPlan &plan);
     /** @brief Shows file open dialog. */
     void slotOpenFile();
     void openLastFile();

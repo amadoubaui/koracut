@@ -36,6 +36,8 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include <KImageCache>
 #include <KLocalizedString>
 #include <KMessageBox>
+#include <QLocale>
+#include <cmath>
 #include <QApplication>
 #include <QCryptographicHash>
 #include <QDir>
@@ -721,7 +723,9 @@ void ProjectClip::checkProxy(bool rebuildProxy)
             }
         } else if ((m_clipType == ClipType::AV || m_clipType == ClipType::Video) &&
                    (rebuildProxy || getProducerProperty(QStringLiteral("kdenlive:proxy")) == QLatin1String())) {
-            if (m_hasVideo && (rebuildProxy || pCore->currentDoc()->autoGenerateProxy(getProducerIntProperty(QStringLiteral("meta.media.width"))))) {
+            if (m_hasVideo && (rebuildProxy || pCore->currentDoc()->autoGenerateProxy(getProducerIntProperty(QStringLiteral("meta.media.width")),
+                                                                                       videoCodecProperty(QStringLiteral("name")),
+                                                                                       videoCodecProperty(QStringLiteral("pix_fmt"))))) {
                 if (!hasAlpha()) {
                     clipToProxy = std::static_pointer_cast<ProjectClip>(shared_from_this());
                 } else {
@@ -2081,8 +2085,10 @@ const QVariant ProjectClip::getData(DataType type) const
 {
     switch (type) {
     case AbstractProjectItem::IconOverlay:
+        // KoraCut : plus de croix sur la vignette d'un média absent. C'est le bandeau du chutier
+        // qui le dit maintenant, en toutes lettres et sans crier (« 12 - Passe montage », § 1.1).
         if (m_clipStatus == FileStatus::StatusMissing) {
-            return QVariant("window-close");
+            return QVariant();
         }
         if (m_clipStatus == FileStatus::StatusWaiting) {
             return QVariant("view-refresh");
@@ -2091,6 +2097,21 @@ const QVariant ProjectClip::getData(DataType type) const
             return QVariant("emblem-warning");
         }
         return m_effectStack && m_effectStack->hasEffects() > 0 ? QVariant("tools-wizard") : QVariant();
+    // KoraCut : la vue Détails montre la résolution et la cadence, vides pour un son seul.
+    case AbstractProjectItem::DataResolution: {
+        if (!statusReady() || !hasVideo()) {
+            return QString();
+        }
+        const QSize size = getFrameSize();
+        return size.isValid() ? QStringLiteral("%1×%2").arg(size.width()).arg(size.height()) : QString();
+    }
+    case AbstractProjectItem::DataFps: {
+        if (!statusReady() || !hasVideo() || m_clipType == ClipType::Image) {
+            return QString();
+        }
+        const double fps = getOriginalFps();
+        return fps > 0. ? QLocale().toString(fps, 'f', qFuzzyCompare(fps, std::round(fps)) ? 0 : 2) : QString();
+    }
     default:
         return AbstractProjectItem::getData(type);
     }

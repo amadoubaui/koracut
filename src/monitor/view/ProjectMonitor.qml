@@ -138,6 +138,23 @@ Item {
                 showSafeZone: root.controller.showSafezone
                 profile: root.controller.profile
             }
+            // KoraCut, document 20 : repères de plateforme et repères posés depuis les règles.
+            K.MonitorPlatformZones {
+                anchors.fill: frame
+                controller: root.controller
+                scalex: root.scalex
+                scaley: root.scaley
+                position: root.controller.position
+                duration: root.duration
+            }
+            K.MonitorGuides {
+                anchors.fill: frame
+                controller: root.controller
+                scalex: root.scalex
+                scaley: root.scaley
+                rulersItem: monitorRulers
+                rulerSize: monitorRulers.size
+            }
 
             Loader {
                 id: countDownLoader
@@ -201,7 +218,8 @@ Item {
                 text: "x" + root.controller.speed
                 color: "white"
                 background: Rectangle {
-                    color: "darkgreen"
+                    color: Qt.rgba(0, 0, 0, 0.6)
+                    radius: 4
                 }
                 padding: 5
                 horizontalAlignment: TextInput.AlignHCenter
@@ -217,7 +235,16 @@ Item {
                 text: KI18n.i18n("In Point")
                 color: "white"
                 background: Rectangle {
-                    color: "#228b22"
+                    // KoraCut : surincrustation sur l'image, pas un aplat de couleur nommée.
+                    color: Qt.rgba(0, 0, 0, 0.6)
+                    radius: 4
+                    Rectangle {
+                        width: 2
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        color: activePalette.highlight
+                    }
                 }
                 padding: 5
                 horizontalAlignment: TextInput.AlignHCenter
@@ -233,7 +260,15 @@ Item {
                 text: KI18n.i18n("Out Point")
                 color: "white"
                 background: Rectangle {
-                    color: "#770000"
+                    color: Qt.rgba(0, 0, 0, 0.6)
+                    radius: 4
+                    Rectangle {
+                        width: 2
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        color: activePalette.highlight
+                    }
                 }
                 padding: 5
                 horizontalAlignment: TextInput.AlignHCenter
@@ -264,6 +299,15 @@ Item {
                 padding: 0
                 maximumLength: 25
             }
+        }
+        // KoraCut, document 20 : les règles (⇧R), par-dessus l'image, sous la barre d'outils.
+        K.MonitorRulers {
+            id: monitorRulers
+            anchors.fill: monitorArea
+            controller: root.controller
+            frameItem: frame
+            scalex: root.scalex
+            scaley: root.scaley
         }
         Rectangle {
             id: transformcontainer

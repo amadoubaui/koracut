@@ -7,6 +7,7 @@
 #include "core.h"
 #include "kdenlivesettings.h"
 #include "project/projectmanager.h"
+#include "utils/uiutils.h"
 #include <QDebug>
 #include <QFileInfo>
 
@@ -17,6 +18,8 @@
 #include <QDir>
 #include <QStandardPaths>
 #include <QtConcurrent/QtConcurrentRun>
+#include <QTimer>
+#include <QQuickWindow>
 
 Splash::Splash(const QString version, const QStringList urls, const QStringList profileIds, const QStringList profileNames, bool showWelcome, bool firstRun,
                bool showCrashRecovery, bool wasUpgraded, QObject *parent)
@@ -38,8 +41,9 @@ Splash::Splash(const QString version, const QStringList urls, const QStringList 
         fileDates.append(locale.toString(info.lastModified(), "dd/MM/yy HH:mm"));
     }
     if (firstRun) {
-        // Default to dark palette on first run
-        switchPalette(true);
+        // KoraCut : au premier lancement, le mode par défaut (suivre le système), et non plus le
+        // sombre imposé. switchPalette(true) écrirait maintenant « toujours sombre » dans les réglages.
+        UiUtils::applyThemeMode();
     } else {
         // Initialize SchemeManager to ensure correct color scheme on start
         KColorSchemeManager::instance();
@@ -55,6 +59,7 @@ Splash::Splash(const QString version, const QStringList urls, const QStringList 
                                         {"profileNames", profileNames},
                                         {"palFps", isPalFps},
                                         {"firstRun", firstRun},
+                                        {"alwaysDark", KdenliveSettings::koracut_theme_mode() == QLatin1String("dark")},
                                         {"crashRecovery", m_hasCrashRecovery},
                                         {"wasUpgraded", m_wasUpgraded}});
     } else {
@@ -101,6 +106,18 @@ Splash::Splash(const QString version, const QStringList urls, const QStringList 
             KdenliveSettings::setLastSeenVersionMinor(currentVersion.at(1).toInt());
             KdenliveSettings::setLastSeenVersionMicro(currentVersion.at(2).toInt());
         }
+    }
+    // KoraCut, outil de développement : KORACUT_SHOT_SPLASH=/chemin.png enregistre l'écran de
+    // démarrage (ou l'accueil de premier lancement) 2,5 s après son ouverture, pour le relire quand
+    // l'écran du Mac est verrouillé. 23 septembre 2026.
+    const QString splashShot = qEnvironmentVariable("KORACUT_SHOT_SPLASH");
+    if (!splashShot.isEmpty()) {
+        QTimer::singleShot(2500, this, [this, splashShot]() {
+            if (auto *window = qobject_cast<QQuickWindow *>(m_rootObject)) {
+                window->grabWindow().save(splashShot);
+                qWarning() << "KORACUT-SPLASH" << splashShot;
+            }
+        });
     }
     qApp->processEvents(QEventLoop::AllEvents);
 }
@@ -149,7 +166,30 @@ void Splash::setReady()
 
 void Splash::switchPalette(bool dark)
 {
-    KColorSchemeManager::instance()->activateSchemeId(dark ? QStringLiteral("BreezeDark") : QString());
+    // KoraCut : au premier lancement, Kdenlive impose BreezeDark ici, avant MainWindow::init. On active donc
+    // les schémas KoraCut à cet endroit (sombre par défaut, clair si l'utilisateur bascule l'interrupteur de
+    // l'assistant). Si les fichiers .colors sont introuvables, on retombe sur le comportement Kdenlive.
+    // Débrayable avec KORACUT_NO_THEME.
+    // KoraCut, 22 septembre 2026 : quand le mode de thème vaut « system », c'est le système
+    // qui décide, pas l'interrupteur de l'assistant. Sinon l'écran de démarrage imposerait
+    // le sombre à quelqu'un dont le Mac est en clair, le temps du démarrage.
+    // KoraCut, 23 septembre 2026 : l'interrupteur de l'assistant choisit le mode, « dark » allumé,
+    // « system » éteint. Un thème choisi à la main (clair, très sombre…) n'est touché que si
+    // l'utilisateur bascule l'interrupteur, ce qui est un choix explicite.
+    if (!qEnvironmentVariableIsSet("KORACUT_NO_THEME")) {
+        KdenliveSettings::setKoracut_theme_mode(dark ? QStringLiteral("dark") : QStringLiteral("system"));
+        UiUtils::applyThemeMode();
+        return;
+    }
+    auto manager = KColorSchemeManager::instance();
+    const QString koraCutId = dark ? QStringLiteral("KoraCutDark") : QStringLiteral("KoraCutLight");
+    if (!qEnvironmentVariableIsSet("KORACUT_NO_THEME") && manager->indexForSchemeId(koraCutId).isValid()) {
+        manager->activateSchemeId(koraCutId);
+    } else {
+        qWarning() << "KoraCut: color scheme" << koraCutId << "not found or disabled, falling back to Breeze";
+        manager->activateSchemeId(dark ? QStringLiteral("BreezeDark") : QString());
+    }
+    UiUtils::applyKoraCutStyleSheet();
 }
 
 void Splash::showProgressMessage(const QString &message, int)

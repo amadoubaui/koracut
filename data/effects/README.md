@@ -1,19 +1,20 @@
 # Effects (and Transitions)
 
-Kdenlive uses MLT for all video/audio effects/filters.
+KoraCut uses MLT for all video/audio effects/filters.
 For filters that provide metadata the GUI can be generated automatically.
 If the generated GUI is not sufficient a custom one can be build using a XML
 file describing the effect and its parameters.
 
 ## Important notes
-* Effects can be blacklisted in `kdenlive/data/blacklisted_effects.txt`. All effects with a custom XML GUI need to be blacklisted
+* Effects can be blacklisted in `data/blacklisted_effects.txt`. All effects with a custom XML GUI need to be blacklisted
 
-* Effects can be added to "Main effects" list in `kdenlive/data/preferred_effects.txt`
+* Effects can be added to "Main effects" list in `data/preferred_effects.txt`
 
-* Effects can be assigned to an effect category in `kdenlive/data/kdenliveeffectscategory.rc`.
+* Effects can be assigned to an effect category in `data/koracuteffectscategory.rc`.
 
-* Kdenlive parses the effect folder at each startup, so that if you have an XML file describing a new effect,
-just copy it to your `~/.kde/share/apps/kdenlive/effects/` folder and restart Kdenlive to enable the new effect.
+* KoraCut parses the effect folder at each startup, so that if you have an XML file describing a new effect,
+just copy it to the `effects/` folder of the application data directory (`QStandardPaths::AppDataLocation`,
+so `~/.local/share/koracut/effects/` on Linux) and restart KoraCut to enable the new effect.
 
 ## The basic structure of a XML filter description:
 ```xml
@@ -39,11 +40,11 @@ Line 2:
 | tag name     | description    |
 | :------------| :------------- |
 | `tag`        | MLT ("mlt_service") name of the effect (see [MLT Docs](https://www.mltframework.org/docs/)) |
-| `id`         | internal kdenlive id, can be anything, but must be unique for each effect |
+| `id`         | internal id, can be anything, but must be unique for each effect |
 | `type`       |  _(default = `"video"`)_ whether effect modifies video or audio (use `"audio"` then) |
 | `unique`     | _(default = `"0"`)_ this effect cannot be attached multiple times to one clip (speed, fades, ...) |
 | `version`    | _(optional)_ minimum version of the effect required to be available (works only if the MLT filter provides the necessary metadata) |
-| `dependency` | _(optional)_ ) MLT ("mlt_service") name of an effect or composition this asset depends on. If the dependency is not available this asset will not be available in Kdenlive too|
+| `dependency` | _(optional)_ ) MLT ("mlt_service") name of an effect or composition this asset depends on. If the dependency is not available this asset will not be available in KoraCut too|
 
 Line 3:
 * name of the effect that will appear to the user
@@ -294,7 +295,7 @@ You can set `default` to `"adjustcenter"`  to adjust the geometry to the frame s
 | attribute name | description    |
 | :------------- | :------------- |
 | `filter`       | Filter for file extensions. Example : `"Source Files (*.cpp *.cc *.C);;Header files (*.h *.H)"` (warning: this format is different to `url`!) |
-| `newstuff` | _(optional)_ KNewStuff config file (usually placed in `kdenlive/data` and added to `kdenlive/src/uiresources.qrc` so the value looks like `":data/kdenlive_wipes.knsrc"`). If this is empty no download button is shown|
+| `newstuff` | _(optional)_ KNewStuff config file (usually placed in `data/` and added to `src/uiresources.qrc` so the value looks like `":data/koracut_wipes.knsrc"`). If this is empty no download button is shown|
 | `paramlist`    | list of possible values separated by semicolon (no whitespaces!). Special keywords `%lumaPaths` and `%lutPaths` are available to show files in the applications luma/lut directories |
 * ###### additional tags:
 | tag name         | description    |

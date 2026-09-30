@@ -10,6 +10,7 @@
 #include "kdenlivesettings.h"
 #include "mainwindow.h"
 #include "mltconnection.h"
+#include "koracut/koracutassetcards.h"
 #include "transitionicondelegate.hpp"
 #include "transitions/transitionlist/model/transitionfilter.hpp"
 #include "transitions/transitionsrepository.hpp"
@@ -80,6 +81,37 @@ TransitionListWidget::TransitionListWidget(QAction *includeList, QAction *tenBit
         m_toolbar->addAction(m_generatePreviewAction);
     }
     connect(this, &AssetListWidget::checkAssetPreview, this, &TransitionListWidget::checkPreviews);
+
+    // KoraCut, 27 septembre 2026 : − et + dans la barre, ⌘− et ⌘+ au clavier, comme le panneau
+    // Effets. Quatre crans : la liste, puis des aperçus aux trois quarts, à la taille d'origine et
+    // à une fois et demie.
+    auto *zoom = new KoraCutAssetZoom(QStringLiteral("compositionsTaille"), 4, KdenliveSettings::transitionViewAsIcon() ? 2 : 0, this);
+    zoom->install(m_toolbar, m_toggleView);
+    zoom->watch(m_effectsIcon);
+    zoom->watch(m_effectsTree);
+    auto lastGrid = std::make_shared<int>(zoom->level() > 0 ? zoom->level() : 2);
+    auto applyLevel = [this, iconSize, lastGrid](int level) {
+        if (level > 0) {
+            *lastGrid = level;
+        }
+        static const double factors[] = {1.0, 0.75, 1.0, 1.5};
+        const QSize size = iconSize * factors[std::clamp(*lastGrid, 1, 3)];
+        m_effectsIcon->setIconSize(size);
+        m_iconDelegate->setIconSize(size);
+        const bool iconsView = level > 0;
+        if (m_toggleView && m_toggleView->isChecked() != iconsView) {
+            m_toggleView->setChecked(iconsView);
+        }
+        if (isIconView() != iconsView) {
+            toggleViewMode(iconsView);
+        }
+        m_effectsIcon->doItemsLayout();
+    };
+    connect(zoom, &KoraCutAssetZoom::levelChanged, this, applyLevel);
+    if (m_toggleView) {
+        connect(m_toggleView, &QAction::triggered, this, [zoom, lastGrid](bool checked) { zoom->setLevel(checked ? *lastGrid : 0); });
+    }
+    applyLevel(zoom->level());
     connect(m_model.get(), &AssetTreeModel::rowsInserted, this, [this]() { m_proxyModel->sort(0, Qt::AscendingOrder); });
 
     if (!KdenliveSettings::showTransitionsInfo()) {

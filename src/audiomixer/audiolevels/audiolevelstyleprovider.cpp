@@ -17,13 +17,20 @@ AudioLevelStyleProvider &AudioLevelStyleProvider::instance()
 
 AudioLevelStyleProvider::LevelColors AudioLevelStyleProvider::getLevelsFillColors() const
 {
+    // KoraCut, 21 septembre 2026 : trois couleurs, celles de la charte, et rien entre les deux.
+    // Le vumètre était une barre à dégradé continu vert-jaune-orange-rouge en six teintes, dont
+    // aucune n'appartenait à la charte : dessin des années 2000. Trois zones franches se lisent
+    // d'un coup d'oeil, ce qui est tout ce qu'on demande à un vumètre pendant un montage.
     LevelColors colors;
-    colors.darkGreen = QColor(0, 135, 60);
-    colors.green = QColor(20, 190, 20);
-    colors.yellow = QColor(248, 204, 27);
-    colors.orange = QColor(243, 115, 36);
-    colors.red = QColor(225, 39, 41);
-    colors.darkRed = QColor(200, 39, 41);
+    const QColor vert(74, 222, 128);   // #4ADE80
+    const QColor jaune(255, 209, 102); // #FFD166
+    const QColor rouge(255, 114, 98);  // #FF7262
+    colors.darkGreen = vert;
+    colors.green = vert;
+    colors.yellow = jaune;
+    colors.orange = rouge;
+    colors.red = rouge;
+    colors.darkRed = rouge;
 
     return colors;
 }
@@ -62,7 +69,7 @@ QColor AudioLevelStyleProvider::getBorderColor(const QPalette &palette, bool isE
 
 QColor AudioLevelStyleProvider::getClippingColor() const
 {
-    return QColor(225, 39, 41); // Same as the red from LevelColors
+    return QColor(255, 114, 98); // KoraCut : #FF7262, le rouge de la charte
 }
 
 QColor AudioLevelStyleProvider::getPeakColor(const QPalette &palette, double peakValue) const
@@ -101,22 +108,27 @@ QLinearGradient AudioLevelStyleProvider::getLevelsFillGradient(Qt::Orientation o
     auto levelColors = getLevelsFillColors();
     QLinearGradient gradient;
 
+    // KoraCut : trois zones franches, pas un dégradé. Deux arrêts de couleur posés au même
+    // endroit (à un millième près) donnent une coupure nette là où Qt ferait un fondu.
+    const double versJaune = IEC_ScaleMax(LevelColors::greenThreshold, maxDb);
+    const double versRouge = IEC_ScaleMax(LevelColors::yellowThreshold, maxDb);
+    constexpr double cheveu = 0.001;
     if (orientation == Qt::Horizontal) {
         gradient = QLinearGradient(0, 0, 1, 0);
-        gradient.setColorAt(0., levelColors.darkGreen);
-        gradient.setColorAt(IEC_ScaleMax(LevelColors::greenThreshold, maxDb), levelColors.green);
-        gradient.setColorAt(IEC_ScaleMax(LevelColors::yellowThreshold, maxDb), levelColors.yellow);
-        gradient.setColorAt(IEC_ScaleMax(LevelColors::orangeThreshold, maxDb), levelColors.orange);
-        gradient.setColorAt(IEC_ScaleMax(LevelColors::redThreshold, maxDb), levelColors.red);
-        gradient.setColorAt(1.0, levelColors.darkRed);
+        gradient.setColorAt(0., levelColors.green);
+        gradient.setColorAt(qMax(0., versJaune - cheveu), levelColors.green);
+        gradient.setColorAt(versJaune, levelColors.yellow);
+        gradient.setColorAt(qMax(versJaune, versRouge - cheveu), levelColors.yellow);
+        gradient.setColorAt(versRouge, levelColors.red);
+        gradient.setColorAt(1.0, levelColors.red);
     } else {
         gradient = QLinearGradient(0, 1, 0, 0);
-        gradient.setColorAt(1.0, levelColors.darkRed);
-        gradient.setColorAt(IEC_ScaleMax(LevelColors::redThreshold, maxDb), levelColors.red);
-        gradient.setColorAt(IEC_ScaleMax(LevelColors::orangeThreshold, maxDb), levelColors.orange);
-        gradient.setColorAt(IEC_ScaleMax(LevelColors::yellowThreshold, maxDb), levelColors.yellow);
-        gradient.setColorAt(IEC_ScaleMax(LevelColors::greenThreshold, maxDb), levelColors.green);
-        gradient.setColorAt(0., levelColors.darkGreen);
+        gradient.setColorAt(0., levelColors.green);
+        gradient.setColorAt(qMax(0., versJaune - cheveu), levelColors.green);
+        gradient.setColorAt(versJaune, levelColors.yellow);
+        gradient.setColorAt(qMax(versJaune, versRouge - cheveu), levelColors.yellow);
+        gradient.setColorAt(versRouge, levelColors.red);
+        gradient.setColorAt(1.0, levelColors.red);
     }
 
     return gradient;

@@ -131,7 +131,11 @@ public:
         ClipType,
         ClipHasAudioAndVideo,
         // Item is the folder containing sequences
-        SequenceFolder
+        SequenceFolder,
+        // KoraCut, 22 septembre 2026 : colonnes de la vue Détails. Ajoutées en fin de liste pour
+        // ne décaler aucune valeur existante.
+        DataResolution,
+        DataFps
     };
 
     FileStatus::ClipStatus clipStatus() const;

@@ -6,6 +6,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 
 #pragma once
 
+#include <KNSCore/Entry>
 #include <QComboBox>
 #ifndef NODBUS
 #include <QDBusAbstractAdaptor>
@@ -53,6 +54,20 @@ class Monitor;
 class Render;
 class RenderWidget;
 class ScopeManager;
+class KoraCutTopBar;
+class KoraCutAgentClient;
+class KoraCutAgentSession;
+class KoraCutAgentPanel;
+class KoraCutMotionMirror;
+class KoraCutMotionPanel;
+class KoraCutMotionInspector;
+class KoraCutClipToolsPanel;
+class KoraCutMotionStudio;
+class KoraCutPlaceholder;
+class KoraCutPorte;
+class KoraCutConsolePanel;
+class KoraCutTerminalPanel;
+class QStackedWidget;
 class TimelineTabs;
 class TimelineWidget;
 class TimelineContainer;
@@ -97,6 +112,11 @@ public:
     void init();
     ~MainWindow() override;
 
+    /** @brief KoraCut : vrai quand le panneau de timeline flotte dans sa propre fenêtre. */
+    bool timelineIsDetached() const;
+    /** @brief KoraCut : sort la timeline dans sa propre fenêtre, ou l'y remet. */
+    void slotDetachTimeline();
+
     /** @brief Cache for luma files thumbnails. */
     static QMap<QString, QImage> m_lumacache;
     static QMap<QString, QStringList> m_lumaFiles;
@@ -111,6 +131,13 @@ public:
     /** @brief Same as above, but takes a string for category to populate it with kdenliveCategoryMap */
     QAction *addAction(const QString &name, const QString &text, const QObject *receiver, const char *member, const QIcon &icon, const QKeySequence &shortcut,
                        const QString &category);
+    /** @brief KoraCut : même chose avec plusieurs raccourcis par défaut.
+     *
+     * KDE en accepte deux par action, ce qui permet de donner à chaque commande une variante jouable
+     * sur un clavier AZERTY (voir « 9 - UX de l'application.md », les cinq règles de clavier). */
+    void addActionWithShortcuts(const QString &name, QAction *action, const QList<QKeySequence> &shortcuts, KActionCategory *category = nullptr);
+    QAction *addActionWithShortcuts(const QString &name, const QString &text, const QObject *receiver, const char *member, const QIcon &icon,
+                                    const QList<QKeySequence> &shortcuts, KActionCategory *category = nullptr);
 
     void processRestoreState(const QByteArray &state);
 
@@ -140,6 +167,10 @@ public:
 
     /** @brief Returns a pointer to the current timeline */
     TimelineWidget *getCurrentTimeline() const;
+    /** @brief KoraCut : le miroir des compositions Motion du projet courant (document 19). */
+    KoraCutMotionMirror *koraCutMotionMirror() const { return m_motionMirror; }
+    /** @brief KoraCut : double-clic sur un clip Motion, l'inspecteur prend le focus sur son texte. */
+    void koraCutEditMotionClip(int clipId);
     /** @brief Returns a pointer to the timeline with @uuid */
     TimelineWidget *getTimeline(const QUuid uuid) const;
     void getSequenceProperties(const QUuid &uuid, QMap<QString, QString> &props);
@@ -212,6 +243,39 @@ public:
     /** @brief If a render task is running */
     bool hasRunningRenderTask() const;
 
+    /** @brief KoraCut : la barre du haut de 40 px (symbole, menu, projet, modules, agents, recherche, disposition). */
+    KoraCutTopBar *topBar() const { return m_topBar; }
+    /** @brief KoraCut : montre la page « module en construction » à la place des docks. */
+    /** @brief Fait des cinq outils exclusifs un contrôle segmenté (un seul corps visuel). */
+    void setupToolSegments();
+    /** @brief Un seul moniteur avec deux onglets, ou deux moniteurs côte à côte. */
+    void setSingleMonitor(bool single);
+    void showModuleUnderConstruction(const QString &moduleId);
+    /** @brief KoraCut : revient à la zone des docks. */
+    void showDockArea();
+    /** @brief KoraCut : met à jour le nom du projet et son état dans la barre du haut. */
+    void updateTopBarProject();
+    /** @brief KoraCut, outil de développement : capture la fenêtre si KORACUT_SHOT est posée, puis quitte. */
+    void koraCutDevScreenshot();
+    /** @brief KoraCut : relais de version, enregistre et quitte sur demande si KORACUT_RELAIS est posée. */
+    void koraCutRelay();
+    /** @brief SIGTERM : copie de récupération si besoin, puis fermeture propre sans fenêtre (porte et témoin retirés). */
+    Q_INVOKABLE void koraCutTerminate();
+    /** @name La porte de commande (document 18) : ce que les méthodes de la porte demandent à la fenêtre. */
+    ///@{
+    KoraCutPorte *koraCutPorte() const { return m_porte; }
+    /** @brief Ouvre la prise une fois l'interface prête, selon le réglage « Autoriser les programmes extérieurs ». */
+    void koraCutStartPorte();
+    /** @brief Relit ce réglage après les Préférences. */
+    void koraCutApplyPorteSettings();
+    /** @brief La fenêtre d'export, ouverte si @p create. */
+    RenderWidget *koraCutRenderWidget(bool create);
+    int koraCutZoomLevel() const;
+    void koraCutSetZoom(int level, bool fit);
+    QString koraCutCurrentModule() const;
+    void koraCutSetModule(const QString &id);
+    ///@}
+
 protected:
     /** @brief Closes the window.
      * @return false if the user presses "Cancel" on a confirmation dialog or
@@ -250,6 +314,34 @@ private:
     KColorSchemeManager *m_colorschemes;
     ScopeManager *m_scopesManager{nullptr};
     KDDockWidgets::QtWidgets::MainWindow *mainDockWindow;
+    /** @brief KoraCut : la barre du haut de 40 px et la pile qui porte les docks ou la page « module en construction ». */
+    KoraCutTopBar *m_topBar{nullptr};
+    /** @brief KoraCut, chantier 3 : le client du service d'agents, la session et le panneau (nuls sans KORACUT_AGENTS). */
+    KoraCutAgentClient *m_agentClient{nullptr};
+    KoraCutAgentSession *m_agentSession{nullptr};
+    KoraCutAgentPanel *m_agentPanel{nullptr};
+    KDDockWidgets::QtWidgets::DockWidget *m_agentDock{nullptr};
+    /** @brief KoraCut, document 18 : la porte de commande et son panneau Console. */
+    KoraCutPorte *m_porte{nullptr};
+    KoraCutConsolePanel *m_consolePanel{nullptr};
+    KDDockWidgets::QtWidgets::DockWidget *m_consoleDock{nullptr};
+    /** KoraCut, chantier 10 : le panneau Diagnostic (i/s, images sautées, décodeur, proxys, essai de la machine). */
+    class KoraCutPerfPanel *m_perfPanel{nullptr};
+    KDDockWidgets::QtWidgets::DockWidget *m_perfDock{nullptr};
+    /** @brief KoraCut, document 18 (25 septembre 2026) : le terminal intégré et le choix de l'agent. */
+    KoraCutTerminalPanel *m_terminalPanel{nullptr};
+    KDDockWidgets::QtWidgets::DockWidget *m_terminalDock{nullptr};
+    // Chantier 9 : le module Motion (document 19).
+    KoraCutMotionMirror *m_motionMirror{nullptr};
+    KoraCutMotionStudio *m_motionStudio{nullptr};
+    KoraCutMotionPanel *m_motionPanel{nullptr};
+    KoraCutMotionInspector *m_motionInspector{nullptr};
+    /** Document 24 : la section Outils de l'inspecteur (bruit, voix, effets de voix, stabilisation). */
+    KoraCutClipToolsPanel *m_clipTools{nullptr};
+    KDDockWidgets::QtWidgets::DockWidget *m_motionDock{nullptr};
+    QStackedWidget *m_centralStack{nullptr};
+    KoraCutPlaceholder *m_modulePlaceholder{nullptr};
+    QMenu *m_layoutMenu{nullptr};
     KDDockWidgets::QtWidgets::DockWidget *m_timelineDock{nullptr};
     KDDockWidgets::QtWidgets::DockWidget *m_projectBinDock{nullptr};
     KDDockWidgets::QtWidgets::DockWidget *m_effectListDock{nullptr};
@@ -446,6 +538,10 @@ public Q_SLOTS:
 private Q_SLOTS:
     /** @brief Shows the shortcut dialog. */
     void slotEditKeys();
+    /** @brief Recharge ce que la fenêtre Extensions vient d'installer, sans relancer KoraCut. */
+    /** @brief Décale la sélection de la timeline de @p delta images (⌥⇧← et ⌥⇧→). */
+    void koraCutNudgeSelection(int delta);
+    void koraCutReloadExtensions(const QString &knsrc, const QList<KNSCore::Entry> &entries);
     void slotEditToolbars();
     void loadDockActions();
     /** @brief Reflects setting changes to the GUI. */
@@ -456,7 +552,28 @@ private Q_SLOTS:
     void slotSwitchClipOverlays();
     void slotShowTimelineTags();
     void slotMouseZoomOnPlayhead();
+    /** @brief Document 23 : ouvre le module Export (Exporter…, ⌘⇧E). */
+    void slotShowExportModule();
     void slotRenderProject();
+    /** @brief KoraCut : relance un export avec le dernier préréglage, sans ouvrir la fenêtre. */
+    void slotRenderAgain();
+    /** @brief KoraCut : l'écran d'accueil, pas encore écrit. */
+    void slotShowHome();
+    /** @brief KoraCut : passe au module porté par l'action émettrice. */
+    void slotSwitchModule();
+    /** @brief KoraCut : ouvre la palette de commandes (⌘K). */
+    void slotCommandPalette();
+    /** @brief KoraCut : ouvre le panneau Agents et lui donne le focus (⌘J). */
+    void slotShowAgentsPanel();
+    /** @brief KoraCut : ouvre le panneau Console et lui donne le focus (document 18). */
+    void slotShowConsolePanel();
+    void slotShowDiagnosticPanel();
+    /** @brief KoraCut : ouvre ou ferme le panneau Terminal (⌃`, comme VS Code), sous la timeline. */
+    void slotToggleTerminalPanel();
+    /** @brief KoraCut : ouvre le panneau Terminal et y lance l'agent choisi (bouton de la Console). */
+    void slotShowTerminalPanel();
+    /** @brief KoraCut : ouvre le panneau Motion (document 19). */
+    void slotShowMotionPanel();
     void slotStopRenderProject();
     void slotFullScreen();
     /** @brief Process a few last things as soon as ui is built */
@@ -547,6 +664,14 @@ private Q_SLOTS:
     void slotPaste();
     void slotPasteEffects();
     void slotResizeItemStart();
+    /** @brief KoraCut : Q, rogne du bord gauche jusqu'au curseur, sans décaler le reste. */
+    void slotTrimStartToPlayhead();
+    /** @brief KoraCut : W, rogne du curseur jusqu'au bord droit, sans décaler le reste. */
+    void slotTrimEndToPlayhead();
+    /** @brief KoraCut : ⇧Q, comme Q mais le reste vient combler le trou. */
+    void slotRippleTrimStart();
+    /** @brief KoraCut : ⇧W, comme W mais le reste vient combler le trou. */
+    void slotRippleTrimEnd();
     void slotResizeItemEnd();
     void configureNotifications();
     void slotSeparateAudioChannel();

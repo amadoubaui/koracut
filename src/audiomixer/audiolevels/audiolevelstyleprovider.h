@@ -21,13 +21,14 @@ public:
         QColor red;
         QColor darkRed;
 
-        // Decibel thresholds for each color transition
-        // Below green is dark green
-        static constexpr double greenThreshold = -18.0; // Below this is green
-        static constexpr double yellowThreshold = -6.0; // Below this is yellow
-        static constexpr double orangeThreshold = -4.0; // Below this is orange
-        static constexpr double redThreshold = -2.0;    // Below this is red
-        // Above red is dark red
+        // KoraCut, 21 septembre 2026 : deux seuils et trois zones (« 12 - Passe montage », § 1.6).
+        // Vert jusqu'à -12 dB, jaune jusqu'à -6, rouge au-delà. Les deux seuils intermédiaires
+        // hérités (-4 et -2) sont conservés pour ne pas casser le code qui les lit, mais ils
+        // pointent sur la même couleur que le rouge.
+        static constexpr double greenThreshold = -12.0; // Au-dessus, on passe au jaune
+        static constexpr double yellowThreshold = -6.0; // Au-dessus, on passe au rouge
+        static constexpr double orangeThreshold = -4.0;
+        static constexpr double redThreshold = -2.0;
     };
 
     static AudioLevelStyleProvider &instance();

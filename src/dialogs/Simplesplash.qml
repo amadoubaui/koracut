@@ -64,7 +64,7 @@ Window {
         width: height * 2
         radius: 8
         border.width: 2
-        border.color: "#d7566e"
+        border.color: "#2B1AD6" /* KoraCut: Violet Kora, seul moment de marque dans l'application */
         color: activePalette.window
         clip: true
         NumberAnimation on opacity {
@@ -99,25 +99,6 @@ Window {
                 source: "qrc:/pics/splash-background.webp"
                 verticalAlignment: Image.AlignTop
                 fillMode: Image.PreserveAspectCrop
-                // Made By KDE
-                Image {
-                    id: kdelogo
-                    asynchronous: true
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.margins: 10
-                    height: kdelabel.height
-                    width: height
-                    source: "qrc:/pics/kde-logo.png"
-                    fillMode: Image.PreserveAspectFit
-                }
-                Label {
-                    id: kdelabel
-                    anchors.verticalCenter: kdelogo.verticalCenter
-                    anchors.left: kdelogo.right
-                    text: KI18n.i18n("Made by KDE")
-                    color: "#ffffff"
-                }
             }
             Rectangle { // rounded corners for image
                 anchors.fill: parent
@@ -139,11 +120,19 @@ Window {
             opacity: 0.5
         }
         Label {
+            // KoraCut : le bas de l'écran de démarrage, d'après la charte.
+            anchors.left: buttonBar.left
+            anchors.leftMargin: 10
+            anchors.verticalCenter: buttonBar.verticalCenter
+            opacity: 0.62
+            text: KI18n.i18nc("@info écran de démarrage", "Free software · GPL-3.0 · koracut.org")
+        }
+        Label {
             id: kdenliveid
             anchors.right: buttonBar.right
             anchors.rightMargin: 10
             anchors.verticalCenter: buttonBar.verticalCenter
-            text: KI18n.i18n("Kdenlive") + " " + splash.version
+            text: KI18n.i18n("KoraCut") + " " + splash.version
         }
         MouseArea {
             anchors.fill: parent
@@ -171,6 +160,29 @@ Window {
                 verticalAlignment: Text.AlignVCenter
                 wrapMode: Text.Wrap
             }
+            // KoraCut, 23 septembre 2026 : barre de chargement Violet Kora de 3 px (charte, écran de
+            // démarrage). Kdenlive ne donne que des messages, pas d'avancement : la barre est donc
+            // indéterminée, un segment qui va et vient pendant que le message s'affiche.
+            Rectangle {
+                id: koracutProgress
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 3
+                color: "transparent"
+                clip: true
+                Rectangle {
+                    id: koracutProgressSegment
+                    width: parent.width * 0.3
+                    height: parent.height
+                    color: "#2B1AD6"
+                    SequentialAnimation on x {
+                        running: koracutProgress.visible
+                        loops: Animation.Infinite
+                        NumberAnimation { from: -koracutProgressSegment.width; to: koracutProgress.width; duration: 1400; easing.type: Easing.InOutQuad }
+                    }
+                }
+            }
         }
         Rectangle {
             // Crash recovery
@@ -193,7 +205,7 @@ Window {
                 anchors.leftMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.right: restartButton.left
-                text: KI18n.i18n("Kdenlive crashed on last start.")
+                text: KI18n.i18n("KoraCut crashed on last start.")
                 Layout.alignment: Qt.AlignVCenter
                 wrapMode: Text.Wrap
             }
@@ -275,9 +287,7 @@ Window {
                 anchors.leftMargin: 10
                 anchors.right: notesButton.left
                 textFormat: Text.RichText
-                text: KI18n.i18n("Kdenlive was upgraded. If you like it, consider <a href=\"%1\">getting involved</a> or help <a href=\"%2\">funding</a>.",
-                           "https://kdenlive.org/get-involved/?mtm_campaign=kdenlive_inapp&mtm_kwd=splash_upgraded_contribute&mtm_content=" + splash.version,
-                           "https://kdenlive.org/fund/?mtm_campaign=kdenlive_inapp&mtm_kwd=splash_upgraded_donate&mtm_content=" + splash.version)
+                text: KI18n.i18n("KoraCut has just been updated.")
                 wrapMode: Text.Wrap
                 HoverHandler {
                     enabled: upgradedLabel.hoveredLink
@@ -293,7 +303,7 @@ Window {
                 property bool buttonPressed: false
                 text: KI18n.i18n("What's New")
                 icon.name: "help-contents"
-                onClicked: splash.openLink("https://kdenlive.org/news/releases/" + splash.version + "?mtm_campaign=kdenlive_inapp&mtm_kwd=splash_upgraded_notes")
+                onClicked: splash.openLink("https://koracut.org/blog")
                 Keys.onPressed: (event)=> {
                     if (event.key === Qt.Key_Return) {
                         buttonPressed = true

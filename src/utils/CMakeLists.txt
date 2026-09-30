@@ -8,6 +8,7 @@ set(kdenlive_SRCS
   utils/devices.cpp
   utils/flowlayout.cpp
   utils/gentime.cpp
+  utils/machineprofile.cpp # KoraCut : profils machine (chantier 10), pas encore appelé par l'assistant
   utils/qcolorutils.cpp
   utils/thumbnailcache.cpp
   utils/timecode.cpp

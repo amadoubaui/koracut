@@ -53,6 +53,23 @@ QString KdenliveTests::createProducerWithSound(Mlt::Profile &prof, std::shared_p
     return binId;
 }
 
+void KdenliveTests::loadRenderPresets(const QString &path)
+{
+    RenderPresetRepository::get()->parseFile(path, false);
+}
+
+QString KdenliveTests::createFileProducer(Mlt::Profile &prof, std::shared_ptr<ProjectItemModel> binModel, const QString &path)
+{
+    std::shared_ptr<Mlt::Producer> producer = std::make_shared<Mlt::Producer>(prof, path.toUtf8().constData());
+    REQUIRE(producer->is_valid());
+    QString binId = QString::number(binModel->getFreeClipId());
+    auto binClip = ProjectClip::construct(binId, QIcon(), binModel, producer);
+    Fun undo = []() { return true; };
+    Fun redo = []() { return true; };
+    REQUIRE(binModel->addItem(binClip, binModel->getRootFolder()->clipId(), undo, redo));
+    return binId;
+}
+
 QString KdenliveTests::createAVProducer(Mlt::Profile &prof, std::shared_ptr<ProjectItemModel> binModel)
 {
     std::shared_ptr<Mlt::Producer> producer =

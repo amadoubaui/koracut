@@ -12,6 +12,8 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "utils/gentime.h"
 #include "scopes/sharedframe.h"
 #include "widgets/timecodedisplay.h"
+#include "koracutmonitorguides.h"
+#include "utils/machineprofile.h"
 
 #include <QMutex>
 #include <QTimer>
@@ -22,6 +24,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 
 class SnapModel;
 class ProjectClip;
+class EffectStackModel;
 class MonitorManager;
 class MonitorProxy;
 class QSlider;
@@ -142,6 +145,44 @@ public:
     void slotZoomOut();
     /** @brief Reset monitor zoom to normal */
     void slotZoomReset();
+
+    /** @name KoraCut, document 20 : zoom, déplacement direct, règles et repères. */
+    ///@{
+    /** @brief Zoome autour d'un point de la vue (pixels du VideoWidget), borné comme slotZoom. */
+    void koraCutZoomAt(double newZoom, const QPointF &viewPos);
+    /** @brief Le zoom affiché : 100 = un pixel du projet pour un pixel d'écran. */
+    double koraCutZoomPercent() const;
+    void koraCutSetZoomPercent(double percent);
+    /** @brief Affiche ou cache les règles de ce moniteur. */
+    void koraCutToggleRulers();
+    /** @brief Choisit la plateforme dont on dessine les zones (identifiant du fichier de données, vide pour aucune). */
+    void koraCutSetPlatform(const QString &id);
+    /** @brief Un plan de la timeline vient d'être montré dans l'inspecteur : son cadre s'affiche dans le
+     *  moniteur sans passer par l'inspecteur, l'effet Transformer n'est activé qu'au premier glisser. */
+    void koraCutOfferTransform(const std::shared_ptr<EffectStackModel> &stack);
+    /** @brief Commandes de contrôle sans écran (KORACUT_SHOT_ACTIONS=moniteur:zoom=150, regles, repere=x:540,
+     *  plateforme=tiktok, deplacer=100,80). Écrit des lignes KORACUT-MONITEUR et KORACUT-GEOMETRIE. */
+    void koraCutDebugCommand(const QString &command);
+    ///@}
+    /** @name KoraCut, chantier 10 : aperçu adaptatif et mesures pour le panneau Diagnostic. */
+    ///@{
+    struct KoraCutPlaybackStats {
+        bool playing{false};
+        /** Images affichées et sautées pendant la dernière seconde de lecture. */
+        double fps{0.};
+        int dropped{0};
+        /** Temps moyen et maximal entre deux images affichées (ms), depuis la dernière lecture de ces stats. */
+        double frameMs{0.};
+        double frameMaxMs{0.};
+        /** Cran previewScaling en service, et vrai s'il a été baissé par l'aperçu adaptatif. */
+        int scaling{0};
+        bool adapted{false};
+    };
+    /** @brief Les mesures en direct ; @p reset remet à zéro les temps par image. */
+    KoraCutPlaybackStats koraCutStats(bool reset = true);
+    /** @brief Relit le plancher de l'aperçu adaptatif (après un changement de profil). */
+    void koraCutConfigureAdaptive();
+    ///@}
     /** @brief Set a property on the MLT consumer */
     void setConsumerProperty(const QString &name, const QString &value);
     /** @brief Play or Loop zone sets a fake "out" on the producer. It is necessary to reset this before reloading the producer */
@@ -211,6 +252,8 @@ protected:
     void updateBgColor();
 
 private:
+    /** @brief KoraCut : cumul de la molette, pour ne bouger qu'au cran complet (trackpad). */
+    int m_wheelAccumulated{0};
     const QScreen *getScreenForFullscreen(bool *multipleScreens);
 
     // Fullscreen mirror helpers
@@ -272,6 +315,20 @@ private:
     SceneType::MonitorSceneType m_nextSceneType{SceneType::MonitorSceneNone};
     MonitorAudioLevel *m_audioMeterWidget;
     QTimer m_droppedTimer;
+    /** KoraCut : aperçu adaptatif (moniteur Programme) et mesures par image. */
+    MachineProfile::AdaptiveScaling m_koraCutAdaptive;
+    bool m_koraCutPlaying{false};
+    double m_koraCutLastFps{0.};
+    int m_koraCutLastDropped{0};
+    qint64 m_koraCutLastFrameNs{0};
+    double m_koraCutFrameSumMs{0.};
+    double m_koraCutFrameMaxMs{0.};
+    int m_koraCutFrameCount{0};
+    int m_koraCutFramesThisSecond{0};
+    /** Badge « Aperçu simplifié » de la barre du moniteur, visible pendant la lecture quand des effets lourds sont en pause. */
+    QLabel *m_koraCutSimplified{nullptr};
+    void koraCutPlaybackChanged(bool play);
+    void koraCutApplyScaling(int scaling);
     double m_displayedFps;
     int m_speedIndex;
     int m_startPlaybackPos{0};
@@ -293,6 +350,29 @@ private:
     QAction *m_markOut;
     QUuid m_displayedUuid;
     bool m_dirty{false};
+    /** @name KoraCut, document 20 */
+    ///@{
+    QToolButton *m_koraZoomButton{nullptr};
+    QAction *m_koraAutoKeyframe{nullptr};
+    QMenu *m_koraOverlayMenu{nullptr};
+    QAction *m_koraRulersAction{nullptr};
+    QList<KoraCutMonitorGuides::Platform> m_koraPlatforms;
+    QString m_koraPlatformId;
+    QString m_koraSuggestedPlatform;
+    /** Le cadre est proposé sur un plan dont la transformation n'est pas encore active. */
+    bool m_koraTransformOffer{false};
+    /** Une macro d'annulation est ouverte : activation de l'effet + premier glisser. */
+    bool m_koraTransformMacro{false};
+    std::weak_ptr<EffectStackModel> m_koraOfferStack;
+    bool m_koraGuidesLoading{false};
+    void koraCutUpdateZoomLabel();
+    void koraCutBuildOverlayMenu();
+    void koraCutLoadGuides();
+    void koraCutSaveGuides();
+    void koraCutSuggestPlatform();
+    void koraCutRefreshOffer(int pos, int retries = 10);
+    void koraCutEndTransformMacro();
+    ///@}
     QMutex m_openMutex;
     QString m_activeControllerId;
     QTimer m_preventSleepTimer;
@@ -301,6 +381,11 @@ protected:
     void loadQmlScene(SceneType::MonitorSceneType type, const QVariant &sceneData = QVariant(), bool resetProperties = false);
 
 private Q_SLOTS:
+    /** @name KoraCut, document 20 */
+    ///@{
+    void koraCutOnEffectChanged(const QRectF &rect);
+    void koraCutTransformDragFinished();
+    ///@}
     void slotSetThumbFrame();
     void slotSeek();
     void updateClipZone(const QPoint zone);

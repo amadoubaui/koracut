@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24">
+  <!-- KoraCut, compose de primitives Lucide (kc-slide) - ISC -->
+  <defs>
+    <style type="text/css" id="current-color-scheme">.ColorScheme-Text { color:#fcfcfc; }</style>
+  </defs>
+  <g class="ColorScheme-Text" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 8v8M21 8v8" />
+    <rect x="8" y="8" width="8" height="8" rx="1.5" />
+    <path d="M6 4h12m-10-2-2 2 2 2m8-4 2 2-2 2" />
+  </g>
+</svg>

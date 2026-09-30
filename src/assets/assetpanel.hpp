@@ -37,6 +37,10 @@ class AssetPanel : public QWidget
     Q_OBJECT
 
 public:
+    /** @brief KoraCut : pose un widget en tête du panneau (la section Motion, document 19). */
+    void koraCutInsertTopWidget(QWidget *widget);
+    /** @brief KoraCut : pose un widget en tête de la zone qui défile, avant la pile d'effets (la section Outils, document 24). */
+    void koraCutInsertToolsWidget(QWidget *widget);
     AssetPanel(QWidget *parent);
 
     /** @brief Shows the parameters of the given transition model */

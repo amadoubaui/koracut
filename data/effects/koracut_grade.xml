@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<!DOCTYPE kpartgui>
+<!-- SPDX-FileCopyrightText: 2026 KoraCut contributors / PIXEWORK -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- L'étalonnage de KoraCut (document 22) : un graphe de nœuds comme la page Color de DaVinci Resolve.
+     Réglé depuis le module Étalonnage et par les agents, jamais à la main dans la pile d'effets. -->
+<effect xmlns="https://www.kdenlive.org" tag="koracut_grade" id="koracut_grade" type="hidden">
+    <name>Color grade</name>
+    <description>Node-based color grade (primaries, log wheels, curves, qualifier, windows, color space transform, LUT)</description>
+    <author>KoraCut contributors</author>
+    <parameter type="hidden" name="graphe" default="">
+        <name>Grade graph</name>
+    </parameter>
+</effect>

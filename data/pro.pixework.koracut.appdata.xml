@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component type="desktop-application">
+  <id>pro.pixework.koracut.desktop</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <developer id="pro.pixework">
+    <name translate="no">PIXEWORK</name>
+  </developer>
+  <branding>
+    <color type="primary" scheme_preference="light">#E8E4FB</color>
+    <color type="primary" scheme_preference="dark">#2B1AD6</color>
+  </branding>
+  <name>KoraCut</name>
+  <summary>Création multimédia pilotée par IA</summary>
+  <description>
+    <p>KoraCut est une application de création multimédia : montage vidéo, étalonnage, audio, VFX, photo et illustration. Chaque module peut être piloté par des agents IA, avec le modèle de votre choix.</p>
+    <p>Ce que sait faire KoraCut :</p>
+    <ul>
+      <li>Montage multipiste, avec effets, transitions et compositions</li>
+      <li>Étalonnage : roues chromatiques, courbes, LUT</li>
+      <li>Audio : mixage, enregistrement de voix, sous-titres automatiques</li>
+      <li>Titres, images clés et animation</li>
+      <li>Export dans les formats courants, avec des préréglages</li>
+    </ul>
+    <p>KoraCut est un logiciel libre sous licence GPL v3.</p>
+  </description>
+  <releases>
+    <release version="26.08.1" date="2026-09-20"/>
+  </releases>
+  <url type="homepage">https://koracut.org</url>
+  <url type="bugtracker">https://koracut.org/bogues</url>
+  <url type="help">https://koracut.org/docs</url>
+  <launchable type="desktop-id">pro.pixework.koracut.desktop</launchable>
+  <provides>
+    <binary>koracut</binary>
+    <binary>koracut_render</binary>
+    <mediatype>application/x-koracut</mediatype>
+    <mediatype>application/x-koracuttitle</mediatype>
+  </provides>
+  <content_rating type="oars-1.1"/>
+</component>

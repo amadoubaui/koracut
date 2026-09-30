@@ -15,9 +15,11 @@
 
 #include "mlt++/MltTractor.h"
 
+#include <KActionCollection>
 #include <KLocalizedString>
 #include <QApplication>
 #include <QHBoxLayout>
+#include <QMenu>
 #include <QModelIndex>
 #include <QScreen>
 #include <QScrollArea>
@@ -56,6 +58,22 @@ MixerManager::MixerManager(QWidget *parent)
     m_box->addWidget(m_masterSeparator);
     m_box->addLayout(m_masterBox);
     setLayout(m_box);
+    // KoraCut, 22 septembre 2026 : la baisse automatique de la musique, aussi depuis le mixeur
+    // (clic droit sur une zone libre). L'action est cherchée au moment du clic : le mixeur est
+    // construit avant que la fenêtre principale n'ait créé ses actions.
+    setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(this, &QWidget::customContextMenuRequested, this, [this](const QPoint &pos) {
+        if (!pCore->window()) {
+            return;
+        }
+        QAction *ducking = pCore->window()->actionCollection()->action(QStringLiteral("koracut_auto_ducking"));
+        if (!ducking) {
+            return;
+        }
+        QMenu menu(this);
+        menu.addAction(ducking);
+        menu.exec(mapToGlobal(pos));
+    });
 }
 
 void MixerManager::checkAudioLevelVersion()

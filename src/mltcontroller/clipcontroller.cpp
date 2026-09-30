@@ -449,7 +449,10 @@ const char *ClipController::getPassPropertiesList(bool passLength)
                         "progressive,force_tff,threads,"
                         "force_"
                         "colorspace,set.force_full_luma,templatetext,file_hash,autorotate,disable_exif,xmldata,vstream,astream,set.test_image,set."
-                        "test_audio,ttl,kdenlive:tags,kdenlive:markers,kdenlive:masks,kdenlive:rating";
+                        "test_audio,ttl,kdenlive:tags,kdenlive:markers,kdenlive:masks,kdenlive:rating,"
+                        // KoraCut : un clip Motion garde son lien avec sa composition quand son média est échangé.
+                        "kdenlive:koracut_motion_project,kdenlive:koracut_motion_element,kdenlive:koracut_motion_hash,kdenlive:koracut_motion_in,"
+                        "kdenlive:koracut_motion_nom_auto";
     if (passLength) {
         props.append(",length");
     }
@@ -714,6 +717,22 @@ const QString ClipController::codec(bool audioCodec) const
 const QString ClipController::clipUrl() const
 {
     return m_path;
+}
+
+void ClipController::koraCutRelocate(const QString &path)
+{
+    m_path = path.isEmpty() ? QString() : QFileInfo(path).absoluteFilePath();
+    if (!m_properties) {
+        return;
+    }
+    // Avec un proxy, « resource » est le proxy : seule l'origine change.
+    if (!m_usesProxy) {
+        m_properties->set("resource", m_path.toUtf8().constData());
+    }
+    const QString origurl = m_properties->get("kdenlive:originalurl");
+    if (!origurl.isEmpty() || !m_usesProxy) {
+        m_properties->set("kdenlive:originalurl", m_path.toUtf8().constData());
+    }
 }
 
 bool ClipController::sourceExists() const

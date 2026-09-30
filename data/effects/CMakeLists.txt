@@ -42,6 +42,7 @@ hsl_primaries.xml
 hsl_range.xml
 invert.xml
 lift_gamma_gain.xml
+koracut_grade.xml
 lightshow.xml
 loudness.xml
 luma.xml

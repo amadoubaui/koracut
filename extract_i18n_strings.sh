@@ -2,15 +2,15 @@
 # SPDX-FileCopyrightText: None
 # SPDX-License-Identifier: CC0-1.0
 
-# Extract i18n strings from Kdenlive source code for local debugging/testing purposes
+# Extract i18n strings from KoraCut source code for local debugging/testing purposes
 # This script properly handles i18nc, i18np, i18ncp, and other KDE i18n functions used in the codebase
 # See dev-docs/build.md for the complete translation workflow documentation
 
 # Code for kde_xgettext() from https://invent.kde.org/sysadmin/l10n-scripty/-/blob/master/extract-messages.sh
 kde_xgettext() {
     xgettext --copyright-holder="This file is copyright:" \
-        --package-name=kdenlive \
-        --msgid-bugs-address=https://bugs.kde.org \
+        --package-name=koracut \
+        --msgid-bugs-address=https://koracut.org/bogues \
         --from-code=UTF-8 \
         -C --kde \
         -ci18n \

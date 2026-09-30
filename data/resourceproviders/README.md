@@ -1,5 +1,5 @@
 # How To Write Provider Configurations
-Instruction written 2021 by Julius Künzel as part of Kdenlive (www.kdenlive.org)
+Instruction written in 2021 by Julius Künzel, for the project KoraCut derives from.
 ## Overview
 Provider configuration files are json files.
 Here is an example for [freesound](https://freesound.org)
@@ -63,7 +63,7 @@ Each provider config files should only specify a certain media type such as `vid
 | homepage | String | yes | Url pointing to the providers webpage |
 | type | String | yes | one of `video`, `image`, `music`, `sound` |
 | integration | String | yes | Must be `buildin` as this is the only supported value at the moment |
-| clientkey | String | If OAuth2 or `%clientkey%` is used | The client key to access the api. </br>_Kdenlive has some keys build in:  `%pixabay_apikey%`, `%freesound_apikey%` and `%pexels_apikey%` will be replaced by a key for the certain provider._ |
+| clientkey | String | If OAuth2 or `%clientkey%` is used | The client key to access the api. </br>_Some keys are built in:  `%pixabay_apikey%`, `%freesound_apikey%` and `%pexels_apikey%` will be replaced by a key for the certain provider._ |
 | downloadOAuth2 | bool | no | Whether OAuth2 authentication is needed to download files
 | api | Object | yes | see  [Api](#api) |
 
@@ -107,7 +107,7 @@ The objects in the arrays in `params` and `header` should contain two fields: `k
 | filetype | String | no | The items filetype |
 | id | String | yes | Name of the key in a list element holding the items id |
 | url | String | | Url to the item to be opened in a external browser |
-| licenseUrl | String | | Url to the license to be opened in a external browser. If you use a [template](#templates), always use link to the english license version. Kdenlive can generate License names out of links to Creative Commons, Pexels and Pixabay Licenses for all other links the License name is "Unknown License". |
+| licenseUrl | String | | Url to the license to be opened in a external browser. If you use a [template](#templates), always use link to the english license version. KoraCut can generate license names out of links to Creative Commons, Pexels and Pixabay licenses for all other links the License name is "Unknown License". |
 | description | String | no | Description of the item |
 | author | String | no | Name of the items author |
 | authorUrl | String | no | Link to the items authors page to be opened in a external browser |

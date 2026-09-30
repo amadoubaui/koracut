@@ -1,20 +1,56 @@
 <RCC>
-    <qresource prefix="/kxmlgui5/kdenlive">
-        <file>kdenliveui.rc</file>
+    <qresource prefix="/kxmlgui5/koracut">
+        <file>koracutui.rc</file>
     </qresource>
     <qresource prefix="/data">
         <file alias="included_effects.txt">../data/included_effects.txt</file>
         <file alias="excluded_effects.txt">../data/excluded_effects.txt</file>
         <file alias="hidden_effects.txt">../data/hidden_effects.txt</file>
+        <file alias="heavy_effects.txt">../data/heavy_effects.txt</file>
         <file alias="included_transitions.txt">../data/included_transitions.txt</file>
         <file alias="excluded_transitions.txt">../data/excluded_transitions.txt</file>
         <file alias="hidden_transitions.txt">../data/hidden_transitions.txt</file>
         <file alias="preferred_effects.txt">../data/preferred_effects.txt</file>
-        <file alias="kdenlive_renderprofiles.knsrc">../data/knewstuff/kdenlive_renderprofiles.knsrc</file>
-        <file alias="kdenlive_titles.knsrc">../data/knewstuff/kdenlive_titles.knsrc</file>
-        <file alias="kdenlive_effects.knsrc">../data/knewstuff/kdenlive_effects.knsrc</file>
-        <file alias="kdenlive_wipes.knsrc">../data/knewstuff/kdenlive_wipes.knsrc</file>
-        <file alias="kdenlive_keyboardschemes.knsrc">../data/knewstuff/kdenlive_keyboardschemes.knsrc</file>
-        <file alias="kdenlive_luts.knsrc">../data/knewstuff/kdenlive_luts.knsrc</file>
+        <file alias="koracut-video-types.json">../data/koracut-video-types.json</file>
+        <file alias="koracut-script-templates.json">../data/koracut-script-templates.json</file>
+        <file alias="koracut-reperes-plateformes.json">../data/koracut-reperes-plateformes.json</file>
+        <file alias="koracut-export-models.json">../data/koracut-export-models.json</file>
+        <file alias="motion/gsap.min.js">../data/motion/gsap.min.js</file>
+        <file alias="koracut_renderprofiles.knsrc">../data/knewstuff/koracut_renderprofiles.knsrc</file>
+        <file alias="koracut_titles.knsrc">../data/knewstuff/koracut_titles.knsrc</file>
+        <file alias="koracut_effects.knsrc">../data/knewstuff/koracut_effects.knsrc</file>
+        <file alias="koracut_wipes.knsrc">../data/knewstuff/koracut_wipes.knsrc</file>
+        <file alias="koracut_keyboardschemes.knsrc">../data/knewstuff/koracut_keyboardschemes.knsrc</file>
+        <file alias="koracut_luts.knsrc">../data/knewstuff/koracut_luts.knsrc</file>
+    </qresource>
+    <qresource prefix="/">
+        <file alias="koracut.qss">../data/koracut.qss</file>
+        <file alias="koracut-themes.json">../data/koracut-themes.json</file>
+        <file alias="KoraCutDark.colors">../data/color-schemes/KoraCutDark.colors</file>
+        <file alias="KoraCutLight.colors">../data/color-schemes/KoraCutLight.colors</file>
+    </qresource>
+    <qresource prefix="/koracut/fonts">
+        <file alias="IBMPlexSans-Regular.ttf">../data/fonts/IBMPlexSans-Regular.ttf</file>
+        <file alias="IBMPlexSans-Medium.ttf">../data/fonts/IBMPlexSans-Medium.ttf</file>
+        <file alias="IBMPlexSans-SemiBold.ttf">../data/fonts/IBMPlexSans-SemiBold.ttf</file>
+        <file alias="IBMPlexSans-Bold.ttf">../data/fonts/IBMPlexSans-Bold.ttf</file>
+        <file alias="IBMPlexSans-Italic.ttf">../data/fonts/IBMPlexSans-Italic.ttf</file>
+        <file alias="DMMono-Regular.ttf">../data/fonts/DMMono-Regular.ttf</file>
+        <file alias="DMMono-Medium.ttf">../data/fonts/DMMono-Medium.ttf</file>
+        <file alias="JetBrainsMonoNL-Regular.ttf">../data/fonts/JetBrainsMonoNL-Regular.ttf</file>
+        <file alias="JetBrainsMonoNL-Bold.ttf">../data/fonts/JetBrainsMonoNL-Bold.ttf</file>
+        <file alias="JetBrainsMonoNL-Italic.ttf">../data/fonts/JetBrainsMonoNL-Italic.ttf</file>
+    </qresource>
+    <qresource prefix="/koracut">
+        <file alias="koracut-symbole.svg">../data/koracut/koracut-symbole.svg</file>
+        <file alias="chevron-bas-sombre.svg">../data/koracut/chevron-bas-sombre.svg</file>
+        <file alias="chevron-bas-clair.svg">../data/koracut/chevron-bas-clair.svg</file>
+        <file alias="module-montage.svg">../data/koracut/module-montage.svg</file>
+        <file alias="module-etalonnage.svg">../data/koracut/module-etalonnage.svg</file>
+        <file alias="module-audio.svg">../data/koracut/module-audio.svg</file>
+        <file alias="module-vfx.svg">../data/koracut/module-vfx.svg</file>
+        <file alias="module-photo.svg">../data/koracut/module-photo.svg</file>
+        <file alias="module-illustration.svg">../data/koracut/module-illustration.svg</file>
+        <file alias="module-export.svg">../data/koracut/module-export.svg</file>
     </qresource>
 </RCC>

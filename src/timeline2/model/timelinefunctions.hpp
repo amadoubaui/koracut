@@ -76,6 +76,43 @@ struct TimelineFunctions
     static bool requestMultipleClipsInsertion(const std::shared_ptr<TimelineItemModel> &timeline, const QStringList &binIds, int trackId, int position,
                                               QList<int> &clipIds, bool logUndo, bool refreshView);
 
+    /** @brief KoraCut : crée une piste du type du média (un son : audio ; le reste : vidéo) et y pose le clip,
+     * en une seule étape d'annulation. La piste audio va tout en bas ; la piste vidéo en bas des pistes
+     * vidéo, juste au-dessus de l'audio (document 13, § 10.3).
+     * @param newTrack reçoit l'identifiant de la piste créée
+     * @return l'identifiant du clip, -1 en cas d'échec (rien n'est alors changé). */
+    /** @brief KoraCut : retire une liste de zones sur toutes les pistes non verrouillées à la fois, de la
+     * dernière à la première, en refermant les trous (ou en les laissant si @p liftOnly). Tout va dans
+     * @p undo / @p redo : l'appelant pousse une seule étape d'annulation. Coupe automatique,
+     * « 15 - Coupe automatique (type AutoCut).md ».
+     * @param zones intervalles [début, fin[ en images, triés et disjoints
+     * @param moveGuides les guides suivent : ceux d'une zone retirée disparaissent, ceux d'après reculent.
+     *        Choix explicite, indépendant du réglage « verrouiller les guides » (vrai par défaut), fait
+     *        pour le déplacement d'espace : après une coupe automatique, un guide resté en place
+     *        désignerait un autre moment du podcast.
+     * @return faux si une zone n'a pas pu être retirée ; l'annulation accumulée est alors déjà rejouée. */
+    static bool removeZonesOnAllTracks(const std::shared_ptr<TimelineItemModel> &timeline, const QList<QPair<int, int>> &zones, bool liftOnly,
+                                       bool moveGuides, Fun &undo, Fun &redo);
+
+    /** @brief KoraCut : déplace des clips dans le temps, chacun de son décalage (en images), avec leur
+     * groupe (la vidéo d'une caméra suit son son). Dans une macro d'annulation. Les clips qui reculent
+     * sont déplacés du premier au dernier, ceux qui avancent du dernier au premier, pour qu'ils ne se
+     * heurtent pas en chemin. Synchronisation de la coupe automatique, document 15, lot 4.
+     * @return faux si un déplacement est refusé ; l'annulation accumulée est alors rejouée. */
+    static bool moveClipsBy(const std::shared_ptr<TimelineItemModel> &timeline, const QList<QPair<int, int>> &clipDeltas, Fun &undo, Fun &redo);
+
+    /** @brief KoraCut : monte les caméras d'un podcast (document 15, lot 5), sans rien supprimer. Les
+     * pistes vidéo des caméras sont coupées à chaque changement de plan, puis chaque morceau est activé
+     * s'il est la caméra choisie pour ce plan, désactivé sinon. On réactive un plan à la main pour le
+     * changer. Dans une macro d'annulation.
+     * @param shots les plans : [début, fin[ en images, et l'intervenant montré (-1 : plan large)
+     * @param cameraForSpeaker piste vidéo de la caméra de chaque intervenant, dans l'ordre
+     * @param wideTrack piste vidéo du plan large, -1 s'il n'y en a pas */
+    static bool applyCameraPlan(const std::shared_ptr<TimelineItemModel> &timeline, const QList<QPair<QPair<int, int>, int>> &shots,
+                                const QList<int> &cameraForSpeaker, int wideTrack, Fun &undo, Fun &redo);
+
+    static int requestClipOnNewTrack(const std::shared_ptr<TimelineItemModel> &timeline, const QString &data, int position, int &newTrack);
+
     /** @brief This function will find the blank located in the given track at the given position and remove it
         @returns true on success, false otherwise
         @param trackId id of the track to search in
@@ -189,6 +226,21 @@ struct TimelineFunctions
 
     static int spacerMinPos();
     static int spacerMaxPos();
+
+    /** @brief KoraCut : la couleur propre d'un clip de la timeline (« #RRGGBB »), vide s'il suit sa piste. */
+    static QString koraCutClipColor(const std::shared_ptr<TimelineItemModel> &timeline, int clipId);
+    /** @brief KoraCut : pose la même couleur sur ces clips (vide : ils reprennent celle de leur piste),
+     *  dans undo/redo. Faux si un identifiant n'est pas un clip. */
+    static bool koraCutSetClipsColor(const std::shared_ptr<TimelineItemModel> &timeline, const QList<int> &clipIds, const QString &color, Fun &undo, Fun &redo);
+    /** @brief KoraCut : pose la couleur d'une piste (vide : par défaut), dans undo/redo. */
+    static bool koraCutSetTrackColor(const std::shared_ptr<TimelineItemModel> &timeline, int trackId, const QString &color, Fun &undo, Fun &redo);
+    /** @brief KoraCut : le nom propre d'un clip de la timeline (vide : il porte le nom de son média),
+     *  dans undo/redo. Faux si l'identifiant n'est pas un clip. */
+    static bool koraCutSetClipName(const std::shared_ptr<TimelineItemModel> &timeline, int clipId, const QString &name, Fun &undo, Fun &redo);
+    /** @brief KoraCut : le fichier d'un média a été renommé ou déplacé sur le disque. Les producteurs de
+     *  piste de ses clips (ceux que le projet enregistre) prennent le nouveau chemin, sans rechargement.
+     *  Rend le nombre de producteurs mis à jour. */
+    static int koraCutRelocateMedia(const std::shared_ptr<TimelineItemModel> &timeline, const QString &binId, const QString &from, const QString &to);
 
 private:
     static bool getUsedTracks(const QDomNodeList &clips, const QDomNodeList &compositions, int masterSourceTrack, int &topAudioMirror, TimelineTracksInfo &allTracks, QList<int> &singleAudioTracks, std::unordered_map<int, int> &audioMirrors);

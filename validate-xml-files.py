@@ -24,10 +24,10 @@ if not args.check_all:
 supported_extensions = (('.xml', '.kcfg', '.ui', '.qrc'))
 xsd_map = {
         "data/effects/": {
-            "schema": "data/kdenlive-assets.xsd",
+            "schema": "data/koracut-assets.xsd",
             "excludes": ["data/effects/templates"]
         },
-        # "data/transitions/": { "schema": "data/kdenlive-assets.xsd" }
+        # "data/transitions/": { "schema": "data/koracut-assets.xsd" }
     }
 
 def get_changed_files() -> list[str]:
@@ -111,7 +111,7 @@ def do_xmllinting(files: list[str], schema: Optional[str] = None):
             print(result.stderr.decode())
 
 def read_effectscategory() -> list[str]:
-    tree = ET.parse('data/kdenliveeffectscategory.rc')
+    tree = ET.parse('data/koracuteffectscategory.rc')
     root = tree.getroot()
 
     effect_ids = []
@@ -164,7 +164,7 @@ def validate_effects(files: list[str]):
 
     if missing:
         missing = ", ".join(missing)
-        print(f"Some effects are missing in \"kdenliveeffectscategory.rc\": {missing}")
+        print(f"Some effects are missing in \"koracuteffectscategory.rc\": {missing}")
         exit(1)
 
 files = sorted(get_files())

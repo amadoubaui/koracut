@@ -116,6 +116,11 @@ public:
 
     /** @brief Returns a pointer to the singleton object. */
     static std::unique_ptr<Core> &self();
+    /** @brief Le fichier témoin d'un lancement en cours, un par fichier de configuration.
+     * KoraCut, 23 septembre 2026 : il était commun à toutes les configurations, si bien qu'une
+     * instance d'essai arrêtée au démarrage bloquait le lancement suivant de n'importe quelle autre
+     * (y compris la version de travail d'Amadou Ba) sur la question « planté au dernier démarrage ». */
+    static QString lockFilePath();
 
     /** @brief Delete the global core instance */
     static void clean();
@@ -381,6 +386,9 @@ public:
     std::unique_ptr<Mlt::Producer> mediaUnavailable;
     /** @brief Returns true if the project uses a vertical profile */
     bool isVertical() const;
+    /** @brief KoraCut : retourne le profil du projet en place (largeur et hauteur échangées, même
+     *  i/s), sans recharger les médias. Pour une séquence d'une autre orientation (document 13, § 5 bis). */
+    bool koraCutSetVertical(bool vertical);
     /** @brief Returns a list of luma files compatible with current project profile */
     const QStringList getLumasForProfile();
 
@@ -576,6 +584,8 @@ Q_SIGNALS:
     void loadLayoutFromData(const QString layout, bool onlyIfNoPrevious = false);
     /** The project profile changed, check if we have a more appropriate layout (horizontal/vertical) */
     void adjustLayoutToDar();
+    /** @brief KoraCut : la fenêtre est à l'écran, recharger la disposition du module si la variante (compact ou large) a changé. */
+    void recheckLayoutScreen();
     /** Should be called when the mainwindow has been constructed and before any dialog is shown to hide the splash screen */
     void GUISetupDone();
 };

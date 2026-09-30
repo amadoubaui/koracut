@@ -7,6 +7,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 
 #include "cliploadtask.h"
 #include "audio/audioInfo.h"
+#include "cliploadrecovery.h"
 #include "bin/bin.h"
 #include "bin/projectclip.h"
 #include "bin/projectitemmodel.h"
@@ -30,13 +31,49 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include <QAction>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
+#include <QHash>
 #include <QImage>
+#include <QMutex>
 #include <QMimeDatabase>
 #include <QPainter>
 #include <QString>
 #include <QTime>
 #include <QUuid>
 #include <QVariantList>
+
+namespace {
+
+// KoraCut, 21 septembre 2026 : garde-fous contre le faux « fichier introuvable ».
+// Une tâche de chargement interrompue marquait le clip introuvable sans jamais regarder
+// si le fichier était encore là. Résultat : un cadre rouge et une croix sur un média valide.
+// On limite le nombre de relances pour ne jamais tourner en boucle sur un média cassé.
+constexpr int KoraCutMaxRetries = 3;
+QMutex koracutRetryMutex;
+QHash<int, int> koracutRetries;
+
+// Nombre de relances déjà tentées pour ce clip.
+int koracutRetriesDone(int itemId)
+{
+    QMutexLocker lk(&koracutRetryMutex);
+    return koracutRetries.value(itemId, 0);
+}
+
+// Compte une relance de plus.
+void koracutCountRetry(int itemId)
+{
+    QMutexLocker lk(&koracutRetryMutex);
+    koracutRetries.insert(itemId, koracutRetries.value(itemId, 0) + 1);
+}
+
+// Remet le compteur à zéro : le clip a fini par charger, ou il est vraiment perdu.
+void koracutForgetRetries(int itemId)
+{
+    QMutexLocker lk(&koracutRetryMutex);
+    koracutRetries.remove(itemId);
+}
+
+} // namespace
 
 ClipLoadTask::ClipLoadTask(const ObjectId &owner, const QDomElement &xml, bool thumbOnly, int in, int out, QObject *object)
     : AbstractTask(owner, thumbOnly ? AbstractTask::THUMBJOB : AbstractTask::LOADJOB, object)
@@ -352,7 +389,7 @@ void ClipLoadTask::run()
             if (!ok) {
                 producerLength = producer->time_to_frames(pLength.toUtf8().constData());
             }
-            // Title from .kdenlivetitle file
+            // Title from title file
             QDomDocument txtdoc(QStringLiteral("titledocument"));
             if (Xml::docContentFromFile(txtdoc, resource, false)) {
                 if (txtdoc.documentElement().hasAttribute(QStringLiteral("duration"))) {
@@ -417,7 +454,7 @@ void ClipLoadTask::run()
             if (f.open(QIODevice::ReadOnly)) {
                 doc.setContent(&f);
                 f.close();
-                if (resource.endsWith(QLatin1String(".kdenlive"))) {
+                if (resource.endsWith(QLatin1String(".koracut")) || resource.endsWith(QLatin1String(".kdenlive"))) {
                     QDomElement pl = doc.documentElement().firstChildElement(QStringLiteral("playlist"));
                     if (!pl.isNull()) {
                         QString offsetData = Xml::getXmlProperty(pl, QStringLiteral("kdenlive:docproperties.seekOffset"));
@@ -504,7 +541,8 @@ void ClipLoadTask::run()
                                           Q_ARG(int, int(KMessageWidget::Warning)));
             }
             // Delete clip
-            abort();
+            // KoraCut : ici le média lui-même a refusé de s'ouvrir, ce n'est pas une interruption.
+            abort(true);
             // Done, we are ready for post processing
             Q_EMIT taskDone();
         }
@@ -818,6 +856,8 @@ void ClipLoadTask::run()
                 QMetaObject::invokeMethod(pCore->bin(), "slotCheckProfile", Qt::QueuedConnection, Q_ARG(QString, QString::number(m_owner.itemId)));
             }
             m_progress = 100;
+            // KoraCut : le clip a fini par charger, on oublie les relances comptées.
+            koracutForgetRetries(m_owner.itemId);
             Q_EMIT taskDone();
             return;
         }
@@ -827,25 +867,60 @@ void ClipLoadTask::run()
     return;
 }
 
-void ClipLoadTask::abort()
+void ClipLoadTask::abort(bool loadFailed)
 {
     m_progress = 100;
-    if (pCore->taskManager.isBlocked()) {
+    if (pCore->taskManager.isBlocked() || m_softDelete || m_thumbOnly) {
         return;
     }
-    if (!m_softDelete && !m_thumbOnly) {
-        auto binClip = pCore->projectItemModel()->getClipByBinID(QString::number(m_owner.itemId));
-        if (binClip) {
-            QMetaObject::invokeMethod(binClip.get(), "setInvalid", Qt::BlockingQueuedConnection);
-            if (!m_isCanceled.loadAcquire() && !binClip->isReloading) {
-                // User tried to add an invalid clip, remove it.
-                QMetaObject::invokeMethod(pCore->projectItemModel().get(), "requestBinClipDeletionById", Qt::BlockingQueuedConnection,
-                                          Q_ARG(QString, QString::number(m_owner.itemId)));
-            } else {
-                // An existing clip just became invalid, mark it as missing.
-                QMetaObject::invokeMethod(binClip.get(), "setClipStatus", Qt::BlockingQueuedConnection,
-                                          Q_ARG(FileStatus::ClipStatus, FileStatus::StatusMissing));
-            }
-        }
+    auto binClip = pCore->projectItemModel()->getClipByBinID(QString::number(m_owner.itemId));
+    if (!binClip) {
+        return;
+    }
+    // KoraCut, 21 septembre 2026 : on rassemble les faits, la règle est dans cliploadrecovery.
+    ClipLoadRecovery::Facts facts;
+    facts.loadFailed = loadFailed;
+    facts.canceled = m_isCanceled.loadAcquire() == 1;
+    facts.reloading = binClip->isReloading;
+    facts.clipAlreadyReady = binClip->statusReady();
+    facts.otherLoadJobPending = pCore->taskManager.hasPendingJob(m_owner, AbstractTask::LOADJOB);
+    facts.sourceOnDisk = ClipLoadRecovery::sourceIsThere(binClip->clipUrl());
+    facts.retriesDone = koracutRetriesDone(m_owner.itemId);
+    facts.maxRetries = KoraCutMaxRetries;
+
+    switch (ClipLoadRecovery::decide(facts)) {
+    case ClipLoadRecovery::Decision::Ignore:
+        return;
+    case ClipLoadRecovery::Decision::Retry: {
+        // Le fichier est là : on remet le clip en attente et on relance, pas de cadre rouge.
+        koracutCountRetry(m_owner.itemId);
+        QMetaObject::invokeMethod(binClip.get(), "setClipStatus", Qt::BlockingQueuedConnection,
+                                  Q_ARG(FileStatus::ClipStatus, FileStatus::StatusWaiting));
+        const int itemId = m_owner.itemId;
+        QMetaObject::invokeMethod(
+            pCore->projectItemModel().get(),
+            [itemId]() {
+                auto clip = pCore->projectItemModel()->getClipByBinID(QString::number(itemId));
+                if (clip && !clip->statusReady()) {
+                    clip->reloadProducer();
+                }
+            },
+            Qt::QueuedConnection);
+        return;
+    }
+    case ClipLoadRecovery::Decision::Delete:
+        koracutForgetRetries(m_owner.itemId);
+        QMetaObject::invokeMethod(binClip.get(), "setInvalid", Qt::BlockingQueuedConnection);
+        // User tried to add an invalid clip, remove it.
+        QMetaObject::invokeMethod(pCore->projectItemModel().get(), "requestBinClipDeletionById", Qt::BlockingQueuedConnection,
+                                  Q_ARG(QString, QString::number(m_owner.itemId)));
+        return;
+    case ClipLoadRecovery::Decision::MarkMissing:
+        koracutForgetRetries(m_owner.itemId);
+        QMetaObject::invokeMethod(binClip.get(), "setInvalid", Qt::BlockingQueuedConnection);
+        // An existing clip just became invalid, mark it as missing.
+        QMetaObject::invokeMethod(binClip.get(), "setClipStatus", Qt::BlockingQueuedConnection,
+                                  Q_ARG(FileStatus::ClipStatus, FileStatus::StatusMissing));
+        return;
     }
 }

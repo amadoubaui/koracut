@@ -69,7 +69,14 @@ public:
     /** @brief Open an existing Kdenlive project, returning nothing if the project cannot be opened. */
     static DocOpenResult Open(const QUrl &url, const QString &projectFolder, QUndoGroup *undoGroup,
                 bool recoverCorruption, MainWindow *parent = nullptr);
-    /** @brief Create a dummy project, used for testing. */
+    /** @brief Create a dummy project, used for testing.
+     *
+     * @param tracks The number of &lt;audio, video&gt; tracks. **Attention : l'ordre est
+     * l'inverse de celui du constructeur ci-dessus**, qui prend &lt;vidéo, audio&gt;. C'est
+     * pour ça que l'un appelle `createEmptyDocument(tracks.first, tracks.second)` et l'autre
+     * `createEmptyDocument(tracks.second, tracks.first)` : les deux sont justes, chacun dans sa
+     * convention. Vérifié le 22 septembre 2026 avec `spacertest`, qui passe `{1, 2}` et attend
+     * deux pistes vidéo. Ne pas « corriger » l'un des deux appels sans lire les deux. */
     KdenliveDoc(std::shared_ptr<DocUndoStack> undoStack, std::pair<int, int> tracks = {2, 2}, MainWindow *parent = nullptr);
     ~KdenliveDoc() override;
     /** @brief The active timelinemodel uuid. */
@@ -186,6 +193,9 @@ public:
      *  if width < 0, returns true if the document's automatic proxy generation is enabled
      */
     bool autoGenerateProxy(int width) const;
+    /** @brief KoraCut (chantier 10) : même règle, plus le codec. Un HEVC, AV1, VP9 ou 10 bits reçoit
+     *  un proxy à partir de la largeur du profil machine (proxyLourdLargeur), même sous proxyminsize. */
+    bool autoGenerateProxy(int width, const QString &codec, const QString &pixFormat) const;
     /** @brief Returns true if a proxy clip should be automatically generated for this width.
      *  if width < 0, returns true if the document's automatic proxy generation is enabled
      */

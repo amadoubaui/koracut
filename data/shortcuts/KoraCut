@@ -1,0 +1,37 @@
+<gui name="koracut" version="1">
+  <ActionProperties>
+    <!-- Le jeu de raccourcis KoraCut, celui qui est actif par défaut.
+         Ce fichier sert à y revenir après avoir essayé « Classique ».
+         Décidé dans « 12 - Passe montage », § 2, le 21 septembre 2026. -->
+    <Action name="select_tool" shortcut="A"/>
+    <Action name="razor_tool" shortcut="B"/>
+    <Action name="ripple_tool" shortcut="T"/>
+    <Action name="slip_tool" shortcut="S"/>
+    <Action name="spacer_tool" shortcut="E"/>
+    <!-- « M » pose un marqueur, comme dans CapCut et DaVinci. Le « * » du pavé numérique
+         reste en second raccourci pour les claviers complets (22 septembre 2026). -->
+    <Action name="add_marker_guide_quickly" shortcut="M; Num+*"/>
+    <Action name="edit_clip_marker" shortcut="Shift+M"/>
+    <Action name="snap" shortcut="N"/>
+    <Action name="cut_timeline_clip" shortcut="Ctrl+B"/>
+    <Action name="cut_timeline_all_clips" shortcut="Ctrl+Shift+B"/>
+    <Action name="trim_start_to_playhead" shortcut="Q"/>
+    <Action name="trim_end_to_playhead" shortcut="W"/>
+    <Action name="ripple_trim_start" shortcut="Shift+Q"/>
+    <Action name="ripple_trim_end" shortcut="Shift+W"/>
+    <Action name="insert_track" shortcut="Ctrl+Shift+N"/>
+    <Action name="insert_to_in_point" shortcut="V; ,"/>
+    <Action name="overwrite_to_in_point" shortcut=".; ;"/>
+    <!-- 23 septembre 2026, suite du document 9 : virgule et point pour insérer et écraser (le
+         point-virgule est la variante AZERTY), Maj+Z pour voir toute la séquence, D pour désactiver
+         le clip, Maj+Espace pour lire la zone (Ctrl+Espace devenait ⌘Espace, Spotlight, sur Mac).
+         Les flèches haut et bas (coupe précédente, suivante) sont posées dans le code, limitées à la
+         timeline et aux moniteurs, et ne se règlent pas ici. -->
+    <Action name="zoom_fit" shortcut="Shift+Z"/>
+    <Action name="select_timeline_zone" shortcut=""/>
+    <Action name="clip_switch" shortcut="D"/>
+    <Action name="monitor_play_zone" shortcut="Shift+Space"/>
+    <Action name="switch_monitor" shortcut=""/>
+    <Action name="switch_active_target" shortcut=""/>
+  </ActionProperties>
+</gui>

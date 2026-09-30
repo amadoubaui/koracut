@@ -730,7 +730,7 @@ QStringList ProjectSettings::extractPlaylistUrls(const QString &path)
                 } else {
                     urls << url;
                 }
-                if (url.endsWith(QLatin1String(".mlt")) || url.endsWith(QLatin1String(".kdenlive"))) {
+                if (url.endsWith(QLatin1String(".mlt")) || url.endsWith(QLatin1String(".koracut")) || url.endsWith(QLatin1String(".kdenlive"))) {
                     // TODO: Do something to avoid infinite loops if 2 files reference themselves...
                     urls << extractPlaylistUrls(url);
                 }

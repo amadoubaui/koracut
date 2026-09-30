@@ -88,7 +88,10 @@ MaskManager::MaskManager(QWidget *parent)
     m_maskHelper = new AutomaskHelper(this);
     connect(&m_paramsTimer, &QTimer::timeout, m_maskHelper, &AutomaskHelper::updateMaskParams);
     maskTree->setRootIsDecorated(false);
-    maskTree->setAlternatingRowColors(true);
+    // KoraCut : pas de zébrure. Elle alternait #1E1E1E et #2C2C2C, soit deux des quatre
+    // marches de surface : on ne savait plus si une ligne claire était une ligne paire
+    // ou une surface différente. La hauteur de ligne suffit à suivre une ligne.
+    maskTree->setAlternatingRowColors(false);
     maskTree->setAllColumnsShowFocus(true);
     maskTree->setIconSize(m_iconSize);
     maskTree->setContextMenuPolicy(Qt::CustomContextMenu);

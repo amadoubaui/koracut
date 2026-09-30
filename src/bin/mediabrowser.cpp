@@ -14,6 +14,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "mainwindow.h"
 #include "previewpanel.h"
 #include "project/dialogs/slideshowclip.h"
+#include "koracut/koracutmetrics.h"
 
 #include <KActionCollection>
 #include <KConfigGroup>
@@ -47,9 +48,7 @@ MediaBrowser::MediaBrowser(QWidget *parent)
     QVBoxLayout *lay = new QVBoxLayout(this);
     lay->setSpacing(0);
     QToolBar *tb = new QToolBar(this);
-    int size = style()->pixelMetric(QStyle::PM_SmallIconSize);
-    QSize iconSize(size, size);
-    tb->setIconSize(iconSize);
+    tb->setIconSize(KoraCutMetrics::iconToolbar());
     QString clipFolder = KRecentDirs::dir(QStringLiteral(":KdenliveClipFolder"));
     KFilePlacesModel *places = new KFilePlacesModel(this);
     QAction *zoomIn = new QAction(QIcon::fromTheme("zoom-in"), i18n("Zoom In"));
@@ -215,7 +214,7 @@ MediaBrowser::MediaBrowser(QWidget *parent)
     b->setToolTip(i18n("Do not create subfolders in Project Bin"));
     b->setWhatsThis(
         xi18nc("@info:whatsthis",
-               "When enabled, Kdenlive will import all clips contained in the folder and its subfolders without creating the subfolders in Project Bin."));
+               "When enabled, KoraCut will import all clips contained in the folder and its subfolders without creating the subfolders in Project Bin."));
     connect(b, &QCheckBox::toggled, this, [](bool enabled) { KdenliveSettings::setIgnoresubdirstructure(enabled); });
 
     QCheckBox *b2 = new QCheckBox(i18n("Import image sequence"));
@@ -223,7 +222,7 @@ MediaBrowser::MediaBrowser(QWidget *parent)
     connect(b2, &QCheckBox::toggled, this, [](bool enabled) { KdenliveSettings::setAutoimagesequence(enabled); });
     b2->setToolTip(i18n("Try to import an image sequence"));
     b2->setWhatsThis(
-        xi18nc("@info:whatsthis", "When enabled, Kdenlive will look for other images with the same name pattern and import them as an image sequence."));
+        xi18nc("@info:whatsthis", "When enabled, KoraCut will look for other images with the same name pattern and import them as an image sequence."));
     hlay3->addWidget(b2);
     hlay3->addWidget(b);
     lay->addWidget(tb);

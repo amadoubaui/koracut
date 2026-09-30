@@ -16,6 +16,8 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "capture/mediacapture.h"
 #include "config-kdenlive.h"
 #include "core.h"
+#include <QFileInfo>
+#include <KSharedConfig>
 #include "dialogs/proxytest.h"
 #include "dialogs/splash.hpp"
 #include "dialogs/subtitleedit.h"
@@ -25,12 +27,14 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "doc/kdenlivedoc.h"
 #include "kdenlive_debug.h"
 #include "kdenlivesettings.h"
+#include "koracut/koracutworkspace.h"
 #include "library/librarywidget.h"
 #include "mainwindow.h"
 #include "mltconnection.h"
 #include "mltcontroller/clipcontroller.h"
 #include "monitor/monitormanager.h"
 #include "profiles/profilemodel.hpp"
+#include <numeric>
 #include "profiles/profilerepository.hpp"
 #include "project/dialogs/guideslist.h"
 #include "project/projectmanager.h"
@@ -158,21 +162,21 @@ bool Core::build(LinuxPackageType packageType, bool testMode, bool debugMode, bo
         firstRun = !initialGroup.exists();
         // TODO: Check for upgrades
 
-        QFile lockFile(QDir::temp().absoluteFilePath(QStringLiteral("kdenlivelock")));
+        QFile lockFile(Core::lockFilePath());
         if (lockFile.exists()) {
             // a previous instance crashed, propose some actions
             if (KdenliveSettings::gpu_accel()) {
                 // Propose to disable movit
                 if (KMessageBox::questionTwoActions(QApplication::activeWindow(),
-                                                    i18n("Kdenlive crashed on last startup.\nDo you want to disable experimental GPU processing (Movit) ?"), {},
+                                                    i18n("KoraCut crashed on last startup.\nDo you want to disable experimental GPU processing (Movit) ?"), {},
                                                     KGuiItem(i18n("Disable GPU processing")), KStandardGuiItem::cont()) == KMessageBox::PrimaryAction) {
                     KdenliveSettings::setGpu_accel(false);
                 }
             } else {
                 // if first run, no need to reset config, keep lock file
                 if (firstRun) {
-                    const QString configFile = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("kxmlgui5/kdenlive/kdenliveui.rc"));
-                    // Check if a previous kdenliveui.rc file exists, so propose to erase
+                    const QString configFile = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("kxmlgui5/koracut/koracutui.rc"));
+                    // Check if a previous koracutui.rc file exists, so propose to erase
                     showRecovery = !configFile.isEmpty();
                 } else {
                     showRecovery = true;
@@ -242,13 +246,16 @@ void Core::buildSplash(bool firstRun, bool showWelcome, bool showCrashRecovery, 
         QMetaObject::invokeMethod(this, "cleanRestart", Qt::QueuedConnection, Q_ARG(bool, true));
     });
     connect(m_splash, &Splash::openBlank, this, [this]() {
+        // KoraCut, 23 septembre 2026 : « Nouveau projet » de l'accueil ouvre l'assistant par type de
+        // vidéo, une fois la fenêtre en place (le projet vierge s'ouvre d'abord, il reste si on annule).
+        auto ouvrir = [this]() {
+            QMetaObject::invokeMethod(m_projectManager, "slotLoadOnOpen", Qt::QueuedConnection);
+            QMetaObject::invokeMethod(m_projectManager, "newProjectWizard", Qt::QueuedConnection);
+        };
         if (m_splash->hasEventLoop() || !m_guiConstructed) {
-            connect(this, &Core::mainWindowReady, this, [&]() {
-                // Ensure the slot is called once project manager is build.
-                QMetaObject::invokeMethod(m_projectManager, "slotLoadOnOpen", Qt::QueuedConnection);
-            });
+            connect(this, &Core::mainWindowReady, this, ouvrir);
         } else {
-            QMetaObject::invokeMethod(pCore->projectManager(), "slotLoadOnOpen", Qt::QueuedConnection);
+            ouvrir();
         }
     });
     connect(m_splash, &Splash::openLink, this, [this](QString url) { openLink(QUrl(url)); });
@@ -283,7 +290,7 @@ void Core::buildSplash(bool firstRun, bool showWelcome, bool showCrashRecovery, 
             if (m_splash->hasEventLoop() || !m_guiConstructed) {
                 QMetaObject::invokeMethod(this, "cleanRestart", Qt::QueuedConnection, Q_ARG(bool, false));
             } else {
-                QFile lockFile(QDir::temp().absoluteFilePath(QStringLiteral("kdenlivelock")));
+                QFile lockFile(Core::lockFilePath());
                 lockFile.remove();
                 m_splash->deleteLater();
                 delete m_mainWindow;
@@ -440,7 +447,7 @@ void Core::initGUI(const QString &MltPath, const QUrl &Url, const QStringList &c
     }
 
     if (!ProfileRepository::get()->profileExists(m_profile)) {
-        KMessageBox::error(m_mainWindow, i18n("The default profile of Kdenlive is not set or invalid, press OK to set it to a correct value."));
+        KMessageBox::error(m_mainWindow, i18n("The default profile of KoraCut is not set or invalid, press OK to set it to a correct value."));
 
         // TODO this simple widget should be improved and probably use profileWidget
         // we get the list of profiles
@@ -465,7 +472,7 @@ void Core::initGUI(const QString &MltPath, const QUrl &Url, const QStringList &c
         if (!ok) {
             KMessageBox::error(
                 m_mainWindow,
-                i18n("The given profile is invalid. We default to the profile \"dv_pal\", but you can change this from Kdenlive's settings panel"));
+                i18n("The given profile is invalid. We default to the profile \"dv_pal\", but you can change this from KoraCut's settings panel"));
             m_profile = QStringLiteral("dv_pal");
         }
         KdenliveSettings::setDefault_profile(m_profile);
@@ -497,7 +504,7 @@ void Core::cleanRestart(bool cleanAndRestart)
     qDebug() << "::: STARTING CLEAN RESTART: " << cleanAndRestart;
     delete m_splash;
     m_loop.quit();
-    QFile lockFile(QDir::temp().absoluteFilePath(QStringLiteral("kdenlivelock")));
+    QFile lockFile(Core::lockFilePath());
     lockFile.remove();
     int timeout = 0;
     if (cleanAndRestart) {
@@ -567,13 +574,24 @@ void Core::restoreLayout()
     if (m_mainWindow == nullptr) {
         return;
     }
-    if (KdenliveSettings::kdockLayout().isEmpty() || !KdenliveSettings::kdockLayout().contains(QStringLiteral("KdenliveKDDock"))) {
+    // KoraCut : quand les dispositions livrées ont changé de forme depuis le dernier lancement, on
+    // repart du module plutôt que de l'état enregistré, sinon le changement ne se verrait jamais.
+    const bool outdated = KoraCutWorkspace::savedLayoutOutdated();
+    if (outdated) {
+        KoraCutWorkspace::markSavedLayoutCurrent();
+    }
+    if (outdated || KdenliveSettings::kdockLayout().isEmpty() || !KdenliveSettings::kdockLayout().contains(QStringLiteral("KdenliveKDDock"))) {
         // No existing layout, probably first run
-        Q_EMIT loadLayoutById(QStringLiteral("editing"), true);
+        // KoraCut : le module de départ est Montage.
+        Q_EMIT loadLayoutById(KdenliveSettings::koracut_module(), true);
+        m_mainWindow->show();
+        // La fenêtre n'avait pas encore d'écran quand la disposition a été choisie : maintenant qu'elle
+        // est posée (portable ou grand moniteur), on vérifie que la variante est la bonne.
+        QTimer::singleShot(0, this, [this]() { Q_EMIT recheckLayoutScreen(); });
     } else {
         Q_EMIT loadLayoutFromData(KdenliveSettings::kdockLayout().toUtf8(), true);
+        m_mainWindow->show();
     }
-    m_mainWindow->show();
     if (!KdenliveSettings::showtitlebars()) {
         Q_EMIT pCore->hideBars(true);
     }
@@ -763,6 +781,13 @@ const QString Core::nameForLumaFile(const QString &filename)
     names.insert("luma22.pgm", i18nc("Luma transition name", "Clock Top"));
 
     return names.contains(filename) ? names.constFind(filename).value() : filename;
+}
+
+QString Core::lockFilePath()
+{
+    const QString config = QFileInfo(KSharedConfig::openConfig()->name()).fileName();
+    return QDir::temp().absoluteFilePath(config.isEmpty() || config == QLatin1String("koracutrc") ? QStringLiteral("koracutlock")
+                                                                                                     : QStringLiteral("koracutlock-%1").arg(config));
 }
 
 std::unique_ptr<Core> &Core::self()
@@ -974,6 +999,52 @@ const QString &Core::getCurrentProfilePath() const
 bool Core::isVertical() const
 {
     return m_projectProfile.dar() < 0.7;
+}
+
+bool Core::koraCutSetVertical(bool vertical)
+{
+    if (vertical == isVertical() || m_currentProfile.isEmpty()) {
+        return false;
+    }
+    std::unique_ptr<ProfileModel> &current = getCurrentProfile();
+    // Le même profil, tourné d'un quart : un existant qui correspond, sinon un profil écrit dans
+    // ceux de l'utilisateur, comme pour un projet neuf (projectmanager.cpp, newFileFromPlan).
+    const int w = current->height();
+    const int h = current->width();
+    const int g = std::gcd(w, h);
+    ProfileParam wanted(w, h, current->frame_rate_num(), current->frame_rate_den(), w / g, h / g, current->sample_aspect_num(), current->sample_aspect_den(),
+                        current->colorspace(), !current->progressive());
+    QString path = ProfileRepository::get()->findMatchingProfile(&wanted);
+    if (path.isEmpty()) {
+        wanted.m_description = QStringLiteral("KoraCut %1×%2 %3 i/s").arg(w).arg(h).arg(current->fps());
+        path = ProfileRepository::get()->saveProfile(&wanted);
+    }
+    if (path.isEmpty() || !ProfileRepository::get()->profileExists(path)) {
+        return false;
+    }
+    std::unique_ptr<ProfileModel> &turned = ProfileRepository::get()->getProfile(path);
+    if (turned->frame_rate_num() != m_projectProfile.frame_rate_num() || turned->frame_rate_den() != m_projectProfile.frame_rate_den()) {
+        return false;
+    }
+    // Pas de slotCancelJobs ni de rechargement des producteurs (setCurrentProfile le fait) : les
+    // producteurs MLT lisent la taille du profil au rendu, et les proxys en cours continuent.
+    m_currentProfile = path;
+    m_projectProfile.set_width(turned->width());
+    m_projectProfile.set_height(turned->height());
+    m_projectProfile.set_sample_aspect(turned->sample_aspect_num(), turned->sample_aspect_den());
+    m_projectProfile.set_display_aspect(turned->display_aspect_num(), turned->display_aspect_den());
+    free(m_projectProfile.get_profile()->description);
+    m_projectProfile.get_profile()->description = strdup(turned->description().toUtf8().constData());
+    m_projectProfile.set_explicit(true);
+    updateMonitorProfile();
+    if (m_guiConstructed) {
+        m_monitorManager->resetProfiles();
+        Q_EMIT m_monitorManager->updatePreviewScaling();
+        Q_EMIT m_mainWindow->updateRenderWidgetProfile();
+    }
+    Q_EMIT updateProjectTimecode();
+    Q_EMIT adjustLayoutToDar();
+    return true;
 }
 
 bool Core::setCurrentProfile(const QString profilePath)
@@ -2292,7 +2363,7 @@ void Core::openDocumentationLink(const QUrl &link)
     }
     if (KMessageBox::questionTwoActions(
             QApplication::activeWindow(),
-            i18n("This will open a browser to display Kdenlive's online documentation at the following url:\n %1", link.toDisplayString()), {},
+            i18n("This will open a browser to display KoraCut's online documentation at the following url:\n %1", link.toDisplayString()), {},
             KGuiItem(i18n("Open Browser")), KStandardGuiItem::cancel(), QStringLiteral("allow_browser_help")) == KMessageBox::SecondaryAction) {
         // Stop
         return;
@@ -2302,7 +2373,7 @@ void Core::openDocumentationLink(const QUrl &link)
 
 void Core::openLink(const QUrl &link)
 {
-    if (link.host() != QLatin1String("kdenlive.org") && link.host() != QLatin1String("docs.kdenlive.org") &&
+    if (link.host() != QLatin1String("koracut.org") && link.host() != QLatin1String("docs.koracut.org") &&
         KMessageBox::questionTwoActions(QApplication::activeWindow(), i18n("This will open a browser to display a link:\n %1", link.toDisplayString()), {},
                                         KGuiItem(i18n("Open Browser")), KStandardGuiItem::cancel(),
                                         QStringLiteral("allow_browser_help")) == KMessageBox::SecondaryAction) {

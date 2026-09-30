@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<script src="assets/gsap.min.js"></script>
+<style>
+  body { margin: 0; background: transparent; }
+  #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; font-family: system-ui, sans-serif; }
+  #bandeau { position: absolute; left: 96px; bottom: 54px; display: flex; align-items: stretch; }
+  #barre { width: 8px; background: #F2B233; border-radius: 2px; }
+  #textes { background: rgba(28, 78, 154, 0.9); color: #FFFFFF; padding: 18px 36px 20px 28px; border-radius: 0 6px 6px 0; }
+  #nom { font-size: 44px; font-weight: 700; line-height: 1.1; margin: 0; }
+  #fonction { font-size: 28px; font-weight: 400; line-height: 1.2; margin: 6px 0 0; opacity: 0.92; }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="bandeau-awa" data-start="0" data-duration="5" data-fps="25" data-width="1920" data-height="1080">
+  <section id="bandeau" class="clip" data-start="0" data-duration="5" data-track-index="1">
+    <div id="barre"></div>
+    <div id="textes">
+      <p id="nom">Awa Ndiaye</p>
+      <p id="fonction">directrice</p>
+    </div>
+  </section>
+</div>
+<script>
+  window.__timelines = window.__timelines || {};
+  const tl = gsap.timeline({ paused: true });
+  tl.fromTo("#bandeau", { x: -60, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 0);
+  tl.fromTo("#fonction", { y: 12, opacity: 0 }, { y: 0, opacity: 0.92, duration: 0.4, ease: "power2.out" }, 0.15);
+  tl.to("#bandeau", { x: -40, opacity: 0, duration: 0.35, ease: "power2.in" }, 4.6);
+  window.__timelines["bandeau-awa"] = tl;
+</script>
+</body>
+</html>

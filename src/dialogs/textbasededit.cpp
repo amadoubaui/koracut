@@ -1160,7 +1160,7 @@ void TextBasedEdit::startRecognition()
     if (clip->clipType() == ClipType::Playlist) {
         // We need to extract audio first
         m_playlistWav.remove();
-        m_playlistWav.setFileTemplate(QDir::temp().absoluteFilePath(QStringLiteral("kdenlive-XXXXXX.wav")));
+        m_playlistWav.setFileTemplate(QDir::temp().absoluteFilePath(QStringLiteral("koracut-XXXXXX.wav")));
         if (!m_playlistWav.open()) {
             showMessage(i18n("Cannot create temporary file."), KMessageWidget::Warning);
             return;
@@ -1209,7 +1209,7 @@ void TextBasedEdit::startRecognition()
                         }
 
                         if (speech_zone->isChecked()) {
-                            m_tmpCutWav.setFileTemplate(QDir::temp().absoluteFilePath(QStringLiteral("kdenlive-XXXXXX.wav")));
+                            m_tmpCutWav.setFileTemplate(QDir::temp().absoluteFilePath(QStringLiteral("koracut-XXXXXX.wav")));
                             if (!m_tmpCutWav.open()) {
                                 showMessage(i18n("Cannot create temporary file."), KMessageWidget::Warning);
                                 return;
@@ -1269,7 +1269,7 @@ void TextBasedEdit::startRecognition()
             }
             connect(m_speechJob.get(), &QProcess::readyReadStandardOutput, this, &TextBasedEdit::slotProcessWhisperSpeech);
             if (speech_zone->isChecked()) {
-                m_tmpCutWav.setFileTemplate(QDir::temp().absoluteFilePath(QStringLiteral("kdenlive-XXXXXX.wav")));
+                m_tmpCutWav.setFileTemplate(QDir::temp().absoluteFilePath(QStringLiteral("koracut-XXXXXX.wav")));
                 if (!m_tmpCutWav.open()) {
                     showMessage(i18n("Cannot create temporary file."), KMessageWidget::Warning);
                     return;
@@ -1617,10 +1617,10 @@ void TextBasedEdit::previewPlaylist(bool createNew)
     properties.insert(QStringLiteral("kdenlive:cutzones"), playZones.join(QLatin1Char(';')));
     if (createNew) {
         int ix = 1;
-        m_playlist = QStringLiteral("%1-cut%2.kdenlive").arg(sourcePath).arg(ix);
+        m_playlist = QStringLiteral("%1-cut%2.koracut").arg(sourcePath).arg(ix);
         while (QFile::exists(m_playlist)) {
             ix++;
-            m_playlist = QStringLiteral("%1-cut%2.kdenlive").arg(sourcePath).arg(ix);
+            m_playlist = QStringLiteral("%1-cut%2.koracut").arg(sourcePath).arg(ix);
         }
         QUrl url = KUrlRequesterDialog::getUrl(QUrl::fromLocalFile(m_playlist), this, i18n("Enter new playlist path"));
         if (url.isEmpty()) {

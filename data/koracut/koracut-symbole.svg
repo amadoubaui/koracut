@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: 2026 KoraCut contributors / PIXEWORK -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Symbole KoraCut « Quatre cordes, une coupe ».
+     Le fichier d'origine (Design/Logo/koracut-symbole.svg) coupe les cordes avec un masque SVG.
+     Qt SVG ne sait pas lire les masques : la coupe est donc développée ici en huit tracés.
+     La couleur est remplacée au chargement, voir src/koracut/koracuticons.cpp. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+<g fill="currentColor">
+<path d="M10.5 11.5A3.5 3.5 0 0 1 17.5 11.5L17.5 37.523L10.5 41.897Z"/>
+<path d="M10.5 48.972L17.5 44.598L17.5 52.5A3.5 3.5 0 0 1 10.5 52.5Z"/>
+<path d="M22.5 11.5A3.5 3.5 0 0 1 29.5 11.5L29.5 30.025L22.5 34.399Z"/>
+<path d="M22.5 41.474L29.5 37.1L29.5 52.5A3.5 3.5 0 0 1 22.5 52.5Z"/>
+<path d="M34.5 11.5A3.5 3.5 0 0 1 41.5 11.5L41.5 22.526L34.5 26.9Z"/>
+<path d="M34.5 33.975L41.5 29.601L41.5 52.5A3.5 3.5 0 0 1 34.5 52.5Z"/>
+<path d="M46.5 11.5A3.5 3.5 0 0 1 53.5 11.5L53.5 15.028L46.5 19.402Z"/>
+<path d="M46.5 26.477L53.5 22.103L53.5 52.5A3.5 3.5 0 0 1 46.5 52.5Z"/>
+</g>
+</svg>

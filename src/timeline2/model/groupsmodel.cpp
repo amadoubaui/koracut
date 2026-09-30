@@ -224,7 +224,10 @@ bool GroupsModel::isInGroup(int id) const
 int GroupsModel::getSplitPartner(int id) const
 {
     READ_LOCK();
-    Q_ASSERT(m_downLink.count(id) > 0);
+    // KoraCut : appelé depuis QML, donc parfois sur un clip déjà retiré. On rend -1.
+    if (m_downLink.count(id) == 0 || m_upLink.count(id) == 0) {
+        return -1;
+    }
     int groupId = m_upLink.at(id);
     if (groupId == -1 || getType(groupId) != GroupType::AVSplit) {
         // clip does not have an AV split partner

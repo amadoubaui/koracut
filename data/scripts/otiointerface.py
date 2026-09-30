@@ -9,7 +9,7 @@ import opentimelineio as otio
 
 def print_help():
     print("""
-    THIS SCRIPT IS PART OF KDENLIVE (www.kdenlive.org)
+    THIS SCRIPT IS PART OF KORACUT (koracut.org)
 
     Usage: python3 otiointerface.py [options]
 

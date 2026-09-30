@@ -4,6 +4,7 @@
 add_subdirectory(automask)
 add_subdirectory(vosk)
 add_subdirectory(whisper)
+add_subdirectory(voix)
 
 INSTALL(FILES 
     checkpackages.py

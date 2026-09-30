@@ -370,7 +370,7 @@ void PlaylistClip::generateTmpPlaylists()
             continue;
         }
         SequenceInfo info = ix.value();
-        QTemporaryFile tmp(QDir::temp().absoluteFilePath(QStringLiteral("kdenlive-XXXXXX.mlt")));
+        QTemporaryFile tmp(QDir::temp().absoluteFilePath(QStringLiteral("koracut-XXXXXX.mlt")));
         tmp.setAutoRemove(false);
         if (tmp.open()) {
             tmp.close();
@@ -430,7 +430,7 @@ bool PlaylistClip::hasAlpha()
     QFile inputFile(clipUrl());
     if (inputFile.open(QIODevice::ReadOnly)) {
         const QString png = QStringLiteral(".png");
-        const QString title = QStringLiteral(".kdenlivetitle");
+        const QString title = QStringLiteral("kdenlivetitle");
         const QString kdenliveAlpha = QStringLiteral("kdenlive:has_alpha");
         const QString codecInfo = QStringLiteral(".codec.pix_fmt\">");
         QTextStream in(&inputFile);

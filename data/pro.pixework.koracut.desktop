@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=KoraCut
+GenericName=Création multimédia pilotée par IA
+Comment=Montage vidéo, étalonnage, audio, VFX, photo et illustration pilotés par des agents IA.
+Type=Application
+Exec=koracut %F
+Icon=koracut
+StartupWMClass=koracut
+X-DocPath=koracut/index.html
+MimeType=application/x-koracut;application/x-kdenlive;application/vnd.mlt+xml;video/mp4;video/x-matroska;video/webm;video/quicktime;video/x-msvideo;video/mpeg;video/3gpp;video/3gpp2;audio/mpeg;audio/ogg;audio/flac;audio/wav;audio/mp4;audio/x-matroska;image/gif;image/jpeg;image/png;image/webp;
+Categories=Qt;AudioVideo;AudioVideoEditing;
+Keywords=montage;vidéo;audio;étalonnage;VFX;photo;illustration;IA;
+X-DBUS-ServiceName=pro.pixework.koracut

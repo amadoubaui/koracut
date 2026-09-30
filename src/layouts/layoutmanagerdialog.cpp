@@ -35,7 +35,10 @@ void LayoutManagerDialog::setupUi(const QString &currentLayoutId)
     mainLayout->addWidget(new QLabel(i18n("Current Layouts"), this));
 
     m_listWidget = new QListWidget(this);
-    m_listWidget->setAlternatingRowColors(true);
+    // KoraCut : pas de zébrure. Elle alternait #1E1E1E et #2C2C2C, soit deux des quatre
+    // marches de surface : on ne savait plus si une ligne claire était une ligne paire
+    // ou une surface différente. La hauteur de ligne suffit à suivre une ligne.
+    m_listWidget->setAlternatingRowColors(false);
     mainLayout->addWidget(m_listWidget);
 
     int iconSize = style()->pixelMetric(QStyle::PM_SmallIconSize);
@@ -204,7 +207,7 @@ void LayoutManagerDialog::resetToDefaults()
 
 void LayoutManagerDialog::importLayout()
 {
-    QString fileName = QFileDialog::getOpenFileName(this, i18n("Import Layout"), QString(), i18n("Kdenlive Layout (*.json)"));
+    QString fileName = QFileDialog::getOpenFileName(this, i18n("Import Layout"), QString(), i18n("KoraCut Layout (*.json)"));
     if (fileName.isEmpty()) return;
 
     QFile srcFile(fileName);
@@ -282,7 +285,7 @@ void LayoutManagerDialog::exportLayout()
         QMessageBox::warning(this, i18n("Export Layout"), i18n("Cannot find layout file for %1.", layoutId));
         return;
     }
-    QString fileName = UiUtils::getSaveFileName(this, i18n("Export Layout"), layoutId + ".json", i18n("Kdenlive Layout (*.json)"), QStringLiteral(".json"));
+    QString fileName = UiUtils::getSaveFileName(this, i18n("Export Layout"), layoutId + ".json", i18n("KoraCut Layout (*.json)"), QStringLiteral(".json"));
     if (fileName.isEmpty()) return;
 
     bool result = false;

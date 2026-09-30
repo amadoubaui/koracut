@@ -5,6 +5,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 */
 
 #include "mainwindow.h"
+#include "koracut/koracutfonts.h"
 #include "assets/assetpanel.hpp"
 #include "audiomixer/mixermanager.hpp"
 #include "bin/clipcreator.hpp"
@@ -34,9 +35,18 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "kddocksetup.h"
 #include "kdenlivesettings.h"
 #include "keysequencehandler.h"
+#include "koracut/koracutanimatemenu.h"
+#include "koracut/koracuttimelinecolors.h"
+#include "koracut/koracutthemes.h"
+#include "koracut/koracutmodules.h"
+#include "layouts/layoutswitcher.h"
+#include "koracut/koracutplaceholder.h"
+#include "koracut/koracuttopbar.h"
+#include "koracut/koracutvisible.h"
 #include "layouts/layoutmanagement.h"
 #include "library/librarywidget.h"
 #include "render/renderserver.h"
+#include "koracut/koracutmetrics.h"
 
 #ifndef NODBUS
 #include <QDBusConnectionInterface>
@@ -54,6 +64,8 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "mltcontroller/clipcontroller.h"
 #include "monitor/monitor.h"
 #include "monitor/monitormanager.h"
+
+#include <cmath>
 #include "monitor/scopes/audiographspectrum.h"
 #include "onlineresources/resourcewidget.hpp"
 #include "profiles/profilemodel.hpp"
@@ -64,6 +76,40 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "project/dialogs/projectsettings.h"
 #include "project/dialogs/temporarydata.h"
 #include "project/projectmanager.h"
+#include "koracut/koracutpanelfocus.h"
+#include "koracut/koracutautocutdialog.h"
+#include "koracut/koracutrender.h"
+#include "koracut/koracutperformance.h"
+#include "koracut/koracutperfpanel.h"
+#include "bin/model/markerlistmodel.hpp"
+#include "koracut/koracuttranscriber.h"
+#include "koracut/koracutduckingdialog.h"
+#include "koracut/koracutextensionsdialog.h"
+#include "koracut/koracutstyle.h"
+#include "koracut/koracutworkspace.h"
+#include "koracut/porte/koracutconsolepanel.h"
+#include "koracut/terminal/koracutterminalpanel.h"
+#include "koracut/script/koracutscriptpanel.h"
+#include "koracut/color/koracutclipstrip.h"
+#include "koracut/color/koracutcolorpage.h"
+#include "koracut/export/koracutdeliverpage.h"
+#include "koracut/export/koracutexport.h"
+#include "koracut/export/koracutexportqueue.h"
+#include "koracut/color/koracutnodeeditor.h"
+#include "koracut/color/koracutpalettes.h"
+#include "koracut/porte/koracutporte.h"
+#include "koracut/porte/koracutportemethodes.h"
+#include "koracut/motion/koracutmotioninspector.h"
+#include "koracut/koracutcliptoolspanel.h"
+#include "koracut/koracutagenttools.h"
+#include "koracut/koracutcliptools.h"
+#include "koracut/koracutstabilizer.h"
+#include "koracut/motion/koracutmotionmirror.h"
+#include "koracut/motion/koracutmotionpanel.h"
+#include "koracut/motion/koracutmotionrenderer.h"
+#include "jobs/taskmanager.h"
+#include "mltconnection.h"
+#include "renderpresets/renderpresetrepository.hpp"
 #include "scopes/scopemanager.h"
 #include "timeline2/view/timelinecontroller.h"
 #include "timeline2/view/timelinetabs.hpp"
@@ -71,14 +117,29 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "titler/titlewidget.h"
 #include "transitions/transitionlist/view/transitionlistwidget.hpp"
 #include "transitions/transitionsrepository.hpp"
+#include "utils/uiutils.h"
 #include "widgets/progressbutton.h"
 #include <config-kdenlive.h>
+#if KORACUT_AGENTS
+#include "koracut/koracutagentclient.h"
+#include "koracut/koracutagentpanel.h"
+#include "koracut/ai/koracutaibridge.h"
+#include "koracut/ai/koracutaiconnectionspage.h"
+#include "koracut/koracutagentsession.h"
+#include "koracut/voix/koracutvoicerecord.h"
+#include "utils/machineprofile.h"
+#include <KUser>
+#endif
 
 #ifdef USE_JOGSHUTTLE
 #include "jogshuttle/jogmanager.h"
 #endif
 
 #include <kddockwidgets/core/DockRegistry.h>
+#include <kddockwidgets/core/DockWidget.h>
+#include <kddockwidgets/core/Group.h>
+#include <kddockwidgets/core/TabBar.h>
+#include <kddockwidgets/qtcommon/View.h>
 #include <kddockwidgets/core/FloatingWindow.h>
 #include <kddockwidgets/core/MainWindow.h>
 
@@ -86,6 +147,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include <KActionCollection>
 #include <KActionMenu>
 #include <KColorScheme>
+#include <KColorSchemeManager>
 #include <KColorSchemeMenu>
 #include <KConfigDialog>
 #include <KCoreAddons>
@@ -113,6 +175,8 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QMenu>
+#include <QMouseEvent>
+#include <QPainter>
 #include <QMenuBar>
 #include <QProxyStyle>
 #include <QPushButton>
@@ -121,7 +185,18 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include <QStatusBar>
 #include <QStyleFactory>
 #include <QUndoGroup>
+#include <KCommandBar>
+#include <QStackedWidget>
+#include <QTimer>
+#include <QTabWidget>
+#include <QElapsedTimer>
+#include <QJsonDocument>
+#include <QDateTime>
+#include <QDir>
+#include <QProcess>
+#include <QFile>
 #include <QVBoxLayout>
+#include <array>
 #include <QtConcurrent/QtConcurrentRun>
 
 static const char version[] = KDENLIVE_VERSION;
@@ -134,12 +209,95 @@ QMap<QString, QStringList> MainWindow::m_lumaFiles;
 KIO::filesize_t m_totalCacheSize = 0;
 int m_totalCacheJobs = 0;
 
+namespace {
+// KoraCut, 23 septembre 2026 : la pastille d'état du moteur, à gauche de la barre d'état
+// (« 11 - Refonte UI-UX », 3.8). Vert : prêt. Jaune : occupé (tâches de fond). Rouge : le moteur a
+// signalé une erreur ; elle reste rouge jusqu'au clic, pour qu'une erreur passée pendant qu'on
+// regardait ailleurs ne se perde pas. Couleurs de la charte produit.
+class EngineDot : public QWidget
+{
+public:
+    explicit EngineDot(QWidget *parent)
+        : QWidget(parent)
+    {
+        setFixedSize(18, 16);
+        setCursor(Qt::PointingHandCursor);
+        refresh();
+    }
+    void setBusy(int tasks)
+    {
+        m_tasks = tasks;
+        refresh();
+    }
+    void setError(const QString &message)
+    {
+        m_error = message;
+        refresh();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(!m_error.isEmpty() ? QStringLiteral("#FF7262") : m_tasks > 0 ? QStringLiteral("#FFD166") : QStringLiteral("#4ADE80")));
+        painter.drawEllipse(QRectF((width() - 6) / 2., (height() - 6) / 2., 6, 6));
+    }
+    void mousePressEvent(QMouseEvent *) override
+    {
+        if (!m_error.isEmpty()) {
+            m_error.clear();
+            refresh();
+        }
+    }
+
+private:
+    void refresh()
+    {
+        if (!m_error.isEmpty()) {
+            setToolTip(i18nc("@info:tooltip", "Engine error: %1\nClick to dismiss.", m_error));
+        } else if (m_tasks > 0) {
+            setToolTip(i18ncp("@info:tooltip", "Engine busy: %1 background task", "Engine busy: %1 background tasks", m_tasks));
+        } else {
+            setToolTip(i18nc("@info:tooltip", "Engine ready"));
+        }
+        update();
+    }
+    int m_tasks = 0;
+    QString m_error;
+};
+}
+
+
 MainWindow::MainWindow(QWidget *parent)
     : KXmlGuiWindow(parent)
     , m_activeTool(ToolType::SelectTool)
     , m_mousePosition(0)
     , m_effectBasket(nullptr)
 {
+    // KoraCut, 23 septembre 2026 : le rôle de menu Mac de chaque action se fixe dès qu'elle entre dans la
+    // collection, avant que la barre de menus native n'existe. Changé après coup, il ne ramène pas une
+    // entrée que Qt a déjà déplacée dans le menu de l'application (vu avec « Réglages du projet… »).
+    connect(actionCollection(), &KActionCollection::inserted, this, [](QAction *action) {
+        static const QMap<QString, QAction::MenuRole> roles = {
+            {KStandardAction::name(KStandardAction::Preferences), QAction::PreferencesRole},
+            {KStandardAction::name(KStandardAction::Quit), QAction::QuitRole},
+            {KStandardAction::name(KStandardAction::AboutApp), QAction::AboutRole},
+        };
+        action->setMenuRole(roles.value(action->objectName(), QAction::NoRole));
+    });
+    // Toute action de composition (« transition_<id> ») pose sa composition, d'où qu'on la lance :
+    // menu Compositions, palette ⌘K ou raccourci. Plusieurs endroits créent ces actions sous le même
+    // nom, et la dernière remplace les autres : on les branche donc toutes ici, à leur entrée.
+    connect(actionCollection(), &KActionCollection::inserted, this, [this](QAction *action) {
+        // Qt::UniqueConnection ne marche pas avec une lambda (Qt refuse alors la connexion, sans bruit) :
+        // une propriété marque les actions déjà branchées.
+        if (action->objectName().startsWith(QLatin1String("transition_")) && !action->property("koracutBranchee").toBool()) {
+            action->setProperty("koracutBranchee", true);
+            connect(action, &QAction::triggered, this, [this, action]() { slotAddTransition(action); });
+        }
+    });
     // Init all action categories that are used by other parts of the software
     // before we call MainWindow::init and therefore can't be initialized there
     KActionCategory *category = new KActionCategory(i18n("Monitor"), actionCollection());
@@ -156,6 +314,9 @@ MainWindow::MainWindow(QWidget *parent)
     flags |= KDDockWidgets::Config::Flag_HideTitleBarWhenTabsVisible;
     flags |= KDDockWidgets::Config::Flag_AllowReorderTabs;
     flags |= KDDockWidgets::Config::Flag_TitleBarShowAutoHide;
+    // KoraCut : le double clic ne détache plus un panneau. Il volait les deux premiers clics du
+    // triple clic qui agrandit le panneau (koracutpanelfocus.h). Détacher se fait en glissant.
+    flags |= KDDockWidgets::Config::Flag_DisableDoubleClick;
 
     KDDockWidgets::Config::self().setFlags(flags);
     KDDockWidgets::Core::FloatingWindow::s_windowFlagsOverride = Qt::Tool;
@@ -175,8 +336,192 @@ void MainWindow::init()
     QString desktopStyle = QApplication::style()->objectName();
     // Load themes
     auto themeManager = KColorSchemeManager::instance();
+    // KoraCut: thème par défaut
+    // Au premier lancement, si l'utilisateur n'a jamais choisi de schéma de couleurs
+    // (KColorSchemeManager n'a rien mémorisé dans [UiSettings] ColorScheme), on active
+    // « KoraCut Dark » (data/color-schemes/KoraCutDark.colors). Le gestionnaire enregistre
+    // ensuite le choix lui-même (autosave actif par défaut). Le drapeau koracut_theme_applied
+    // évite de réimposer le thème si l'utilisateur revient plus tard au schéma système.
+    // Débrayable avec la variable d'environnement KORACUT_NO_THEME.
+    // KoraCut, 22 septembre 2026 : le thème suit le mode clair ou sombre du système par défaut,
+    // et change à chaud quand le système change. Les deux choix explicites, clair et sombre,
+    // ne sont jamais contredits. Voir « 14 - Themes, sauvegarde, marqueurs, extensions.md », § 1.
+    UiUtils::applyThemeMode();
+    UiUtils::followSystemColorScheme();
+    KdenliveSettings::setKoracut_theme_applied(true);
     KActionMenu *colorSelectionMenu = KColorSchemeMenu::createMenu(themeManager, this);
     actionCollection()->addAction(QStringLiteral("themes_menu"), colorSelectionMenu);
+
+    // KoraCut : le mode de thème, en trois états. Il précède la liste complète des schémas,
+    // qui reste disponible pour qui veut un schéma particulier.
+    auto *themeModeAction = new KSelectAction(i18nc("@title menu du mode de thème", "Theme"), this);
+    themeModeAction->setToolBarMode(KSelectAction::MenuMode);
+    const std::array<std::pair<const char *, QString>, 3> modes = {
+        {{"system", i18nc("@item mode de thème", "Follow the system")},
+         {"light", i18nc("@item mode de thème", "Light")},
+         {"dark", i18nc("@item mode de thème", "Dark")}}};
+    const QString modeCourant = KdenliveSettings::koracut_theme_mode();
+    for (const auto &m : modes) {
+        QAction *a = themeModeAction->addAction(m.second);
+        a->setData(QString::fromLatin1(m.first));
+        a->setCheckable(true);
+        if (modeCourant == QLatin1String(m.first)) {
+            themeModeAction->setCurrentAction(a);
+        }
+    }
+    // KoraCut, 22 septembre 2026 : les thèmes en plus (Très sombre, Gris, Contraste élevé, et
+    // ceux que l'utilisateur a installés). Choisir l'un d'eux arrête le suivi du système.
+    const auto autresThemes = UiUtils::koraCutThemes();
+    for (const auto &theme : autresThemes) {
+        QAction *a = themeModeAction->addAction(theme.second);
+        a->setData(theme.first);
+        a->setCheckable(true);
+        if (modeCourant == theme.first) {
+            themeModeAction->setCurrentAction(a);
+        }
+    }
+    connect(themeModeAction, &KSelectAction::actionTriggered, this, [](QAction *a) {
+        if (!a) {
+            return;
+        }
+        KdenliveSettings::setKoracut_theme_mode(a->data().toString());
+        UiUtils::applyThemeMode();
+    });
+    actionCollection()->addAction(QStringLiteral("theme_mode"), themeModeAction);
+
+    // KoraCut, 23 septembre 2026 : quand on suit le système, quel thème pour chaque cas. Choisir
+    // ici repasse en « Suivre le système », puisque c'est de ce mode-là qu'il s'agit.
+    auto systemThemeAction = [this, themeModeAction](const QString &name, const QString &text, const QString &base, const QString &current,
+                                                     void (*save)(const QString &)) {
+        auto *action = new KSelectAction(text, this);
+        action->setToolBarMode(KSelectAction::MenuMode);
+        const auto themes = UiUtils::koraCutThemesFor(base);
+        for (const auto &theme : themes) {
+            QAction *a = action->addAction(theme.second);
+            a->setData(theme.first);
+            a->setCheckable(true);
+            if (theme.first == current) {
+                action->setCurrentAction(a);
+            }
+        }
+        connect(action, &KSelectAction::actionTriggered, this, [themeModeAction, save](QAction *a) {
+            if (!a) {
+                return;
+            }
+            save(a->data().toString());
+            KdenliveSettings::setKoracut_theme_mode(QStringLiteral("system"));
+            for (QAction *m : themeModeAction->actions()) {
+                if (m->data().toString() == QLatin1String("system")) {
+                    themeModeAction->setCurrentAction(m);
+                }
+            }
+            UiUtils::applyThemeMode();
+        });
+        actionCollection()->addAction(name, action);
+        return action;
+    };
+    auto *systemDark = systemThemeAction(QStringLiteral("koracut_theme_system_dark"), i18nc("@title:menu", "When the System Is Dark"),
+                                         QStringLiteral("dark"), KdenliveSettings::koracut_theme_system_dark(), &KdenliveSettings::setKoracut_theme_system_dark);
+    auto *systemLight = systemThemeAction(QStringLiteral("koracut_theme_system_light"), i18nc("@title:menu", "When the System Is Light"),
+                                          QStringLiteral("light"), KdenliveSettings::koracut_theme_system_light(), &KdenliveSettings::setKoracut_theme_system_light);
+
+    // Installer un thème : un fichier .colors, avec sa section [KoraCut] pour recolorer aussi la
+    // feuille de style (modèle : Sources/koracut-themes/generer.py). Il apparaît au prochain lancement.
+    auto *installTheme = new QAction(QIcon::fromTheme(QStringLiteral("document-import")), i18nc("@action", "Install a Theme…"), this);
+    connect(installTheme, &QAction::triggered, this, [this, themeModeAction, systemDark, systemLight]() {
+        const QString file = QFileDialog::getOpenFileName(this, i18nc("@title:window", "Install a Theme"), QDir::homePath(),
+                                                          i18nc("@item:inlistbox filtre de fichiers", "Themes (*.colors)"));
+        if (file.isEmpty()) {
+            return;
+        }
+        QString error;
+        const QString id = UiUtils::installTheme(file, error);
+        if (id.isEmpty()) {
+            KMessageBox::error(this, error);
+            return;
+        }
+        // Appliqué tout de suite, depuis son fichier, et ajouté aux menus (23 septembre 2026 ;
+        // avant, il fallait relancer KoraCut).
+        const QString name = UiUtils::themeName(file, id);
+        auto addTo = [id, name](KSelectAction *menu) {
+            for (QAction *a : menu->actions()) {
+                if (a->data().toString() == id) {
+                    return a;
+                }
+            }
+            QAction *a = menu->addAction(name);
+            a->setData(id);
+            a->setCheckable(true);
+            return a;
+        };
+        themeModeAction->setCurrentAction(addTo(themeModeAction));
+        addTo(UiUtils::themeBase(file) == QLatin1String("light") ? systemLight : systemDark);
+        KdenliveSettings::setKoracut_theme_mode(id);
+        UiUtils::applyThemeMode();
+        pCore->displayMessage(i18nc("@info:status", "Theme installed and applied. It is in View > Theme."), InformationMessage);
+    });
+    actionCollection()->addAction(QStringLiteral("koracut_install_theme"), installTheme);
+    auto *openThemes = new QAction(QIcon::fromTheme(QStringLiteral("folder")), i18nc("@action", "Open the Themes Folder"), this);
+    connect(openThemes, &QAction::triggered, this, []() {
+        QDir().mkpath(UiUtils::userThemesFolder());
+        QDesktopServices::openUrl(QUrl::fromLocalFile(UiUtils::userThemesFolder()));
+    });
+    actionCollection()->addAction(QStringLiteral("koracut_open_themes_folder"), openThemes);
+
+    // KoraCut, 25 septembre 2026 : le moteur de thèmes (src/koracut/koracutthemes.*). Un thème créé,
+    // modifié ou supprimé par un agent entre dans les menus (ou en sort) sans relancer, et le menu
+    // coche le thème à l'écran, d'où qu'il vienne (menu, agent, porte de commande).
+    auto syncThemeMenus = [themeModeAction, systemDark, systemLight]() {
+        const auto themes = KoraCutThemes::self()->list();
+        QSet<QString> ids;
+        for (const auto &t : themes) {
+            ids.insert(t.id);
+        }
+        const auto sync = [&themes, &ids](KSelectAction *menu, const QString &base, bool all) {
+            for (QAction *a : menu->actions()) {
+                const QString id = a->data().toString();
+                if (id.startsWith(QLatin1String("KoraCut")) && !ids.contains(id)) {
+                    menu->removeAction(a);
+                    a->deleteLater();
+                }
+            }
+            for (const auto &t : themes) {
+                if ((!all && t.base != base) || (all && (t.id == QLatin1String("KoraCutDark") || t.id == QLatin1String("KoraCutLight")))) {
+                    continue;
+                }
+                bool present = false;
+                for (QAction *a : menu->actions()) {
+                    if (a->data().toString() == t.id) {
+                        a->setText(t.name);
+                        present = true;
+                    }
+                }
+                if (!present) {
+                    QAction *a = menu->addAction(t.name);
+                    a->setData(t.id);
+                    a->setCheckable(true);
+                }
+            }
+        };
+        sync(themeModeAction, QString(), true);
+        sync(systemDark, QStringLiteral("dark"), false);
+        sync(systemLight, QStringLiteral("light"), false);
+        const QString mode = KdenliveSettings::koracut_theme_mode();
+        for (QAction *a : themeModeAction->actions()) {
+            if (a->data().toString() == mode) {
+                themeModeAction->setCurrentAction(a);
+            }
+        }
+    };
+    connect(KoraCutThemes::self(), &KoraCutThemes::listChanged, this, syncThemeMenus);
+    connect(KoraCutThemes::self(), &KoraCutThemes::themeChanged, this, [this, syncThemeMenus]() {
+        syncThemeMenus();
+        // Les couleurs des clips (jetons piste_*) et le fond de la timeline suivent le thème.
+        if (getCurrentTimeline() && getCurrentTimeline()->controller()) {
+            getCurrentTimeline()->setClearColor(qApp->palette().window().color());
+            getCurrentTimeline()->controller()->refreshTrackColors();
+        }
+    });
 
     // Handle communication with the renderer app
     new RenderServer(this);
@@ -198,7 +543,54 @@ void MainWindow::init()
     KdenliveSettings::setGpu_accel(false);
 
     // m_gpuAllowed = EffectsRepository::get()->hasInternalEffect(QStringLiteral("glsl.manager"));
-    setCentralWidget(mainDockWindow);
+
+    // KoraCut : la barre du haut de 40 px est posée au-dessus de la zone des docks, dans le widget central.
+    // Sous elle, une pile : la zone des docks, ou la page d'un module encore vide.
+    auto *centralContainer = new QWidget(this);
+    // La gouttière sous la barre des modules montre le fond de fenêtre, pas la surface : c'est ce
+    // que la charte appelle une gouttière, et c'est ce qui fait lire les deux rangées d'onglets
+    // comme deux zones et non comme une seule barre.
+    centralContainer->setObjectName(QStringLiteral("koracutCentral"));
+    centralContainer->setAutoFillBackground(true);
+    centralContainer->setAttribute(Qt::WA_StyledBackground, true);
+    auto *centralLayout = new QVBoxLayout(centralContainer);
+    // Une gouttière de 8 px sous la barre des modules. Depuis que les onglets de panneaux sont
+    // remontés en haut de leur groupe, deux rangées d'onglets se suivent : sans cet écart, elles
+    // se touchent et se lisent comme une seule barre confuse. 8 px est le cran « entre deux
+    // groupes » de la grille de la charte, et il laisse voir le fond de fenêtre entre les deux.
+    centralLayout->setContentsMargins(0, 0, 0, 0);
+    centralLayout->setSpacing(KoraCutMetrics::SpaceGroup);
+    m_topBar = new KoraCutTopBar(centralContainer);
+    centralLayout->addWidget(m_topBar);
+    m_centralStack = new QStackedWidget(centralContainer);
+    m_modulePlaceholder = new KoraCutPlaceholder(m_centralStack);
+    m_centralStack->addWidget(mainDockWindow);
+    m_centralStack->addWidget(m_modulePlaceholder);
+    centralLayout->addWidget(m_centralStack, 1);
+    setCentralWidget(centralContainer);
+    m_centralStack->setCurrentWidget(mainDockWindow);
+    // KoraCut, 23 septembre 2026 : le champ « Rechercher ⌘K » de la barre du haut ne faisait rien.
+    // Dès la première lettre tapée, il ouvre la palette de commandes avec cette lettre, et la frappe
+    // continue dans la palette. Le champ se vide : il ne sert que de porte d'entrée.
+    connect(m_topBar->searchField(), &QLineEdit::textEdited, this, [this](const QString &text) {
+        if (text.isEmpty()) {
+            return;
+        }
+        m_topBar->searchField()->clear();
+        m_topBar->searchField()->clearFocus();
+        slotCommandPalette();
+        const QList<KCommandBar *> bars = findChildren<KCommandBar *>(QString(), Qt::FindDirectChildrenOnly);
+        if (!bars.isEmpty()) {
+            if (auto *field = bars.last()->findChild<QLineEdit *>()) {
+                field->setText(text);
+                field->setFocus();
+            }
+        }
+    });
+    connect(m_topBar, &KoraCutTopBar::homeRequested, this, [this]() {
+        // L'écran d'accueil est le chantier 2 : en attendant, on le dit franchement.
+        Q_EMIT displayMessage(i18n("The home screen is not written yet."), InformationMessage, 4000);
+    });
     mainDockWindow->show();
 
     m_shortcutRemoveFocus = new QShortcut(QKeySequence(QStringLiteral("Esc")), this);
@@ -216,16 +608,43 @@ void MainWindow::init()
     KConfigGroup mainConfig(config, QStringLiteral("MainWindow"));
     KConfigGroup tbGroup(&mainConfig, QStringLiteral("Toolbar timelineToolBar"));
     m_timelineToolBar->applySettings(tbGroup);
+    // KoraCut : sans réglage enregistré, KToolBar prend ToolbarDefault du thème d'icônes (22 px),
+    // ce qui est le gros défaut vu à l'écran. On pose la valeur de la charte, et on respecte le
+    // choix de l'utilisateur s'il est passé par le menu « Taille des icônes ».
+    if (!tbGroup.hasKey("IconSize")) {
+        m_timelineToolBar->setIconDimensions(KoraCutMetrics::IconToolbar);
+    }
+    // KoraCut, 25 septembre 2026 : quand la timeline est étroite (disposition verticale), les
+    // boutons qui ne tiennent pas (Coupe auto, Rendu…) passent derrière le bouton « plus d'outils »
+    // de Qt ; son icône venait vide et le bouton ne se voyait pas. On lui donne la nôtre.
+    // Le bouton de Qt ne dessinait rien, même avec une icône valide (vérifié le 25 septembre
+    // 2026) : une étiquette posée dessus porte la flèche et laisse passer les clics.
+    if (auto *ext = m_timelineToolBar->findChild<QToolButton *>(QStringLiteral("qt_toolbar_ext_button"))) {
+        ext->setIcon(QIcon::fromTheme(QStringLiteral("go-next")));
+        ext->setToolTip(i18nc("@info:tooltip toolbar overflow button", "More tools"));
+        auto *fleche = new QLabel(ext);
+        fleche->setObjectName(QStringLiteral("koracutToolbarMore"));
+        fleche->setAttribute(Qt::WA_TransparentForMouseEvents);
+        fleche->setAlignment(Qt::AlignCenter);
+        fleche->setPixmap(QIcon::fromTheme(QStringLiteral("go-next")).pixmap(QSize(16, 16), ext->devicePixelRatioF()));
+        auto *poseur = new QVBoxLayout(ext);
+        poseur->setContentsMargins(0, 0, 0, 0);
+        poseur->addWidget(fleche);
+    }
     QFrame *fr = new QFrame(this);
     fr->setFrameShape(QFrame::HLine);
     fr->setMaximumHeight(1);
     fr->setLineWidth(1);
     ctnLay->addWidget(fr);
+    // KoraCut, 27 septembre 2026 : la bande des onglets de séquences, toujours visible et posée sur
+    // le fond, sépare déjà la barre d'outils de la timeline. Le trait ferait une deuxième limite.
+    fr->hide();
     setupActions();
     auto *layoutManager = new LayoutManagement(this);
     connect(pCore.get(), &Core::loadLayoutById, layoutManager, &LayoutManagement::slotLoadLayoutById, Qt::DirectConnection);
     connect(pCore.get(), &Core::loadLayoutFromData, layoutManager, &LayoutManagement::slotLoadLayoutFromData, Qt::DirectConnection);
     connect(pCore.get(), &Core::adjustLayoutToDar, layoutManager, &LayoutManagement::adjustLayoutToDar, Qt::DirectConnection);
+    connect(pCore.get(), &Core::recheckLayoutScreen, layoutManager, &LayoutManagement::recheckScreen, Qt::DirectConnection);
     pCore->buildDocks();
 
     m_clipMonitor = new Monitor(Kdenlive::ClipMonitor, pCore->monitorManager(), this);
@@ -251,14 +670,36 @@ void MainWindow::init()
     pCore->monitorManager()->initMonitors(m_clipMonitor, m_projectMonitor);
 
     m_timelineTabs = new TimelineTabs();
-    ctnLay->addWidget(m_timelineTabs);
+    // KoraCut, 24 septembre 2026 : la zone qui porte les onglets de séquences et les vues côte à
+    // côte (document 13, § 5). Une seule vue tant qu'on ne glisse pas un onglet à côté.
+    ctnLay->addWidget(m_timelineTabs->splitHost());
+
+    // KoraCut, 23 septembre 2026 : flèches haut et bas = coupe précédente, coupe suivante (Premiere,
+    // Resolve ; document 9). Seulement quand le clavier est dans la timeline ou un moniteur : partout
+    // ailleurs, les flèches servent à parcourir les listes (chutier, effets), et un raccourci global
+    // les leur volerait. Les actions nommées gardent Alt+gauche et Alt+droite, modifiables.
+    for (const auto &[key, name] : {std::pair{Qt::Key_Up, "monitor_seek_snap_backward"}, std::pair{Qt::Key_Down, "monitor_seek_snap_forward"}}) {
+        auto *arrow = new QAction(this);
+        arrow->setShortcut(key);
+        arrow->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+        connect(arrow, &QAction::triggered, this, [this, name = QString::fromLatin1(name)]() {
+            if (QAction *target = actionCollection()->action(name)) {
+                target->trigger();
+            }
+        });
+        m_timelineTabs->splitHost()->addAction(arrow);
+        m_clipMonitor->addAction(arrow);
+        m_projectMonitor->addAction(arrow);
+    }
 
     // Timeline dock
     const QSize firstWindowSize = mainDockWindow->size();
     m_timelineDock = addDock(i18n("Timeline"), QStringLiteral("timeline"), m_timelineToolBarContainer, KDDockWidgets::Location_OnBottom, nullptr);
+    // La timeline n'a pas de barre d'onglets : le triple clic qui l'agrandit se fait sur sa barre d'outils.
+    KoraCutPanelFocus::watchTripleClick(m_timelineToolBar, [this](const QPoint &) { return KoraCutPanelFocus::dockContaining(m_timelineToolBar); });
 
     // Project bin
-    m_projectBinDock = addDock(i18n("Project Bin"), QStringLiteral("project_bin"), pCore->bin(), KDDockWidgets::Location_OnTop, m_timelineDock);
+    m_projectBinDock = addDock(i18nc("@title:window nom court d'un panneau", "Media"), QStringLiteral("project_bin"), pCore->bin(), KDDockWidgets::Location_OnTop, m_timelineDock);
 
     auto dockLib = addDock(i18n("Library"), QStringLiteral("library"), pCore->library(), KDDockWidgets::Location_OnRight);
     dockLib->close();
@@ -266,10 +707,10 @@ void MainWindow::init()
     auto dockSubs = addDock(i18n("Subtitles"), QStringLiteral("subtitles"), pCore->subtitleWidget(), KDDockWidgets::Location_OnRight);
     dockSubs->close();
 
-    auto dockText = addDock(i18n("Speech Editor"), QStringLiteral("textedit"), pCore->textEditWidget(), KDDockWidgets::Location_OnRight);
+    auto dockText = addDock(i18nc("@title:window nom court d'un panneau", "Voice"), QStringLiteral("textedit"), pCore->textEditWidget(), KDDockWidgets::Location_OnRight);
     dockText->close();
 
-    auto dockRemap = addDock(i18n("Time Remapping"), QStringLiteral("timeremap"), pCore->timeRemapWidget(), KDDockWidgets::Location_OnRight);
+    auto dockRemap = addDock(i18nc("@title:window nom court d'un panneau", "Speed"), QStringLiteral("timeremap"), pCore->timeRemapWidget(), KDDockWidgets::Location_OnRight);
     dockRemap->close();
 
     connect(pCore.get(), &Core::remapClip, this, [&, dockRemap](int id) {
@@ -320,7 +761,7 @@ void MainWindow::init()
     QAction *recConfig = new QAction(QIcon::fromTheme(QStringLiteral("configure")), i18n("Configure Recording"), this);
     recToolbar->addAction(recConfig);
     connect(recConfig, &QAction::triggered, [&]() { Q_EMIT pCore->showConfigDialog(Kdenlive::PageCapture, 0); });
-    auto screenGrabDock = addDock(i18n("Screen Grab"), QStringLiteral("screengrab"), grabWidget);
+    auto screenGrabDock = addDock(i18nc("@title:window nom court d'un panneau", "Capture"), QStringLiteral("screengrab"), grabWidget);
     screenGrabDock->close();
 
     // Sequence actions
@@ -334,14 +775,18 @@ void MainWindow::init()
 
     // Audio spectrum scope
     m_audioSpectrum = new AudioGraphSpectrum(pCore->monitorManager());
-    auto spectrumDock = addDock(i18n("Audio Spectrum"), QStringLiteral("audiospectrum"), m_audioSpectrum);
+    auto spectrumDock = addDock(i18nc("@title:window nom court d'un panneau", "Spectrum"), QStringLiteral("audiospectrum"), m_audioSpectrum);
     connect(spectrumDock, &KDDockWidgets::QtWidgets::DockWidget::isOpenChanged, this, [&](bool visible) { m_audioSpectrum->dockVisible(visible); });
     spectrumDock->close();
 
-    // Add monitors here to keep them at the right of the window
-    m_clipMonitorDock = addDock(i18n("Clip Monitor"), QStringLiteral("clipmonitor"), m_clipMonitor, KDDockWidgets::Location_OnRight, m_projectBinDock);
+    // Add monitors here to keep them at the right of the window.
+    // KoraCut : un seul moniteur par défaut, les deux onglets Source et Programme dans le même
+    // groupe (« 9 - UX de l'application »). Deux moniteurs côte à côte laissaient la moitié haute
+    // de la fenêtre à deux zones vides de plus de 600 px. Le second revient par ⌘⇧M.
+    m_clipMonitorDock = addDock(i18nc("@title:window nom court d'un panneau", "Source"), QStringLiteral("clipmonitor"), m_clipMonitor, KDDockWidgets::Location_OnRight, m_projectBinDock);
     m_projectMonitorDock =
-        addDock(i18n("Project Monitor"), QStringLiteral("projectmonitor"), m_projectMonitor, KDDockWidgets::Location_OnRight, m_clipMonitorDock);
+        addDock(i18nc("@title:window nom court d'un panneau", "Program"), QStringLiteral("projectmonitor"), m_projectMonitor,
+                KdenliveSettings::singleMonitor() ? KDDockWidgets::Location_None : KDDockWidgets::Location_OnRight, m_clipMonitorDock);
 
     m_clipMonitorDock->addDockWidgetAsTab(dockLib);
     pCore->bin()->buildPropertiesDock(m_clipMonitorDock);
@@ -353,12 +798,12 @@ void MainWindow::init()
     m_projectMonitorDock->setAsCurrentTab();
 
     // Media browser widget
-    auto clipDockWidget = addDock(i18n("Media Browser"), QStringLiteral("media_browser"), pCore->mediaBrowser());
+    auto clipDockWidget = addDock(i18nc("@title:window nom court d'un panneau", "Files"), QStringLiteral("media_browser"), pCore->mediaBrowser());
     clipDockWidget->close();
 
     // Online resources widget
     auto *onlineResources = new ResourceWidget(this);
-    m_onlineResourcesDock = addDock(i18n("Online Resources"), QStringLiteral("onlineresources"), onlineResources);
+    m_onlineResourcesDock = addDock(i18nc("@title:window nom court d'un panneau", "Online"), QStringLiteral("onlineresources"), onlineResources);
     m_onlineResourcesDock->close();
     connect(onlineResources, &ResourceWidget::previewClip, this, [&](const QString &path, const QString &title) {
         m_clipMonitor->slotPreviewResource(path, title);
@@ -371,7 +816,7 @@ void MainWindow::init()
 
     const QSize stackSize(firstWindowSize.width() * 0.3, 0);
     m_effectStackDock =
-        addDock(i18n("Effect/Composition Stack"), QStringLiteral("effect_stack"), m_assetPanel, KDDockWidgets::Location_OnRight, m_timelineDock, stackSize);
+        addDock(i18nc("@title:window nom court d'un panneau", "Inspector"), QStringLiteral("effect_stack"), m_assetPanel, KDDockWidgets::Location_OnRight, m_timelineDock, stackSize);
     connect(pCore.get(), &Core::requestShowBinEffectStack, m_assetPanel, &AssetPanel::showEffectStack, Qt::QueuedConnection);
     connect(m_assetPanel, &AssetPanel::doSplitEffect, m_projectMonitor, &Monitor::slotSwitchCompare);
     connect(m_assetPanel, &AssetPanel::doSplitBinEffect, m_clipMonitor, &Monitor::slotSwitchCompare);
@@ -405,8 +850,19 @@ void MainWindow::init()
                     return;
                 }
                 m_assetPanel->showEffectStack(clipName, model, size, showKeyframes);
+                if (m_motionInspector) {
+                    m_motionInspector->showClip(model && model->getOwnerId().type == KdenliveObjectType::TimelineClip ? model->getOwnerId().itemId : -1);
+                }
+                if (m_clipTools) {
+                    m_clipTools->showClip(model && model->getOwnerId().type == KdenliveObjectType::TimelineClip ? model->getOwnerId().itemId : -1);
+                }
                 if (m_effectStackDock->asDockWidgetController()->isTabbed() && m_effectStackDock->parent() == m_timelineDock->parent()) {
                     // Don't raise if tabbed with timeline
+                    return;
+                }
+                // KoraCut : dans le module Étalonnage, les palettes restent devant (comme la page Color de
+                // Resolve) ; choisir un plan ne fait plus passer l'Inspecteur au premier plan.
+                if (property("koracut_etalonnage_actif").toBool()) {
                     return;
                 }
                 bool isClip = model && model->getOwnerId().type == KdenliveObjectType::TimelineClip;
@@ -493,7 +949,7 @@ void MainWindow::init()
     m_undoView->addAction(cleanHistory);
 
     m_undoView->setContextMenuPolicy(Qt::ActionsContextMenu);
-    m_undoViewDock = addDock(i18n("Undo History"), QStringLiteral("undo_history"), m_undoView, KDDockWidgets::Location_None, m_projectBinDock);
+    m_undoViewDock = addDock(i18nc("@title:window nom court d'un panneau", "History"), QStringLiteral("undo_history"), m_undoView, KDDockWidgets::Location_None, m_projectBinDock);
 
     connect(m_commandStack, &QUndoGroup::cleanChanged, [this, cleanHistory](bool isClean) {
         m_saveAction->setDisabled(isClean);
@@ -501,7 +957,8 @@ void MainWindow::init()
     });
 
     // Switch title bars
-    auto switchAction = new QAction(i18n("Show Title Bars"), this);
+    // KoraCut : les panneaux sont verrouillés par défaut ; cette case rend la liberté de les déplacer.
+    auto switchAction = new QAction(i18nc("@action:inmenu rend les panneaux déplaçables", "Unlock Panels"), this);
     switchAction->setCheckable(true);
     switchAction->setChecked(KdenliveSettings::showtitlebars());
     addAction(QStringLiteral("show_titlebars"), switchAction);
@@ -527,8 +984,25 @@ void MainWindow::init()
         }
     }
     addAction(QStringLiteral("styles_menu"), stylesAction);
+    // KoraCut : le style de base est le même sur les trois systèmes (main.cpp) ; le menu Style
+    // ferait croire qu'on peut en changer, et le choix n'aurait plus d'effet. Chantier 12.
+    if (!qEnvironmentVariableIsSet("KORACUT_NATIVE_STYLE")) {
+        stylesAction->setVisible(false);
+    }
 
-    m_mixerDock = addDock(i18n("Audio Mixer"), QStringLiteral("mixer"), pCore->mixer(), KDDockWidgets::Location_None, m_effectStackDock);
+    m_mixerDock = addDock(i18nc("@title:window nom court d'un panneau", "Mixer"), QStringLiteral("mixer"), pCore->mixer(), KDDockWidgets::Location_None, m_effectStackDock);
+
+    // Chantier 9 : le module Motion (document 19). Le miroir suit le document courant, le panneau est
+    // un onglet du bloc Médias, l'inspecteur une section en tête de la pile d'effets.
+    m_motionMirror = new KoraCutMotionMirror(this);
+    m_motionStudio = new KoraCutMotionStudio(this);
+    m_motionPanel = new KoraCutMotionPanel(m_motionMirror, m_motionStudio, this);
+    m_motionDock = addDock(i18nc("@title:window nom court d'un panneau", "Motion"), QStringLiteral("motion"), m_motionPanel, KDDockWidgets::Location_None, m_projectBinDock);
+    m_motionInspector = new KoraCutMotionInspector(m_motionMirror, m_motionStudio, m_assetPanel);
+    m_assetPanel->koraCutInsertTopWidget(m_motionInspector);
+    // Document 24 : la section Outils, en tête de la zone qui défile de l'inspecteur.
+    m_clipTools = new KoraCutClipToolsPanel(m_assetPanel);
+    m_assetPanel->koraCutInsertToolsWidget(m_clipTools);
     m_mixerDock->setWhatsThis(xi18nc("@info:whatsthis", "Toggles the audio mixer panel/widget."));
     QAction *showMixer = new QAction(QIcon::fromTheme(QStringLiteral("view-media-equalizer")), i18n("Audio Mixer"), this);
     showMixer->setCheckable(true);
@@ -548,9 +1022,153 @@ void MainWindow::init()
         }
     });
 
+#if KORACUT_AGENTS
+    // KoraCut, chantier 3 (23 septembre 2026) : le panneau Agents, onglet de l'inspecteur. Le service
+    // décide, l'application exécute les outils ; tout un tour s'annule d'un seul Annuler.
+    m_agentClient = new KoraCutAgentClient(this);
+    m_agentSession = new KoraCutAgentSession(m_agentClient, this);
+    m_agentSession->setCallBudget(KdenliveSettings::koracut_agents_budget());
+    {
+        const KUser user;
+        QString firstName = user.property(KUser::FullName).toString().section(QLatin1Char(' '), 0, 0);
+        if (firstName.isEmpty()) {
+            firstName = user.loginName();
+        }
+        m_agentSession->setPerson(firstName);
+        switch (MachineProfile::effectiveLevel()) {
+        case MachineProfile::Level::Modest:
+            m_agentSession->setMachineProfile(QStringLiteral("modeste"));
+            break;
+        case MachineProfile::Level::Medium:
+            m_agentSession->setMachineProfile(QStringLiteral("moyenne"));
+            break;
+        case MachineProfile::Level::Comfortable:
+            m_agentSession->setMachineProfile(QStringLiteral("confortable"));
+            break;
+        }
+    }
+    m_agentPanel = new KoraCutAgentPanel(m_agentSession, this);
+    m_agentDock = addDock(i18nc("@title:window nom court d'un panneau", "Agents"), QStringLiteral("agents"), m_agentPanel, KDDockWidgets::Location_None, m_effectStackDock);
+    // La pastille de la barre du haut suit la liaison et le tour : gris, vert, bleu qui respire, rouge.
+    auto refreshAgentsPill = [this]() {
+        KoraCutTopBar::AgentsState state = KoraCutTopBar::AgentsState::NoService;
+        QString tip = i18nc("@info:tooltip", "No agents service");
+        switch (m_agentSession->linkState()) {
+        case KoraCutAgents::LinkState::NoService:
+            break;
+        case KoraCutAgents::LinkState::Connecting:
+            tip = i18nc("@info:tooltip", "Connecting to the agents service…");
+            break;
+        case KoraCutAgents::LinkState::Error:
+            state = KoraCutTopBar::AgentsState::Error;
+            tip = i18nc("@info:tooltip", "Agents service: error");
+            break;
+        case KoraCutAgents::LinkState::Connected:
+            state = m_agentSession->turnOpen() ? KoraCutTopBar::AgentsState::Working : KoraCutTopBar::AgentsState::Ready;
+            tip = m_agentSession->turnOpen() ? i18nc("@info:tooltip", "An agent is working") : i18nc("@info:tooltip", "Agents ready");
+            break;
+        }
+        m_topBar->setAgentsState(state, tip);
+    };
+    connect(m_agentSession, &KoraCutAgentSession::linkStateChanged, this, refreshAgentsPill);
+    connect(m_agentSession, &KoraCutAgentSession::turnStarted, this, refreshAgentsPill);
+    connect(m_agentSession, &KoraCutAgentSession::turnFinished, this, refreshAgentsPill);
+    connect(m_agentSession, &KoraCutAgentSession::turnCancelled, this, refreshAgentsPill);
+    connect(m_topBar, &KoraCutTopBar::agentsRequested, this, &MainWindow::slotShowAgentsPanel);
+    refreshAgentsPill();
+    // Connexions IA (25 septembre 2026) : les modèles de la personne, avec leurs clés, partent vers le
+    // service local ; sans adresse réglée, l'application lance ce service à l'ouverture du panneau.
+    auto *aiBridge = new KoraCutAiBridge(m_agentClient, m_agentPanel, this);
+    aiBridge->start();
+#endif
+
+    // KoraCut, la porte de commande (document 18, lot 1, 24 septembre 2026) : n'importe quel programme
+    // de la machine pilote l'application par une prise locale ; le panneau Console montre ce qu'elle
+    // reçoit et demande les accords. La prise s'ouvre une fois l'interface prête (koraCutStartPorte).
+    m_porte = new KoraCutPorte(this);
+    // À la sortie, la porte se ferme et retire son fichier, même si la fenêtre n'est pas détruite (SIGTERM, Quitter).
+    connect(qApp, &QCoreApplication::aboutToQuit, m_porte, &KoraCutPorte::close);
+    KoraCutPorteContext porteContext;
+    porteContext.window = this;
+    KoraCutPorteMethodes::registerAll(m_porte, porteContext);
+    m_consolePanel = new KoraCutConsolePanel(m_porte, this);
+    m_consoleDock = addDock(i18nc("@title:window nom court d'un panneau", "Console"), QStringLiteral("console"), m_consolePanel, KDDockWidgets::Location_None, m_effectStackDock);
+    // Chantier 10 : le panneau Diagnostic, fermé par défaut ; il ne mesure rien tant qu'il est caché.
+    m_perfPanel = new KoraCutPerfPanel(this);
+    m_perfDock = addDock(i18nc("@title:window nom court d'un panneau", "Diagnostic"), QStringLiteral("diagnostic"), m_perfPanel, KDDockWidgets::Location_None, m_effectStackDock);
+    connect(m_consolePanel, &KoraCutConsolePanel::seekRequested, this, [this](int position) {
+        if (getCurrentTimeline()) {
+            pCore->monitorManager()->activateMonitor(Kdenlive::ProjectMonitor);
+            getCurrentTimeline()->controller()->setPosition(position);
+        }
+    });
+
+    // KoraCut, document 18 (25 septembre 2026) : le terminal intégré, sous la timeline comme dans VS Code.
+    // Aucun processus ne tourne tant qu'aucun onglet n'est ouvert.
+    m_terminalPanel = new KoraCutTerminalPanel(m_porte, this);
+    m_terminalDock = addDock(i18nc("@title:window nom court d'un panneau", "Terminal"), QStringLiteral("terminal"), m_terminalPanel,
+                             KDDockWidgets::Location_OnBottom, m_timelineDock, QSize(0, 260));
+    connect(m_consolePanel, &KoraCutConsolePanel::integratedTerminalRequested, this, &MainWindow::slotShowTerminalPanel);
+    connect(m_consolePanel, &KoraCutConsolePanel::systemTerminalRequested, this, [this]() { m_terminalPanel->openInSystemTerminal(); });
+    connect(m_terminalPanel, &KoraCutTerminalPanel::saveProjectRequested, this, [this]() {
+        if (QAction *save = actionCollection()->action(KStandardAction::name(KStandardAction::Save))) {
+            save->trigger();
+        }
+    });
+
+    // KoraCut, document 21 : le panneau Script, l'éditeur du script du projet (onglet du bloc de droite).
+    auto *scriptPanel = new KoraCutScriptPanel(this);
+    addDock(i18nc("@title:window nom court d'un panneau", "Script"), QStringLiteral("script"), scriptPanel, KDDockWidgets::Location_None, m_effectStackDock);
+    connect(scriptPanel, &KoraCutScriptPanel::seekRequested, this, [this](int position) {
+        if (getCurrentTimeline()) {
+            pCore->monitorManager()->activateMonitor(Kdenlive::ProjectMonitor);
+            getCurrentTimeline()->controller()->setPosition(position);
+        }
+    });
+
+    // KoraCut, document 22 : le module Étalonnage comme la page Color de DaVinci Resolve (nœuds,
+    // palettes, bande des plans, galerie). Ces panneaux ne vivent que dans la disposition Étalonnage.
+    auto *colorNodes = new KoraCutNodeEditor(this);
+    addDock(i18nc("@title:window nom court d'un panneau", "Nodes"), QStringLiteral("etal_noeuds"), colorNodes, KDDockWidgets::Location_None, m_effectStackDock);
+    auto *colorPalettes = new KoraCutColorPalettes(this);
+    addDock(i18nc("@title:window nom court d'un panneau", "Palettes"), QStringLiteral("etal_palettes"), colorPalettes, KDDockWidgets::Location_None, m_effectStackDock);
+    addDock(i18nc("@title:window nom court d'un panneau, les plans à étalonner", "Clips"), QStringLiteral("etal_plans"), new KoraCutClipStrip(this),
+            KDDockWidgets::Location_None, m_effectStackDock);
+    addDock(i18nc("@title:window nom court d'un panneau, les stills de l'étalonnage", "Gallery"), QStringLiteral("etal_galerie"), new KoraCutGallery(this),
+            KDDockWidgets::Location_None, m_effectStackDock);
+    new KoraCutColorPage(this, colorNodes, colorPalettes);
+
+    // KoraCut, document 23 : le module Export comme la page Deliver de DaVinci Resolve (modèles en tuiles
+    // avec les vrais logos, paramètres en onglets Vidéo / Audio / Fichier, file de rendu). Ces panneaux ne
+    // vivent que dans la disposition Export ; le moniteur Programme et la timeline sont ceux du Montage.
+    auto *exportTiles = new KoraCutExportTiles(this);
+    addDock(i18nc("@title:window nom court d'un panneau, les modèles d'export", "Models"), QStringLiteral("export_modeles"), exportTiles, KDDockWidgets::Location_None,
+            m_effectStackDock);
+    auto *exportSettings = new KoraCutExportSettingsPanel(this);
+    addDock(i18nc("@title:window nom court d'un panneau", "Export Settings"), QStringLiteral("export_reglages"), exportSettings, KDDockWidgets::Location_None,
+            m_effectStackDock);
+    auto *exportQueue = new KoraCutExportQueuePanel(this);
+    addDock(i18nc("@title:window nom court d'un panneau", "Render Queue"), QStringLiteral("export_file"), exportQueue, KDDockWidgets::Location_None, m_effectStackDock);
+    new KoraCutDeliverPage(this, exportTiles, exportSettings, exportQueue);
+    connect(exportSettings, &KoraCutExportSettingsPanel::advancedRequested, this, &MainWindow::slotRenderProject);
+    connect(pCore.get(), &Core::loadLayoutById, this, [](const QString &id) {
+        if (id == QLatin1String("export") && KoraCutDeliverPage::instance()) {
+            KoraCutDeliverPage::instance()->reload();
+        }
+    });
+    // Les playlists de rendu d'avant, laissées par une instance arrêtée (plus d'un jour).
+    QTimer::singleShot(20000, this, []() { KoraCutExport::cleanTemporaryFiles(); });
+
     // Close non-general docks for the initial layout
     // only show important ones
     m_mixerDock->close();
+    m_terminalDock->close();
+    for (const QString &name : {QStringLiteral("etal_noeuds"), QStringLiteral("etal_palettes"), QStringLiteral("etal_plans"), QStringLiteral("etal_galerie"),
+                                 QStringLiteral("export_modeles"), QStringLiteral("export_reglages"), QStringLiteral("export_file")}) {
+        if (auto *d = KDDockWidgets::DockRegistry::self()->dockByName(name)) {
+            d->forceClose();
+        }
+    }
     m_projectBinDock->setAsCurrentTab();
 
     bool firstRun = readOptions();
@@ -617,12 +1235,12 @@ void MainWindow::init()
     addAction(QStringLiteral("project_render_button"), renderButtonAction);
 
     // Timeline preview button
-    ProgressButton *timelinePreview = new ProgressButton(i18n("Rendering preview"), 1000, this);
+    // KoraCut (24 septembre 2026) : le bouton « Rendu », avec son état en toutes lettres (koracutrender.cpp).
+    auto *timelinePreview = new KoraCutRenderButton(this);
     auto *tlMenu = new QMenu(this);
     timelinePreview->setMenu(tlMenu);
-    connect(this, &MainWindow::setPreviewProgress, timelinePreview, &ProgressButton::setProgress);
     auto *previewButtonAction = new QWidgetAction(this);
-    previewButtonAction->setText(i18n("Timeline Preview"));
+    previewButtonAction->setText(i18nc("@action:intoolbar", "Render Button"));
     previewButtonAction->setIcon(QIcon::fromTheme(QStringLiteral("preview-render-on")));
     previewButtonAction->setDefaultWidget(timelinePreview);
     addAction(QStringLiteral("timeline_preview_button"), previewButtonAction);
@@ -755,6 +1373,17 @@ void MainWindow::init()
     connect(normalize_channels, &QAction::triggered, this, &MainWindow::slotNormalizeAudioChannel);
     timelineHeadersMenu->addAction(normalize_channels);
 
+    // KoraCut : la baisse automatique de la musique, aussi depuis l'en-tête d'une piste audio.
+    // L'action elle-même est créée plus tard (setupActions) : on la cherche au moment du clic.
+    auto *duckingFromHeader = new QAction(QIcon::fromTheme(QStringLiteral("audio-volume-low")), i18nc("@action", "Automatic Music Ducking…"), this);
+    duckingFromHeader->setData("koracut_auto_ducking");
+    connect(duckingFromHeader, &QAction::triggered, this, [this]() {
+        if (QAction *ducking = actionCollection()->action(QStringLiteral("koracut_auto_ducking"))) {
+            ducking->trigger();
+        }
+    });
+    timelineHeadersMenu->addAction(duckingFromHeader);
+
     // Identify Gaps submenu
     QMenu *identifyGapsMenu = new QMenu(i18n("Identify Gaps"), this);
     QAction *gapsAllTracks = new QAction(i18n("All Tracks"), this);
@@ -765,20 +1394,20 @@ void MainWindow::init()
     identifyGapsMenu->addAction(gapsSelectedTrack);
     timelineHeadersMenu->addMenu(identifyGapsMenu);
 
+    // KoraCut : trois états, dans l'ordre d'usage. La bande complète est le défaut ; « début et
+    // fin » reste là parce que c'est le mode utile sur une machine modeste, c'est le seul endroit
+    // où il a un sens. Le quatrième état hérité, « image de début » seule, a été retiré du menu :
+    // il reste lu dans les projets qui l'utilisent.
     QMenu *thumbsMenu = new QMenu(i18n("Thumbnails"), this);
     auto *thumbGroup = new QActionGroup(this);
-    QAction *inFrame = new QAction(i18n("In Frame"), thumbGroup);
-    inFrame->setData(QStringLiteral("2"));
-    inFrame->setCheckable(true);
-    thumbsMenu->addAction(inFrame);
-    QAction *inOutFrame = new QAction(i18n("In/Out Frames"), thumbGroup);
-    inOutFrame->setData(QStringLiteral("0"));
-    inOutFrame->setCheckable(true);
-    thumbsMenu->addAction(inOutFrame);
-    QAction *allFrame = new QAction(i18n("All Frames"), thumbGroup);
+    QAction *allFrame = new QAction(i18n("Full Strip"), thumbGroup);
     allFrame->setData(QStringLiteral("1"));
     allFrame->setCheckable(true);
     thumbsMenu->addAction(allFrame);
+    QAction *inOutFrame = new QAction(i18n("Start and End"), thumbGroup);
+    inOutFrame->setData(QStringLiteral("0"));
+    inOutFrame->setCheckable(true);
+    thumbsMenu->addAction(inOutFrame);
     QAction *noFrame = new QAction(i18n("No Thumbnails"), thumbGroup);
     noFrame->setData(QStringLiteral("3"));
     noFrame->setCheckable(true);
@@ -791,7 +1420,8 @@ void MainWindow::init()
 
     // Setup and fill effects and transitions menus.
     connect(m_effectsMenu, &QMenu::triggered, this, &MainWindow::slotAddEffect);
-    connect(m_transitionsMenu, &QMenu::triggered, this, &MainWindow::slotAddTransition);
+    // KoraCut : plus de branchement ici. Chaque action de composition est branchée à son entrée dans la
+    // collection (constructeur) ; passer aussi par QMenu::triggered poserait la composition deux fois.
 
     m_timelineContextMenu = new QMenu(this);
 
@@ -802,36 +1432,59 @@ void MainWindow::init()
     slotConnectMonitors();
 
     m_timelineToolBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    // KoraCut : la coupe automatique garde son libellé à côté de l'icône, pour qu'on la voie.
+    if (QAction *autoCutAction = actionCollection()->action(QStringLiteral("koracut_auto_cut"))) {
+        if (auto *button = qobject_cast<QToolButton *>(m_timelineToolBar->widgetForAction(autoCutAction))) {
+            button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+            button->setObjectName(QStringLiteral("koracutAutoCutButton"));
+        }
+    }
+    // KoraCut : les cinq outils exclusifs forment un contrôle segmenté, un seul corps visuel.
+    // Apple, Segmented controls : un choix exclusif doit se lire comme un seul objet, pas comme
+    // cinq boutons dont un est allumé. L'espacement de la barre tombe à zéro, les segments se
+    // touchent, et les autres boutons retrouvent leurs 4 px par une marge de feuille de style.
+    setupToolSegments();
     // TODO: let user select timeline toolbar toolbutton style
     // connect(toolBar(), &QToolBar::iconSizeChanged, m_timelineToolBar, &QToolBar::setToolButtonStyle);
     m_timelineToolBar->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_timelineToolBar, &QWidget::customContextMenuRequested, this, &MainWindow::showTimelineToolbarMenu);
 
+    // KoraCut (24 septembre 2026) : le menu du bouton Rendu, en quatre gestes et deux réglages.
     QAction *prevRender = actionCollection()->action(QStringLiteral("prerender_timeline_zone"));
     QAction *stopPrevRender = actionCollection()->action(QStringLiteral("stop_prerender_timeline"));
-    tlMenu->addAction(stopPrevRender);
-    tlMenu->addAction(actionCollection()->action(QStringLiteral("set_render_timeline_zone")));
-    tlMenu->addAction(actionCollection()->action(QStringLiteral("unset_render_timeline_zone")));
-    tlMenu->addAction(actionCollection()->action(QStringLiteral("clear_render_timeline_zone")));
-
-    // Automatic timeline preview action
-    QAction *proxyRender = new QAction(i18n("Preview Using Proxy Clips"), this);
-    proxyRender->setCheckable(true);
-    proxyRender->setChecked(KdenliveSettings::proxypreview());
-    connect(proxyRender, &QAction::triggered, this, [&](bool checked) { KdenliveSettings::setProxypreview(checked); });
-    tlMenu->addAction(proxyRender);
-
-    // Automatic timeline preview action
-    QAction *autoRender = new QAction(QIcon::fromTheme(QStringLiteral("view-refresh")), i18n("Automatic Preview"), this);
-    autoRender->setCheckable(true);
-    autoRender->setChecked(KdenliveSettings::autopreview());
-    connect(autoRender, &QAction::triggered, this, &MainWindow::slotToggleAutoPreview);
-    tlMenu->addAction(autoRender);
+    tlMenu->addAction(prevRender);
+    tlMenu->addAction(actionCollection()->action(QStringLiteral("koracut_render_selection")));
     tlMenu->addSeparator();
+    tlMenu->addAction(actionCollection()->action(QStringLiteral("koracut_render_auto")));
     tlMenu->addAction(actionCollection()->action(QStringLiteral("disable_preview")));
+    tlMenu->addSeparator();
+    tlMenu->addAction(stopPrevRender);
+    tlMenu->addAction(actionCollection()->action(QStringLiteral("clear_render_timeline_zone")));
     tlMenu->addAction(actionCollection()->action(QStringLiteral("manage_cache")));
-    timelinePreview->defineDefaultAction(prevRender, stopPrevRender);
-    timelinePreview->setAutoRaise(true);
+    timelinePreview->setActions(prevRender, stopPrevRender);
+    // La barre passe ses boutons en icône seule : le bouton Rendu garde son libellé, qui dit l'état.
+    timelinePreview->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    connect(m_timelineToolBar, &QToolBar::toolButtonStyleChanged, timelinePreview, [timelinePreview]() {
+        timelinePreview->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    });
+    // Le bouton se range juste après la coupe automatique (le fichier .rc le met plus loin).
+    if (QAction *autoCutAction = actionCollection()->action(QStringLiteral("koracut_auto_cut"))) {
+        const QList<QAction *> toolbarActions = m_timelineToolBar->actions();
+        QAction *renderButtonAction = actionCollection()->action(QStringLiteral("timeline_preview_button"));
+        const int cutIndex = toolbarActions.indexOf(autoCutAction);
+        if (renderButtonAction && cutIndex >= 0 && toolbarActions.contains(renderButtonAction)) {
+            m_timelineToolBar->removeAction(renderButtonAction);
+            const QList<QAction *> remaining = m_timelineToolBar->actions();
+            const int at = remaining.indexOf(autoCutAction) + 1;
+            m_timelineToolBar->insertAction(at < remaining.size() ? remaining.at(at) : nullptr, renderButtonAction);
+        }
+    }
+    // Chantier 10 : les défauts selon la machine (proxys, aperçu, cache, décodage matériel).
+    KoraCutPerformance::applyFirstLaunchDefaults(firstRun);
+    KoraCutRender::applyFirstLaunchDefaults();
+    if (QAction *autoAction = actionCollection()->action(QStringLiteral("koracut_render_auto"))) {
+        autoAction->setChecked(KdenliveSettings::autopreview());
+    }
 
     QAction *showRender = actionCollection()->action(QStringLiteral("project_render"));
     tlrMenu->addAction(showRender);
@@ -888,6 +1541,9 @@ void MainWindow::init()
     // after the QMenuBar has been initialised
     m_hamburgerMenu->setMenuBar(menuBar());
     m_hamburgerMenu->setShowMenuBarAction(showMenuBarAction);
+    // KoraCut : le chevron vit dans la barre du haut. Sur Mac la barre de menus reste native,
+    // le chevron y est donc inutile et la méthode ne fait rien.
+    m_topBar->setMainMenuAction(m_hamburgerMenu);
 
     // Detect shortcut conflicts bewtween mainwindow and media browser
     pCore->mediaBrowser()->detectShortcutConflicts();
@@ -925,6 +1581,1246 @@ void MainWindow::init()
         // connect to a custom slot
         connect(tbAction, &QAction::triggered, this, &MainWindow::slotEditToolbars);
     }
+
+}
+
+void MainWindow::koraCutRelay()
+{
+    // Relais de version : KORACUT_RELAIS=<dossier>. Quand le fichier <dossier>/demande apparaît,
+    // KoraCut enregistre le projet ouvert, écrit son chemin dans <dossier>/projet, puis quitte
+    // proprement. Le script ~/CraftRoot/koracut-amadou.sh s'en sert pour remplacer l'instance
+    // d'Amadou Ba par la dernière version compilée, sur le même projet, sans rien perdre.
+    const QString dir = qEnvironmentVariable("KORACUT_RELAIS");
+    if (dir.isEmpty()) {
+        return;
+    }
+    QDir().mkpath(dir);
+    QFile::remove(dir + QStringLiteral("/demande"));
+    // Le bandeau « Une nouvelle version est prête » (demande d'Amadou Ba du 23 septembre 2026 au
+    // soir : c'est lui qui choisit le moment de la mise à jour, plus le script). Toutes les 30 s,
+    // on compare la date du binaire installé à celle du binaire qu'on exécute ; quand elle change,
+    // un message dans le chutier propose « Mettre à jour » : koracut-amadou.sh --forcer fait alors
+    // enregistrer le projet par ce relais, quitte et relance sur le même projet.
+    const QString binary = QCoreApplication::applicationFilePath();
+    const QDateTime started = QFileInfo(binary).lastModified();
+    auto *versionTimer = new QTimer(this);
+    versionTimer->setInterval(30000);
+    connect(versionTimer, &QTimer::timeout, this, [this, binary, started, versionTimer]() {
+        const QDateTime now = QFileInfo(binary).lastModified();
+        if (!now.isValid() || now <= started) {
+            return;
+        }
+        versionTimer->stop();
+        auto *update = new QAction(i18nc("@action:button", "Update Now"), this);
+        connect(update, &QAction::triggered, this, []() {
+            QProcess::startDetached(QDir::homePath() + QStringLiteral("/CraftRoot/koracut-amadou.sh"), {QStringLiteral("--forcer")});
+        });
+        pCore->displayBinMessage(i18nc("@info", "A new version of KoraCut is ready (%1). Your project will be saved and reopened.",
+                                       QLocale().toString(now, QLocale::ShortFormat)),
+                                 KMessageWidget::Information, {update}, true);
+    });
+    versionTimer->start();
+    auto *timer = new QTimer(this);
+    timer->setInterval(1000);
+    connect(timer, &QTimer::timeout, this, [this, dir, timer]() {
+        if (!QFile::exists(dir + QStringLiteral("/demande"))) {
+            return;
+        }
+        timer->stop();
+        QFile::remove(dir + QStringLiteral("/demande"));
+        QString saved;
+        KdenliveDoc *doc = pCore->currentDoc();
+        if (doc && !doc->url().isEmpty()) {
+            if (!doc->isModified() || pCore->projectManager()->saveFile()) {
+                saved = doc->url().toLocalFile();
+            }
+        } else if (doc && doc->isModified()) {
+            // Projet jamais enregistré mais qui contient du travail : on lui donne un nom daté
+            // dans Vidéos/KoraCut plutôt que d'ouvrir une fenêtre à laquelle personne ne répondra.
+            const QString folder = QStandardPaths::writableLocation(QStandardPaths::MoviesLocation) + QStringLiteral("/KoraCut");
+            QDir().mkpath(folder);
+            const QString file =
+                folder + QStringLiteral("/Projet ") + QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH'h'mm")) + QStringLiteral(".koracut");
+            if (pCore->projectManager()->saveFileAs(file)) {
+                saved = file;
+            }
+        }
+        QFile out(dir + QStringLiteral("/projet"));
+        if (out.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            out.write(saved.toUtf8());
+            out.close();
+        }
+        close();
+    });
+    timer->start();
+}
+
+void MainWindow::koraCutDevScreenshot()
+{
+    // KORACUT_DUMP_ACTIONS=1 : liste les actions KoraCut et leurs raccourcis, tels que Qt les écrit.
+    // Sert à contrôler les raccourcis de modules sans avoir à cliquer dans l'application.
+    // KORACUT_DUMP_ACTIONS=all : toutes les actions, pour contrôler un jeu de raccourcis entier
+    // (ajouté le 21 septembre 2026 avec les schémas de clavier).
+    if (qEnvironmentVariableIsSet("KORACUT_DUMP_ACTIONS")) {
+        const bool dumpAll = qEnvironmentVariable("KORACUT_DUMP_ACTIONS") == QLatin1String("all");
+        const QList<QAction *> actions = actionCollection()->actions();
+        for (QAction *a : actions) {
+            if (!dumpAll && !a->objectName().startsWith(QLatin1String("koracut_")) && !a->objectName().startsWith(QLatin1String("project_render"))) {
+                continue;
+            }
+            QStringList keys;
+            const QList<QKeySequence> shortcuts = a->shortcuts();
+            for (const QKeySequence &k : shortcuts) {
+                keys << k.toString(QKeySequence::PortableText);
+            }
+            qWarning().noquote() << "KORACUT-ACTION" << a->objectName() << "|" << a->text() << "|" << keys.join(QLatin1String(" , "));
+        }
+    }
+
+    // Outil de développement : KORACUT_SHOT=/chemin/capture.png enregistre la fenêtre principale
+    // puis quitte. Sert à se relire quand l'écran du Mac est verrouillé et que screencapture ne
+    // peut rien attraper. KORACUT_SHOT_DELAY (ms) et KORACUT_SHOT_SIZE (« 1366x768 ») sont optionnels.
+    const QString path = qEnvironmentVariable("KORACUT_SHOT");
+    if (path.isEmpty()) {
+        return;
+    }
+    const QString size = qEnvironmentVariable("KORACUT_SHOT_SIZE");
+    if (size.contains(QLatin1Char('x'))) {
+        resize(size.section(QLatin1Char('x'), 0, 0).toInt(), size.section(QLatin1Char('x'), 1, 1).toInt());
+    }
+    const int delay = qEnvironmentVariableIsSet("KORACUT_SHOT_DELAY") ? qEnvironmentVariableIntValue("KORACUT_SHOT_DELAY") : 4000;
+    QTimer::singleShot(delay, this, [this, path]() {
+        // KORACUT_SHOT_EXTENSION=/chemin/effet.xml : simule l'installation d'un effet par la fenêtre
+        // Extensions (copie dans le dossier des effets personnels, comme KNewStuff), puis le rechargement
+        // sans relancer. Le journal dit si l'effet est entré dans le menu des effets. Le fichier copié
+        // est retiré ensuite. 23 septembre 2026.
+        const QString extension = qEnvironmentVariable("KORACUT_SHOT_EXTENSION");
+        if (!extension.isEmpty()) {
+            const QString folder = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/effects/");
+            QDir().mkpath(folder);
+            const QString target = folder + QFileInfo(extension).fileName();
+            QFile::remove(target);
+            QFile::copy(extension, target);
+            const int before = m_effectActions->actions().count();
+            KNSCore::Entry entry;
+            entry.setInstalledFiles({target});
+            entry.setStatus(KNSCore::Entry::Status::Installed);
+            koraCutReloadExtensions(QStringLiteral(":data/koracut_effects.knsrc"), {entry});
+            QStringList names;
+            for (QAction *a : m_effectActions->actions()) {
+                names << a->text();
+            }
+            qWarning().noquote() << "KORACUT-EXTENSION actions avant" << before << "après" << m_effectActions->actions().count()
+                                 << "présent" << names.contains(QStringLiteral("Essai extension KoraCut"));
+            QFile::remove(target);
+        }
+        // Une capture par page des Préférences : KORACUT_SHOT_DIALOGS=prefs
+        // Sur macOS, la barre de menus native ne laisse pas déclencher « Préférences… » par
+        // l'accessibilité (essayé le 20/09/2026, AXPress répond « ok » mais rien ne s'ouvre).
+        // C'est le seul moyen de relire les douze pages de réglages après un changement d'icônes.
+        // KORACUT_SHOT_IMPORT=<fichiers> : importe et pose des fichiers dans la timeline (voir plus bas).
+        auto importTestFiles = []() {
+                // Un fichier précédé de « V: » va sur une piste vidéo (une caméra), les autres sur les pistes
+                // audio (les micros). Les deux séries dans l'ordre des pistes.
+                const QStringList files = qEnvironmentVariable("KORACUT_SHOT_IMPORT").split(QLatin1Char('|'), Qt::SkipEmptyParts);
+                int audioIndex = 0;
+                int videoIndex = 0;
+                for (QString file : files) {
+                    const bool video = file.startsWith(QLatin1String("V:"));
+                    // « B: » : dans le chutier seulement, sans le poser (les agents le poseront eux-mêmes).
+                    const bool binOnly = file.startsWith(QLatin1String("B:"));
+                    if (video || binOnly) {
+                        file = file.mid(2);
+                    }
+                    const int index = binOnly ? -1 : (video ? videoIndex++ : audioIndex++);
+                    Fun undo = []() { return true; };
+                    Fun redo = []() { return true; };
+                    ClipCreator::createClipFromFile(file, pCore->projectItemModel()->getRootFolder()->clipId(), pCore->projectItemModel(), undo, redo,
+                                                    [index, video](const QString &binId) {
+                                                        if (index < 0) {
+                                                            return;
+                                                        }
+                                                        auto timeline = pCore->projectManager()->getTimeline();
+                                                        QList<int> tracks = timeline->getTracksIds(!video);
+                                                        // Dans l'ordre de l'écran : V1, V2… et A1, A2…
+                                                        std::sort(tracks.begin(), tracks.end(), [&timeline, video](int a, int b) {
+                                                            return video ? timeline->getTrackPosition(a) < timeline->getTrackPosition(b)
+                                                                         : timeline->getTrackPosition(a) > timeline->getTrackPosition(b);
+                                                        });
+                                                        int cid = -1;
+                                                        if (index < tracks.size()) {
+                                                            timeline->requestClipInsertion(binId, tracks.at(index), 0, cid, true, true, false);
+                                                        }
+                                                        qWarning() << "KoraCut: essai, clip posé" << binId << cid;
+                                                    });
+                }
+        };
+        // KORACUT_SHOT_DIALOGS=autocut-run avec KORACUT_SHOT_IMPORT=<fichier son> : essai de bout en bout
+        // de la coupe automatique. Importe le fichier, le pose sur la première piste audio, attend
+        // ses niveaux, clique « Analyser » (marquer pour relire), attend la transcription, écrit les
+        // marques posées (lignes KORACUT-MARQUE) et capture la fenêtre et la timeline.
+        if (qEnvironmentVariable("KORACUT_SHOT_DIALOGS") == QLatin1String("autocut-run")) {
+            // Plusieurs fichiers séparés par « | » : le premier sur la première piste audio, le suivant
+            // sur la deuxième, et ainsi de suite (essai de la synchronisation).
+            importTestFiles();
+            QTimer::singleShot(8000, this, [this, path]() {
+                auto *dialog = new KoraCutAutoCutDialog(this);
+                dialog->show();
+                const QList<QPushButton *> buttons = dialog->findChildren<QPushButton *>();
+                for (QPushButton *b : buttons) {
+                    if (b->text().remove(QLatin1Char('&')) == i18nc("@action:button", "Analyze")) {
+                        b->click();
+                    }
+                }
+                auto *poll = new QTimer(this);
+                auto *elapsed = new QElapsedTimer();
+                elapsed->start();
+                connect(poll, &QTimer::timeout, this, [this, dialog, poll, elapsed, path]() {
+                    auto *transcriber = dialog->findChild<KoraCutTranscriber *>();
+                    if (transcriber && transcriber->isRunning() && elapsed->elapsed() < 600000) {
+                        return;
+                    }
+                    poll->stop();
+                    const QList<QLabel *> labels = dialog->findChildren<QLabel *>();
+                    for (QLabel *l : labels) {
+                        qWarning().noquote() << "KORACUT-TEXTE" << l->text();
+                    }
+                    auto essai = pCore->projectManager()->getTimeline();
+                    for (int tid : essai->getTracksIds(true)) {
+                        for (int cid : essai->getItemsInRange(tid, 0, -1, false)) {
+                            qWarning().noquote() << "KORACUT-CLIP" << essai->getTrackTagById(tid) << essai->getClipPosition(cid) << essai->getClipPlaytime(cid)
+                                                 << pCore->projectItemModel()->getClipByBinID(essai->getClipBinId(cid))->name();
+                        }
+                    }
+                    for (int tid : essai->getTracksIds(false)) {
+                        for (int cid : essai->getItemsInRange(tid, 0, -1, false)) {
+                            qWarning().noquote() << "KORACUT-CAMERA" << essai->getTrackTagById(tid) << pCore->projectItemModel()->getClipByBinID(essai->getClipBinId(cid))->name()
+                                                 << essai->getClipPosition(cid) << essai->getClipPlaytime(cid)
+                                                 << (essai->getClipState(cid).first == PlaylistState::Disabled ? "désactivé" : "actif");
+                        }
+                    }
+                    const auto marks = pCore->projectManager()->getTimeline()->getGuideModel()->getAllMarkers();
+                    const double fps = pCore->getCurrentFps();
+                    for (const CommentedTime &m : marks) {
+                        qWarning().noquote() << "KORACUT-MARQUE" << m.time().frames(fps) << m.duration().frames(fps) << m.markerType() << m.comment();
+                    }
+                    // KORACUT_SHOT_AUTOCUT_CUT=1 : on va jusqu'à « Couper ce qui est marqué ».
+                    if (qEnvironmentVariableIsSet("KORACUT_SHOT_AUTOCUT_CUT")) {
+                        qWarning() << "KORACUT-DUREE avant" << pCore->projectManager()->getTimeline()->duration();
+                        for (QPushButton *b : dialog->findChildren<QPushButton *>()) {
+                            if (b->text().remove(QLatin1Char('&')) == i18nc("@action:button", "Cut What Is Marked")) {
+                                b->click();
+                            }
+                        }
+                        qWarning() << "KORACUT-DUREE après" << pCore->projectManager()->getTimeline()->duration()
+                                   << "marques restantes" << pCore->projectManager()->getTimeline()->getGuideModel()->getAllMarkers().size();
+                    }
+                    QString dialogShot = path;
+                    dialogShot.replace(QLatin1String(".png"), QLatin1String("-autocut.png"));
+                    dialog->grab().save(dialogShot);
+                    grab().save(path);
+                    // Projet d'essai : on ne demande pas s'il faut l'enregistrer, sinon l'essai reste
+                    // bloqué sur la question.
+                    if (pCore->currentDoc()) {
+                        pCore->currentDoc()->setModified(false);
+                    }
+                    QCoreApplication::quit();
+                });
+                poll->start(1000);
+            });
+            return;
+        }
+        // KORACUT_SHOT_DIALOGS=ducking : la fenêtre de baisse automatique de la musique.
+        if (qEnvironmentVariable("KORACUT_SHOT_DIALOGS") == QLatin1String("ducking") || qEnvironmentVariable("KORACUT_SHOT_DIALOGS") == QLatin1String("extensions") ||
+            qEnvironmentVariable("KORACUT_SHOT_DIALOGS") == QLatin1String("autocut")) {
+            const bool extensions = qEnvironmentVariable("KORACUT_SHOT_DIALOGS") == QLatin1String("extensions");
+            QDialog *dialog = extensions ? static_cast<QDialog *>(new KoraCutExtensionsDialog(this)) : static_cast<QDialog *>(new KoraCutDuckingDialog(this));
+            if (qEnvironmentVariable("KORACUT_SHOT_DIALOGS") == QLatin1String("autocut")) {
+                delete dialog;
+                dialog = new KoraCutAutoCutDialog(this);
+            }
+            dialog->show();
+            // KORACUT_SHOT_CLICK=<libellé> : clique ce bouton de la fenêtre ; KORACUT_SHOT_WAIT (ms) :
+            // attend avant la capture (un téléchargement, une analyse), et écrit les textes affichés.
+            const QString click = qEnvironmentVariable("KORACUT_SHOT_CLICK");
+            if (!click.isEmpty()) {
+                for (QPushButton *b : dialog->findChildren<QPushButton *>()) {
+                    if (b->text().remove(QLatin1Char('&')) == click) {
+                        b->click();
+                    }
+                }
+            }
+            const int wait = qEnvironmentVariableIsSet("KORACUT_SHOT_WAIT") ? qEnvironmentVariableIntValue("KORACUT_SHOT_WAIT") : 1200;
+            QTimer::singleShot(wait, this, [dialog, path]() {
+                for (QLabel *l : dialog->findChildren<QLabel *>()) {
+                    qWarning().noquote() << "KORACUT-TEXTE" << l->text();
+                }
+                QString target = path;
+                target.replace(QLatin1String(".png"), QStringLiteral("-%1.png").arg(qEnvironmentVariable("KORACUT_SHOT_DIALOGS")));
+                dialog->grab().save(target);
+                QCoreApplication::quit();
+            });
+            return;
+        }
+#if KORACUT_AGENTS
+        // KORACUT_SHOT_DIALOGS=connexions-ia : la page Connexions IA des Préférences ; avec
+        // KORACUT_SHOT_AI=<fournisseur ou connexion>, ce fournisseur choisi (-connexions-ia.png).
+        if (qEnvironmentVariable("KORACUT_SHOT_DIALOGS") == QLatin1String("connexions-ia")) {
+            KoraCutAiConnectionsPage::openInPreferences(qEnvironmentVariable("KORACUT_SHOT_AI"));
+            QTimer::singleShot(qEnvironmentVariableIsSet("KORACUT_SHOT_WAIT") ? qEnvironmentVariableIntValue("KORACUT_SHOT_WAIT") : 1500, this, [path]() {
+                if (QWidget *dialog = KConfigDialog::exists(QStringLiteral("settings"))) {
+                    QString target = path;
+                    target.replace(QLatin1String(".png"), QStringLiteral("-connexions-ia.png"));
+                    dialog->grab().save(target);
+                    for (QLabel *l : dialog->findChildren<QLabel *>()) {
+                        if (l->isVisible() && !l->text().isEmpty()) {
+                            qWarning().noquote() << "KORACUT-TEXTE" << l->text();
+                        }
+                    }
+                }
+                QCoreApplication::quit();
+            });
+            return;
+        }
+#endif
+        // KORACUT_SHOT_DIALOGS=prefs : une capture par section des Préférences (-prefs-<section>.png) ;
+        // prefs:apparence,timeline pour quelques sections ; KORACUT_SHOT_PREFS_SEARCH=<texte> filtre
+        // d'abord les réglages. Écrit aussi ce que la porte de commande voit de la fenêtre (KORACUT-PREFS).
+        const QString shotDialogs = qEnvironmentVariable("KORACUT_SHOT_DIALOGS");
+        if (shotDialogs == QLatin1String("prefs") || shotDialogs.startsWith(QLatin1String("prefs:"))) {
+            slotShowPreferencePage(Kdenlive::NoPage, 0);
+            auto *prefs = qobject_cast<KdenliveSettingsDialog *>(KConfigDialog::exists(QStringLiteral("settings")));
+            if (!prefs) {
+                QCoreApplication::quit();
+                return;
+            }
+            const QStringList ids = shotDialogs == QLatin1String("prefs") ? prefs->koraCutSections() : shotDialogs.mid(6).split(QLatin1Char(','), Qt::SkipEmptyParts);
+            const QString search = qEnvironmentVariable("KORACUT_SHOT_PREFS_SEARCH");
+            int step = 800;
+            for (const QString &id : ids) {
+                QTimer::singleShot(step, this, [prefs, id, search]() {
+                    if (!search.isEmpty()) {
+                        qWarning().noquote() << "KORACUT-PREFS recherche" << search << "trouvés" << prefs->koraCutSearch(search);
+                    }
+                    if (!prefs->koraCutShowSection(id)) {
+                        qWarning().noquote() << "KORACUT-PREFS section inconnue" << id;
+                    }
+                });
+                step += 900;
+                QTimer::singleShot(step, this, [prefs, id, path]() {
+                    QString target = path;
+                    target.replace(QLatin1String(".png"), QStringLiteral("-prefs-%1.png").arg(id));
+                    prefs->grab().save(target);
+                    qWarning().noquote() << "KORACUT-PREFS" << id << "section" << prefs->koraCutCurrentSection() << "capture" << target;
+                    qWarning().noquote() << "KORACUT-PREFS-FENETRE"
+                                         << QString::fromUtf8(QJsonDocument(KoraCutPorte::describeWindow(prefs)).toJson(QJsonDocument::Compact));
+                });
+                step += 300;
+            }
+            QTimer::singleShot(step + 400, qApp, &QCoreApplication::quit);
+            return;
+        }
+        // KORACUT_SHOT_ACTIONS=collapse_all_tracks,undo : déclenche ces actions l'une après l'autre
+        // (1,5 s d'écart), puis capture. Sert à contrôler un geste sans souris ni écran déverrouillé.
+        const QStringList actionsToRun = qEnvironmentVariable("KORACUT_SHOT_ACTIONS").split(QLatin1Char(','), Qt::SkipEmptyParts);
+        if (!actionsToRun.isEmpty()) {
+            // Avec KORACUT_SHOT_IMPORT, les fichiers d'abord, et le temps de calculer leurs niveaux.
+            int step = 0;
+            if (qEnvironmentVariableIsSet("KORACUT_SHOT_IMPORT") && !actionsToRun.contains(QLatin1String("importer"))) {
+                importTestFiles();
+                step = 8000;
+            }
+            for (const QString &name : actionsToRun) {
+                // « attendre:N » : N ms de plus avant l'action suivante (un rendu, une analyse).
+                if (name.startsWith(QLatin1String("attendre:"))) {
+                    step += name.mid(9).toInt();
+                    continue;
+                }
+                QTimer::singleShot(step, this, [this, name, importTestFiles]() {
+                    // « importer » : importe KORACUT_SHOT_IMPORT maintenant (après un file_new, par exemple).
+                    if (name == QLatin1String("importer")) {
+                        importTestFiles();
+                        return;
+                    }
+                    // « type:texte » : comme si on tapait ce texte dans le champ Rechercher de la barre du haut.
+                    // « onglet:N » : passe la fenêtre secondaire ouverte (Rendu, Préférences…) sur son onglet N.
+                    if (name.startsWith(QLatin1String("onglet:"))) {
+                        for (QWidget *w : QApplication::topLevelWidgets()) {
+                            if (w != this && w->isVisible()) {
+                                if (auto *tabs = w->findChild<QTabWidget *>()) {
+                                    tabs->setCurrentIndex(name.mid(7).toInt());
+                                }
+                            }
+                        }
+                        return;
+                    }
+                    // « role:A2=music » : pose le rôle d'une piste audio, comme la baisse automatique de la musique.
+                    if (name.startsWith(QLatin1String("role:"))) {
+                        const QString tag = name.mid(5).section(QLatin1Char('='), 0, 0);
+                        const QString role = name.section(QLatin1Char('='), 1);
+                        auto timeline = pCore->projectManager()->getTimeline();
+                        for (int tid : timeline->getTracksIds(true)) {
+                            if (timeline->getTrackTagById(tid) == tag) {
+                                timeline->setTrackProperty(tid, QStringLiteral("kdenlive:koracut_role"), role);
+                                qWarning() << "KoraCut: rôle posé" << tag << role;
+                            }
+                        }
+                        getCurrentTimeline()->controller()->refreshTrackColors();
+                        return;
+                    }
+                    // « pistes » : écrit le profil du projet et chaque piste avec son nom (KORACUT-PISTE).
+                    if (name == QLatin1String("pistes")) {
+                        auto timeline = pCore->projectManager()->getTimeline();
+                        const auto &profile = pCore->getCurrentProfile();
+                        qWarning().noquote() << "KORACUT-PROFIL" << profile->width() << profile->height() << profile->fps()
+                                             << (pCore->currentDoc() ? pCore->currentDoc()->getDocumentProperty(QStringLiteral("koracut:videotype")) : QString())
+                                             << (pCore->currentDoc() ? pCore->currentDoc()->url().fileName() : QString());
+                        for (bool audio : {false, true}) {
+                            for (int tid : timeline->getTracksIds(audio)) {
+                                qWarning().noquote() << "KORACUT-PISTE" << timeline->getTrackTagById(tid) << timeline->getTrackPosition(tid)
+                                                     << timeline->getTrackProperty(tid, QStringLiteral("kdenlive:track_name")).toString();
+                            }
+                        }
+                        return;
+                    }
+                    // « apercu:mesure:N » lit N secondes depuis le début et écrit KORACUT-APERCU (images sautées) ;
+                    // « apercu:rendre » rend toute la séquence (KORACUT-APERCU rendu_ms=… à la fin) ; « apercu:effacer »
+                    // efface les rendus ; « apercu:etat » écrit l'état du rendu. Document 6, journal du 24 septembre 2026.
+                    // « diagnostic:tester » lance l'essai du panneau Diagnostic (ligne KORACUT-DIAGNOSTIC à la fin) ;
+                    // « diagnostic:etat » écrit ce que le panneau mesure. Chantier 10.
+                    if (name.startsWith(QLatin1String("diagnostic:")) && m_perfPanel) {
+                        const auto printJson = [](const QJsonObject &o) {
+                            qWarning().noquote() << "KORACUT-DIAGNOSTIC" << QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
+                        };
+                        if (name == QLatin1String("diagnostic:tester")) {
+                            slotShowDiagnosticPanel();
+                            connect(m_perfPanel, &KoraCutPerfPanel::testFinished, this, printJson, Qt::SingleShotConnection);
+                            m_perfPanel->runTest();
+                        } else {
+                            printJson(KoraCutPerfPanel::snapshot());
+                        }
+                        return;
+                    }
+                    if (name.startsWith(QLatin1String("apercu:"))) {
+                        const QString what = name.section(QLatin1Char(':'), 1, 1);
+                        auto print = [](const QJsonObject &o) {
+                            QStringList parts;
+                            for (auto it = o.constBegin(); it != o.constEnd(); ++it) {
+                                const QJsonValue v = it.value();
+                                QString text = v.toVariant().toString();
+                                if (v.isObject()) {
+                                    text = QString::fromUtf8(QJsonDocument(v.toObject()).toJson(QJsonDocument::Compact));
+                                } else if (v.isArray()) {
+                                    text = QString::fromUtf8(QJsonDocument(v.toArray()).toJson(QJsonDocument::Compact));
+                                }
+                                parts << QStringLiteral("%1=%2").arg(it.key(), text);
+                            }
+                            qWarning().noquote() << "KORACUT-APERCU" << parts.join(QLatin1Char(' '));
+                        };
+                        if (what == QLatin1String("mesure")) {
+                            const int seconds = std::max(1, name.section(QLatin1Char(':'), 2, 2).toInt());
+                            // « apercu:mesure:N:D » : depuis la seconde D (banc d'essai du chantier 10).
+                            const double from = name.section(QLatin1Char(':'), 3, 3).toDouble();
+                            KoraCutRender::measurePlayback(int(from * pCore->getCurrentFps()), seconds, print);
+                        } else if (what == QLatin1String("rendre") && getCurrentTimeline()) {
+                            auto *clock = new QElapsedTimer;
+                            clock->start();
+                            getCurrentTimeline()->controller()->renderRange(QPoint(0, std::max(0, getCurrentTimeline()->model()->duration() - 1)));
+                            auto *poll = new QTimer(this);
+                            connect(poll, &QTimer::timeout, this, [poll, clock, print]() {
+                                const QJsonObject state = KoraCutRender::stateJson();
+                                if (!state.value(QStringLiteral("en_cours")).toBool() && state.value(QStringLiteral("a_rendre")).toArray().isEmpty()) {
+                                    poll->stop();
+                                    poll->deleteLater();
+                                    print(QJsonObject{{QStringLiteral("rendu_ms"), clock->elapsed()}, {QStringLiteral("cache_mo"), state.value(QStringLiteral("cache")).toObject().value(QStringLiteral("mo"))}});
+                                    delete clock;
+                                }
+                            });
+                            poll->start(200);
+                        } else if (what == QLatin1String("effacer") && getCurrentTimeline()) {
+                            getCurrentTimeline()->controller()->clearRenders();
+                        } else if (what == QLatin1String("etat")) {
+                            print(KoraCutRender::stateJson());
+                        }
+                        return;
+                    }
+                    // « positions » : écrit la place de chaque clip (KORACUT-POSITION piste position durée).
+                    if (name == QLatin1String("positions")) {
+                        auto timeline = pCore->projectManager()->getTimeline();
+                        for (bool audio : {false, true}) {
+                            for (int tid : timeline->getTracksIds(audio)) {
+                                for (int cid : timeline->getItemsInRange(tid, 0, -1, false)) {
+                                    qWarning().noquote() << "KORACUT-POSITION" << timeline->getTrackTagById(tid) << timeline->getItemPosition(cid)
+                                                         << timeline->getItemPlaytime(cid);
+                                }
+                            }
+                        }
+                        return;
+                    }
+                    // « export:capture » ou « export:rendre » : ouvre la fenêtre Export, écrit le préréglage
+                    // choisi et le niveau sonore (KORACUT-EXPORT), capture la fenêtre (<capture>-export.png) et,
+                    // avec « rendre », lance le rendu vers KORACUT_EXPORT_OUT puis attend qu'il finisse.
+                    if (name.startsWith(QLatin1String("export:"))) {
+                        slotRenderProject();
+                        const bool rendre = name == QLatin1String("export:rendre");
+                        QTimer::singleShot(1500, this, [this, rendre]() {
+                            if (!m_renderWidget) {
+                                qWarning() << "KORACUT-EXPORT pas de fenêtre";
+                                return;
+                            }
+                            QString preset;
+                            for (QLabel *l : m_renderWidget->findChildren<QLabel *>()) {
+                                if (l->objectName() == QLatin1String("profile_name")) {
+                                    preset = l->text();
+                                }
+                            }
+                            QCheckBox *loud = nullptr;
+                            QSpinBox *lufs = nullptr;
+                            for (QCheckBox *c : m_renderWidget->findChildren<QCheckBox *>()) {
+                                if (c->text() == i18nc("@option:check", "Level the sound at")) {
+                                    loud = c;
+                                }
+                            }
+                            for (QSpinBox *sp : m_renderWidget->findChildren<QSpinBox *>()) {
+                                if (sp->suffix().contains(QLatin1String("LUFS"))) {
+                                    lufs = sp;
+                                }
+                            }
+                            qWarning().noquote() << "KORACUT-EXPORT préréglage" << m_renderWidget->currentPresetName() << "niveau"
+                                                 << (loud ? (loud->isChecked() ? "coché" : "décoché") : "case introuvable") << (lufs ? lufs->value() : 0);
+                            // « Plus d'options » déplié, pour voir la section Audio sur la capture.
+                            for (QCheckBox *c : m_renderWidget->findChildren<QCheckBox *>()) {
+                                if (c->objectName() == QLatin1String("options")) {
+                                    c->setChecked(true);
+                                }
+                            }
+                            QString shot = qEnvironmentVariable("KORACUT_SHOT");
+                            shot.replace(QLatin1String(".png"), QLatin1String("-export.png"));
+                            m_renderWidget->grab().save(shot);
+                            if (rendre) {
+                                const QString out = qEnvironmentVariable("KORACUT_EXPORT_OUT");
+                                m_renderWidget->startRenderTo(out);
+                                qWarning() << "KORACUT-EXPORT rendu lancé vers" << out;
+                            }
+                        });
+                        return;
+                    }
+                    // « tailles » : écrit la largeur minimale de chaque panneau et des enfants qui l'imposent
+                    // (KORACUT-MIN). C'est ce qui borne les dispositions sur un petit écran.
+                    if (name == QLatin1String("barre-timeline")) {
+                        // La barre d'outils de la timeline : sa largeur, celle de son conteneur, et le
+                        // bouton « plus d'outils » de Qt (présent, visible, place).
+                        QWidget *ext = m_timelineToolBar->findChild<QWidget *>(QStringLiteral("qt_toolbar_ext_button"));
+                        qWarning().noquote() << "KORACUT-BARRE" << "barre" << m_timelineToolBar->geometry() << "min" << m_timelineToolBar->minimumSizeHint()
+                                             << "conteneur" << m_timelineToolBarContainer->geometry() << "ext" << (ext ? ext->geometry() : QRect())
+                                             << "ext_visible" << (ext && ext->isVisible());
+                        if (auto *b = qobject_cast<QToolButton *>(ext)) {
+                            qWarning().noquote() << "KORACUT-BARRE icone_nulle" << b->icon().isNull() << "tailles" << b->icon().availableSizes() << "iconSize" << b->iconSize()
+                                                 << "style" << b->toolButtonStyle() << "feuille" << b->styleSheet();
+                            b->grab().save(qEnvironmentVariable("KORACUT_SHOT").replace(QLatin1String(".png"), QLatin1String("-ext.png")));
+                        }
+                        return;
+                    }
+                    if (name == QLatin1String("tailles")) {
+                        const auto docks = KDDockWidgets::DockRegistry::self()->dockwidgets();
+                        for (KDDockWidgets::Core::DockWidget *d : docks) {
+                            QWidget *w = KDDockWidgets::QtCommon::View_qt::asQWidget(d->guestView().get());
+                            if (!w) {
+                                continue;
+                            }
+                            qWarning().noquote() << "KORACUT-MIN" << d->uniqueName() << w->minimumSizeHint().width() << w->minimumSize().width();
+                            for (QWidget *c : w->findChildren<QWidget *>()) {
+                                const int m = qMax(c->minimumSizeHint().width(), c->minimumWidth());
+                                if (m >= 200 && c->isVisibleTo(w)) {
+                                    qWarning().noquote() << "KORACUT-MIN   " << c->metaObject()->className() << c->objectName() << m
+                                                         << c->minimumSizeHint().width() << c->minimumWidth();
+                                }
+                            }
+                        }
+                        return;
+                    }
+                    // « disposition:compact » ou « disposition:large-vertical » : range les panneaux du module
+                    // Montage pour un portable ou un moniteur, et écrit la disposition dans KORACUT_LAYOUT_OUT
+                    // (c'est ainsi que sont produits data/layouts/montage*.json, 23 septembre 2026).
+                    // Document 22 : le module Étalonnage (« etal:graphe-fichier=… », « etal:noeud=parallele »…).
+                    if (name.startsWith(QLatin1String("etal:"))) {
+                        KoraCutColorPage::shotAction(name.mid(5));
+                        return;
+                    }
+                    // Document 23 : le module Export (« livraison:modele=tiktok », « livraison:exporter »…).
+                    if (name.startsWith(QLatin1String("livraison:"))) {
+                        KoraCutDeliverPage::shotAction(name.mid(10));
+                        return;
+                    }
+                    // « theme:clair », « theme:sombre » : le thème de l'interface, pour capturer les deux.
+                    if (name.startsWith(QLatin1String("theme:"))) {
+                        QString why;
+                        KoraCutThemes::self()->apply(name.mid(6), &why);
+                        return;
+                    }
+                    if (name.startsWith(QLatin1String("disposition:"))) {
+                        // « disposition:compact », « disposition:large-vertical » (Montage) ou
+                        // « disposition:etalonnage », « disposition:audio-vertical »… (les autres modules).
+                        const QString variant = name.mid(12);
+                        const bool vertical = variant.endsWith(QLatin1String("-vertical"));
+                        const bool montage = variant.startsWith(QLatin1String("compact")) || variant.startsWith(QLatin1String("large"));
+                        const bool compact = variant.startsWith(QLatin1String("compact"));
+                        const QString module = montage ? QStringLiteral("montage") : variant.section(QLatin1Char('-'), 0, 0);
+                        KoraCutWorkspace::arrangeModule(this, module, vertical);
+                        const QString out = qEnvironmentVariable("KORACUT_LAYOUT_OUT");
+                        if (!out.isEmpty()) {
+                            const KoraCutModules::Module *info = KoraCutModules::byId(module);
+                            qWarning() << "KoraCut: disposition écrite" << out
+                                       << KoraCutWorkspace::writeLayout(out, module, info ? info->name : module, vertical, montage && compact);
+                        }
+                        setSingleMonitor(KdenliveSettings::singleMonitor());
+                        if (!KdenliveSettings::showtitlebars()) {
+                            Q_EMIT pCore->hideBars(true);
+                        }
+                        return;
+                    }
+                    // « selection:video » : sélectionne le premier clip vidéo de la séquence, comme un clic.
+                    if (name == QLatin1String("selection:video")) {
+                        auto timeline = pCore->projectManager()->getTimeline();
+                        for (int tid : timeline->getTracksIds(false)) {
+                            for (int cid : timeline->getItemsInRange(tid, 0, -1, false)) {
+                                if (timeline->isClip(cid)) {
+                                    timeline->requestSetSelection({cid});
+                                    // Comme le clic : l'inspecteur montre le plan (et le moniteur son cadre, document 20).
+                                    if (getCurrentTimeline()) {
+                                        getCurrentTimeline()->controller()->showAsset(cid);
+                                    }
+                                    qWarning() << "KoraCut: clip sélectionné" << cid;
+                                    return;
+                                }
+                            }
+                        }
+                        return;
+                    }
+                    // « selection:audio » : sélectionne le premier clip audio de la séquence (document 24).
+                    if (name == QLatin1String("selection:audio")) {
+                        auto timeline = pCore->projectManager()->getTimeline();
+                        for (int tid : timeline->getTracksIds(true)) {
+                            for (int cid : timeline->getItemsInRange(tid, 0, -1, false)) {
+                                if (timeline->isClip(cid)) {
+                                    timeline->requestSetSelection({cid});
+                                    if (getCurrentTimeline()) {
+                                        getCurrentTimeline()->controller()->showAsset(cid);
+                                    }
+                                    qWarning() << "KoraCut: clip sélectionné" << cid;
+                                    return;
+                                }
+                            }
+                        }
+                        return;
+                    }
+                    // Document 24, la section Outils sur le clip sélectionné : « outils:bruit=moyen »,
+                    // « outils:voix=oui|non », « outils:effet=robot|aucun », « outils:stabiliser=fort|aucun »,
+                    // « outils:etat » (ligne KORACUT-OUTILS : état des outils et de l'analyse).
+                    if (name.startsWith(QLatin1String("outils:"))) {
+                        auto timeline = pCore->projectManager()->getTimeline();
+                        const auto selection = timeline->getCurrentSelection();
+                        int cid = -1;
+                        for (int id : selection) {
+                            if (timeline->isClip(id)) {
+                                cid = id;
+                                break;
+                            }
+                        }
+                        const QString verb = name.mid(7).section(QLatin1Char('='), 0, 0);
+                        const QString value = name.section(QLatin1Char('='), 1);
+                        QJsonObject result;
+                        if (verb == QLatin1String("etat")) {
+                            const int audio = KoraCutClipTools::audioTarget(timeline, cid);
+                            auto *stab = KoraCutStabilizer::instance();
+                            result = {{QStringLiteral("clip"), cid},
+                                      {QStringLiteral("bruit"), audio < 0 ? QString() : KoraCutClipTools::current(timeline, audio, KoraCutClipTools::Tool::Denoise)},
+                                      {QStringLiteral("voix"), audio < 0 ? QString() : KoraCutClipTools::current(timeline, audio, KoraCutClipTools::Tool::Enhance)},
+                                      {QStringLiteral("effet"), audio < 0 ? QString() : KoraCutClipTools::current(timeline, audio, KoraCutClipTools::Tool::VoiceEffect)},
+                                      {QStringLiteral("stabilise"), stab->currentLevel(timeline, cid)},
+                                      {QStringLiteral("analyse"), stab->progress(timeline, cid)},
+                                      {QStringLiteral("section_visible"), m_clipTools && m_clipTools->isVisible()}};
+                        } else if (verb == QLatin1String("bruit")) {
+                            result = KoraCutAgentTools::call(timeline, QStringLiteral("reduire_bruit"), {{QStringLiteral("clip_id"), cid}, {QStringLiteral("niveau"), value}});
+                        } else if (verb == QLatin1String("voix")) {
+                            result = KoraCutAgentTools::call(timeline, QStringLiteral("ameliorer_voix"), {{QStringLiteral("clip_id"), cid}, {QStringLiteral("actif"), value != QLatin1String("non")}});
+                        } else if (verb == QLatin1String("effet")) {
+                            result = KoraCutAgentTools::call(timeline, QStringLiteral("effet_voix"), {{QStringLiteral("clip_id"), cid}, {QStringLiteral("effet"), value}});
+                        } else if (verb == QLatin1String("stabiliser")) {
+                            result = KoraCutAgentTools::call(timeline, QStringLiteral("stabiliser"), {{QStringLiteral("clip_id"), cid}, {QStringLiteral("niveau"), value}});
+                        }
+                        qWarning().noquote() << "KORACUT-OUTILS" << QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));
+                        return;
+                    }
+                    // « bouton:libellé » : clique ce bouton dans une fenêtre secondaire ouverte.
+                    if (name.startsWith(QLatin1String("bouton:"))) {
+                        for (QWidget *w : QApplication::topLevelWidgets()) {
+                            if (w != this && w->isVisible()) {
+                                for (QAbstractButton *b : w->findChildren<QAbstractButton *>()) {
+                                    if (b->isVisible() && b->text().remove(QLatin1Char('&')) == name.mid(7)) {
+                                        qWarning() << "KoraCut: bouton cliqué" << name.mid(7);
+                                        b->click();
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                        qWarning() << "KoraCut: bouton introuvable" << name.mid(7);
+                        return;
+                    }
+#if KORACUT_AGENTS
+                    // « agent:texte » : envoie une demande aux agents (sans virgule dans le texte).
+                    // « agent-accord:oui|non » répond à la dernière demande d'accord, « agent-plan:appliquer|modifier|annuler »
+                    // au dernier plan (« modifier:texte » joint la remarque), « agent-question:texte » à la dernière question,
+                    // « agent-annuler » annule le tour ouvert.
+                    if (name.startsWith(QLatin1String("agent:"))) {
+                        m_agentSession->sendRequest(name.mid(6));
+                        qWarning() << "KoraCut: demande aux agents" << name.mid(6);
+                        return;
+                    }
+                    if (name.startsWith(QLatin1String("agent-accord:"))) {
+                        m_agentPanel->answerPendingConfirmation(name.mid(13) == QLatin1String("oui"));
+                        return;
+                    }
+                    if (name.startsWith(QLatin1String("agent-plan:"))) {
+                        const QString decision = name.mid(11).section(QLatin1Char(':'), 0, 0);
+                        const QString comment = name.mid(11).section(QLatin1Char(':'), 1);
+                        m_agentPanel->decidePendingPlan(decision == QLatin1String("appliquer")  ? KoraCutAgentSession::PlanDecision::Apply
+                                                        : decision == QLatin1String("modifier") ? KoraCutAgentSession::PlanDecision::Modify
+                                                                                                : KoraCutAgentSession::PlanDecision::Cancel,
+                                                        comment);
+                        return;
+                    }
+                    if (name.startsWith(QLatin1String("agent-question:"))) {
+                        // La dernière question posée est celle que le champ attend : on passe par le panneau.
+                        m_agentPanel->focusInput();
+                        m_agentSession->answerQuestion(QString(), name.mid(15));
+                        return;
+                    }
+                    if (name == QLatin1String("agent-annuler")) {
+                        m_agentSession->cancelTurn();
+                        return;
+                    }
+#endif
+                    // La Console (document 18) : « console:timeline etat niveau=resume » envoie la ligne comme si elle
+                    // était tapée dans le champ (sans virgule), « console-accord:oui|non » répond à la demande d'accord
+                    // la plus ancienne, « console-terminal » clique « Ouvrir un terminal ici ».
+                    // Le script (document 21) : « script:modele », « script:ligne[=texte] », « script:colonne=Texte »,
+                    // « script:bloc=tableau », « script:etat », « script:markdown=<fichier> », « script:csv=<fichier> ».
+                    if (name.startsWith(QLatin1String("script:"))) {
+                        if (auto *d = KDDockWidgets::DockRegistry::self()->dockByName(QStringLiteral("script"))) {
+                            d->open();
+                            d->setAsCurrentTab();
+                        }
+                        if (auto *panel = findChild<KoraCutScriptPanel *>()) {
+                            qWarning().noquote() << "KORACUT-SCRIPT" << panel->debugCommand(name.mid(7));
+                        }
+                        return;
+                    }
+                    if (name.startsWith(QLatin1String("console:")) && m_consolePanel) {
+                        slotShowConsolePanel();
+                        m_consolePanel->runLine(name.mid(8));
+                        qWarning() << "KoraCut: console" << name.mid(8);
+                        return;
+                    }
+                    if (name.startsWith(QLatin1String("console-accord:")) && m_consolePanel) {
+                        m_consolePanel->answerPendingConfirmation(name.mid(15) == QLatin1String("oui"));
+                        return;
+                    }
+                    // Le terminal intégré (document 18, 25 septembre 2026) : « terminal:ouvrir », « terminal:choisir[=id] »,
+                    // « terminal:shell », « terminal:agent=<id> », « terminal:installer=<id> », « terminal:taper=<texte> »,
+                    // « terminal:touche=entree|echap », « terminal:fermer », « terminal:systeme[=id] », « terminal:etat » ;
+                    // chaque réponse est une ligne KORACUT-TERMINAL (onglets, agents installés, texte de l'écran).
+                    if (name.startsWith(QLatin1String("terminal:")) && m_terminalPanel) {
+                        if (!m_terminalDock->isOpen()) {
+                            if (m_terminalDock->dockWidget()->hasPreviousDockedLocation()) {
+                                m_terminalDock->open();
+                            } else {
+                                mainDockWindow->addDockWidget(m_terminalDock, KDDockWidgets::Location_OnBottom, m_timelineDock, QSize(0, 260));
+                            }
+                        }
+                        qWarning().noquote() << "KORACUT-TERMINAL" << m_terminalPanel->debugCommand(name.mid(9));
+                        return;
+                    }
+                    if (name == QLatin1String("console-terminal") && m_consolePanel) {
+                        slotShowConsolePanel();
+                        qWarning() << "KoraCut: terminal" << m_consolePanel->openTerminal();
+                        return;
+                    }
+                    // « menu-clip=N[=animer|transition[=P]] » : ouvre le menu du N-ième plan (1 au début) de la plus
+                    // basse piste vidéo occupée (ou de la piste vidéo P), et le sous-menu demandé ; la capture <KORACUT_SHOT>-menu.png les
+                    // montre posés sur la fenêtre (un menu ouvert n'apparaît pas dans la capture de la fenêtre).
+                    // « menu-clip-choix=<outil>:<style> » applique ce choix au plan préparé, comme un clic.
+                    if (name.startsWith(QLatin1String("menu-clip")) && getCurrentTimeline()) {
+                        TimelineWidget *view = getCurrentTimeline();
+                        KoraCutAnimateMenu *animate = view->koraCutAnimateMenu();
+                        if (name.startsWith(QLatin1String("menu-clip-choix=")) && animate) {
+                            const QString choice = name.mid(16);
+                            const QJsonObject r = animate->apply(animate->find(choice.section(QLatin1Char(':'), 0, 0), choice.section(QLatin1Char(':'), 1)));
+                            qWarning().noquote() << "KORACUT-MENU choix" << choice << QString::fromUtf8(QJsonDocument(r).toJson(QJsonDocument::Compact));
+                            return;
+                        }
+                        const int wanted = name.section(QLatin1Char('='), 1, 1).toInt();
+                        const QString sub = name.section(QLatin1Char('='), 2, 2);
+                        auto timeline = view->model();
+                        int cid = -1;
+                        QList<int> videoTracks = timeline->getTracksIds(false);
+                        std::sort(videoTracks.begin(), videoTracks.end(), [&](int a, int b) { return timeline->getTrackPosition(a) < timeline->getTrackPosition(b); });
+                        // Un quatrième champ choisit la piste vidéo (1 = la plus basse) : « menu-clip=1=animer=4 ».
+                        const int wantedTrack = name.section(QLatin1Char('='), 3, 3).toInt();
+                        for (int tid : std::as_const(videoTracks)) {
+                            if (wantedTrack > 0 && videoTracks.indexOf(tid) != wantedTrack - 1) {
+                                continue;
+                            }
+                            QList<int> clips;
+                            for (int c : timeline->getItemsInRange(tid, 0, -1, false)) {
+                                if (timeline->isClip(c)) {
+                                    clips << c;
+                                }
+                            }
+                            if (clips.isEmpty()) {
+                                continue;
+                            }
+                            std::sort(clips.begin(), clips.end(), [&](int a, int b) { return timeline->getClipPosition(a) < timeline->getClipPosition(b); });
+                            cid = clips.value(std::max(1, wanted) - 1, -1);
+                            break;
+                        }
+                        if (cid < 0) {
+                            qWarning() << "KORACUT-MENU aucun plan";
+                            return;
+                        }
+                        timeline->requestSetSelection({cid});
+                        const QPoint at = view->mapToGlobal(QPoint(view->width() / 3, view->height() / 3));
+                        QMenu *menu = view->koraCutShowClipMenu(cid, at);
+                        QMenu *open = nullptr;
+                        if (animate && (sub == QLatin1String("animer") || sub == QLatin1String("transition"))) {
+                            open = sub == QLatin1String("animer") ? animate->animateMenu() : animate->transitionMenu();
+                        }
+                        // Document 13 : « menu-clip=N=couleur » ouvre Couleur du clip.
+                        if (sub == QLatin1String("couleur") && view->koraCutColorMenu()) {
+                            open = view->koraCutColorMenu()->clipMenu();
+                        }
+                        QTimer::singleShot(300, this, [this, menu, open]() {
+                            if (open) {
+                                menu->setActiveAction(open->menuAction());
+                                open->popup(menu->mapToGlobal(menu->actionGeometry(open->menuAction()).topRight()));
+                            }
+                            QTimer::singleShot(400, this, [this, menu, open]() {
+                                QPixmap shot = grab();
+                                QPainter painter(&shot);
+                                for (QMenu *m : {menu, open}) {
+                                    if (m && m->isVisible()) {
+                                        painter.drawPixmap(mapFromGlobal(m->mapToGlobal(QPoint(0, 0))), m->grab());
+                                    }
+                                }
+                                painter.end();
+                                QString path = qEnvironmentVariable("KORACUT_SHOT");
+                                path.replace(QLatin1String(".png"), QLatin1String("-menu.png"));
+                                qWarning() << "KORACUT-MENU capture" << path << shot.save(path);
+                                if (open) {
+                                    open->hide();
+                                }
+                                menu->hide();
+                            });
+                        });
+                        return;
+                    }
+                    // Document 13 : « menu-piste=N » ouvre le menu de la N-ième piste vidéo (1 = la plus basse) et
+                    // son sous-menu Couleur de la piste ; capture <KORACUT_SHOT>-menu-piste.png.
+                    if (name.startsWith(QLatin1String("menu-piste=")) && getCurrentTimeline() && getCurrentTimeline()->koraCutColorMenu()) {
+                        TimelineWidget *view = getCurrentTimeline();
+                        auto timeline = view->model();
+                        QList<int> videoTracks = timeline->getTracksIds(false);
+                        std::sort(videoTracks.begin(), videoTracks.end(), [&](int a, int b) { return timeline->getTrackPosition(a) < timeline->getTrackPosition(b); });
+                        const int tid = videoTracks.value(std::max(1, name.mid(11).toInt()) - 1, -1);
+                        if (tid < 0) {
+                            qWarning() << "KORACUT-MENU aucune piste";
+                            return;
+                        }
+                        QMenu *menu = view->koraCutShowHeaderMenu(tid, view->mapToGlobal(QPoint(40, view->height() / 3)));
+                        QMenu *open = view->koraCutColorMenu()->trackMenu();
+                        QTimer::singleShot(300, this, [this, menu, open]() {
+                            menu->setActiveAction(open->menuAction());
+                            open->popup(menu->mapToGlobal(menu->actionGeometry(open->menuAction()).topRight()));
+                            QTimer::singleShot(400, this, [this, menu, open]() {
+                                QPixmap shot = grab();
+                                QPainter painter(&shot);
+                                for (QMenu *m : {menu, open}) {
+                                    if (m->isVisible()) {
+                                        painter.drawPixmap(mapFromGlobal(m->mapToGlobal(QPoint(0, 0))), m->grab());
+                                    }
+                                }
+                                painter.end();
+                                QString path = qEnvironmentVariable("KORACUT_SHOT");
+                                path.replace(QLatin1String(".png"), QLatin1String("-menu-piste.png"));
+                                qWarning() << "KORACUT-MENU capture" << path << shot.save(path);
+                                open->hide();
+                                menu->hide();
+                            });
+                        });
+                        return;
+                    }
+                    // « tete:2.5 » : place la tête de lecture à cette seconde, moniteur Programme actif.
+                    if (name.startsWith(QLatin1String("tete:"))) {
+                        pCore->monitorManager()->activateMonitor(Kdenlive::ProjectMonitor);
+                        if (m_projectMonitorDock) {
+                            m_projectMonitorDock->open();
+                            m_projectMonitorDock->setAsCurrentTab();
+                        }
+                        if (getCurrentTimeline()) {
+                            getCurrentTimeline()->controller()->setPosition(int(std::lround(name.mid(5).toDouble() * pCore->getCurrentFps())));
+                        }
+                        return;
+                    }
+                    // Module Motion (document 19) : « motion:importer=<chemin> » importe un dossier ou un .html,
+                    // « motion:rendre » relance les rendus, « motion:texte=<id>=<texte> » change le texte d'un
+                    // élément, « motion:deplacer=<id>=<secondes> » déplace son clip, « motion:etat » écrit une
+                    // ligne KORACUT-MOTION par élément (clip, place, rendu), « motion:code » ouvre l'onglet Code,
+                    // « motion:inspecter=<id> » ouvre l'inspecteur sur le clip (comme un double-clic).
+                    if (name.startsWith(QLatin1String("motion:")) && m_motionMirror) {
+                        const QString verb = name.mid(7).section(QLatin1Char('='), 0, 0);
+                        const QString rest = name.mid(7).section(QLatin1Char('='), 1);
+                        // L'élément visé : « projet/id » ou juste « id », cherché dans toutes les compositions.
+                        const QString elementId = rest.section(QLatin1Char('='), 0, 0).section(QLatin1Char('/'), -1);
+                        QString project = rest.section(QLatin1Char('='), 0, 0).contains(QLatin1Char('/')) ? rest.section(QLatin1Char('/'), 0, 0)
+                                                                                                             : m_motionMirror->projectOfElement(elementId);
+                        if (project.isEmpty()) {
+                            project = m_motionPanel->currentProject();
+                        }
+                        if (verb == QLatin1String("importer")) {
+                            qWarning() << "KoraCut: motion importé" << m_motionPanel->importWithoutDialog(rest);
+                        } else if (verb == QLatin1String("rendre")) {
+                            m_motionPanel->renderAll();
+                        } else if (verb == QLatin1String("texte")) {
+                            qWarning() << "KoraCut: motion texte" << m_motionMirror->setElementText(project, elementId, rest.section(QLatin1Char('='), 1));
+                        } else if (verb == QLatin1String("deplacer")) {
+                            qWarning() << "KoraCut: motion déplacé"
+                                       << m_motionMirror->moveElement(project, elementId, rest.section(QLatin1Char('='), 1).toDouble());
+                        } else if (verb == QLatin1String("code")) {
+                            m_motionPanel->showCode(project);
+                        } else if (verb == QLatin1String("inspecter")) {
+                            // Comme un double-clic sur le clip de cet élément dans la timeline.
+                            koraCutEditMotionClip(m_motionMirror->clipFor(project, elementId));
+                            return;
+                        } else if (verb == QLatin1String("etat")) {
+                            qWarning().noquote() << m_motionMirror->stateDump().trimmed();
+                        }
+                        slotShowMotionPanel();
+                        return;
+                    }
+                    // « moniteur:zoom=150 », « moniteur:regles », « moniteur:repere=x:540 », « moniteur:plateforme=tiktok »,
+                    // « moniteur:deplacer=100,80 », « moniteur:etat » : le moniteur Programme (document 20).
+                    // « timelines:poser=2:droite », « timelines:onglet=2 », « timelines:activer=1 »,
+                    // « timelines:glisser=2@0.9;0.6 », « timelines:lacher », « timelines:renommer=1 »,
+                    // « timelines:etat » : les séquences côte à côte (document 13, § 5).
+                    if (name.startsWith(QLatin1String("timelines:")) && m_timelineTabs) {
+                        qWarning().noquote() << "KORACUT-TIMELINES" << m_timelineTabs->koraCutDebugCommand(name.mid(10));
+                        return;
+                    }
+                    if (name.startsWith(QLatin1String("moniteur:"))) {
+                        pCore->getMonitor(Kdenlive::ProjectMonitor)->koraCutDebugCommand(name.mid(9));
+                        return;
+                    }
+                    if (name.startsWith(QLatin1String("type:"))) {
+                        Q_EMIT m_topBar->searchField()->textEdited(name.mid(5));
+                        qWarning() << "KoraCut: frappe simulée" << name.mid(5);
+                        return;
+                    }
+                    if (QAction *a = actionCollection()->action(name.trimmed())) {
+                        qWarning() << "KoraCut: action déclenchée" << name;
+                        a->trigger();
+                    } else {
+                        qWarning() << "KoraCut: action introuvable" << name;
+                    }
+                });
+                step += 1500;
+            }
+            QTimer::singleShot(step + 500, this, [this, path]() {
+                // L'état plié ou déplié de chaque piste, pour ce que la capture ne montre pas, et le
+                // nombre de compositions posées.
+                if (auto timeline = pCore->projectManager()->getTimeline()) {
+                    int compositions = 0;
+                    for (bool audio : {false, true}) {
+                        for (int tid : timeline->getTracksIds(audio)) {
+                            for (int id : timeline->getItemsInRange(tid, 0, -1, true)) {
+                                compositions += timeline->isComposition(id) ? 1 : 0;
+                            }
+                        }
+                    }
+                    qWarning().noquote() << "KORACUT-COMPOSITIONS" << compositions;
+                    for (bool audio : {false, true}) {
+                        const QList<int> tracks = timeline->getTracksIds(audio);
+                        for (int tid : tracks) {
+                            qWarning().noquote() << "KORACUT-TRACK" << timeline->getTrackTagById(tid)
+                                                 << "collapsed=" + timeline->getTrackProperty(tid, QStringLiteral("kdenlive:collapsed")).toString();
+                        }
+                    }
+                }
+                grab().save(path);
+                // Les fenêtres secondaires ouvertes par les actions : une capture chacune.
+                int window = 0;
+                for (QWidget *w : QApplication::topLevelWidgets()) {
+                    if (w != this && w->isVisible() && w->isWindow() && w->width() > 200) {
+                        QString target = path;
+                        target.replace(QLatin1String(".png"), QStringLiteral("-fenetre-%1.png").arg(++window));
+                        w->grab().save(target);
+                    }
+                }
+                if (pCore->currentDoc()) {
+                    pCore->currentDoc()->setModified(false);
+                }
+                QCoreApplication::quit();
+            });
+            return;
+        }
+        // KORACUT_SHOT_PANEL=timeline (nom interne d'un panneau) : agrandit ce panneau, capture
+        // (-agrandi.png), le remet en place, capture (-rendu.png). Contrôle du triple clic sans souris.
+        const QString panel = qEnvironmentVariable("KORACUT_SHOT_PANEL");
+        if (!panel.isEmpty()) {
+            QString grand = path;
+            grand.replace(QLatin1String(".png"), QLatin1String("-agrandi.png"));
+            QString rendu = path;
+            rendu.replace(QLatin1String(".png"), QLatin1String("-rendu.png"));
+            grab().save(path);
+            KoraCutPanelFocus::toggle(KDDockWidgets::Core::DockWidget::byName(panel));
+            QTimer::singleShot(1500, this, [this, grand]() {
+                grab().save(grand);
+                KoraCutPanelFocus::toggle(nullptr);
+            });
+            QTimer::singleShot(3000, this, [this, rendu]() {
+                grab().save(rendu);
+                QCoreApplication::quit();
+            });
+            return;
+        }
+        const QString modules = qEnvironmentVariable("KORACUT_SHOT_MODULES");
+        if (!modules.isEmpty()) {
+            // Une capture par module : KORACUT_SHOT_MODULES=montage,audio,photo
+            const QStringList ids = modules.split(QLatin1Char(','), Qt::SkipEmptyParts);
+            int step = 0;
+            for (const QString &id : ids) {
+                QTimer::singleShot(step, this, [this, id, path]() {
+                    m_topBar->moduleTabs()->setCurrentLayout(id);
+                    if (KoraCutModules::isUnderConstruction(id)) {
+                        showModuleUnderConstruction(id);
+                    } else {
+                        showDockArea();
+                        Q_EMIT pCore->loadLayoutById(id);
+                    }
+                });
+                step += 1500;
+                QTimer::singleShot(step, this, [this, id, path]() {
+                    // KORACUT_SHOT_SELECT=bin : sélectionne tout le chutier avant la capture.
+                    // Sans ça, aucune ligne n'est jamais sélectionnée sur une capture prise par
+                    // grab(), et l'habillage de la sélection ne peut pas être contrôlé à l'écran
+                    // (l'accessibilité ne sait pas sélectionner une ligne de liste Qt, et
+                    // screencapture ne rend rien quand la session du Mac est verrouillée).
+                    const QString quoiSelectionner = qEnvironmentVariable("KORACUT_SHOT_SELECT");
+                    if (quoiSelectionner == QLatin1String("bin") && pCore->bin()) {
+                        pCore->bin()->selectAll();
+                    } else if (quoiSelectionner == QLatin1String("source")) {
+                        // Contrôle de la bascule automatique : MonitorManager demande le moniteur
+                        // de source, et l'onglet « Source » doit passer devant tout seul. C'est le
+                        // chemin exact que prend un double clic sur un média du chutier.
+                        pCore->monitorManager()->activateMonitor(Kdenlive::ClipMonitor, true, true);
+                    } else if (quoiSelectionner == QLatin1String("clip") && pCore->bin()) {
+                        // Sélectionne le premier média du chutier. Ne suffit pas à l'ouvrir dans le
+                        // moniteur de source : essayé avec `slotOpenClip()` par le méta-objet, la
+                        // vue du chutier n'a pas encore le focus à cet instant et rien ne s'ouvre.
+                        // Contrôler qu'un média ouvert masque bien l'état vide du moniteur reste
+                        // donc à faire à la main, session déverrouillée.
+                        pCore->bin()->selectClipById(QStringLiteral("2"));
+                    } else if (quoiSelectionner == QLatin1String("effets-vides") && m_effectListDock && m_effectList2) {
+                        // Met la liste d'effets au premier plan avec une recherche sans résultat :
+                        // c'est le seul moyen de regarder cet état vide sur une capture prise par
+                        // grab(), l'accessibilité ne pouvant ni cliquer un onglet ni taper un mot
+                        // quand la session du Mac est verrouillée.
+                        m_effectListDock->raise();
+                        m_effectList2->setFilterName(QStringLiteral("zzzzz"));
+                    }
+                    QString target = path;
+                    target.replace(QLatin1String(".png"), QStringLiteral("-%1.png").arg(id));
+                    grab().save(target);
+                    qWarning() << "KoraCut: capture écrite dans" << target;
+                });
+                step += 600;
+            }
+            QTimer::singleShot(step + 400, qApp, &QCoreApplication::quit);
+            return;
+        }
+        grab().save(path);
+        qWarning() << "KoraCut: capture écrite dans" << path;
+        QTimer::singleShot(200, qApp, &QCoreApplication::quit);
+    });
+}
+
+void MainWindow::setupToolSegments()
+{
+    if (!m_timelineToolBar) {
+        return;
+    }
+    // L'espacement passe de 4 px à 0 : ce sont les marges de « koracut.qss » qui redonnent
+    // 4 px entre deux boutons ordinaires, et 0 entre deux segments.
+    if (m_timelineToolBar->layout()) {
+        m_timelineToolBar->layout()->setSpacing(0);
+    }
+    const QStringList outils = {QStringLiteral("select_tool"), QStringLiteral("razor_tool"), QStringLiteral("ripple_tool"),
+                                QStringLiteral("slip_tool"), QStringLiteral("spacer_tool")};
+    QList<QWidget *> segments;
+    for (const QString &nom : outils) {
+        QAction *a = actionCollection()->action(nom);
+        if (!a) {
+            continue;
+        }
+        if (QWidget *w = m_timelineToolBar->widgetForAction(a)) {
+            segments << w;
+        }
+    }
+    for (int i = 0; i < segments.count(); ++i) {
+        const QLatin1String place = segments.count() == 1 ? QLatin1String("seul")
+                                    : i == 0              ? QLatin1String("premier")
+                                    : i == segments.count() - 1 ? QLatin1String("dernier")
+                                                                : QLatin1String("milieu");
+        segments.at(i)->setProperty("koracutSegment", QString(place));
+        segments.at(i)->style()->polish(segments.at(i));
+    }
+}
+
+void MainWindow::setSingleMonitor(bool single)
+{
+    if (!m_clipMonitorDock || !m_projectMonitorDock || !mainDockWindow) {
+        return;
+    }
+    KdenliveSettings::setSingleMonitor(single);
+
+    // Les deux moniteurs sont-ils déjà dans le même groupe ? On ne remanie que s'il le faut :
+    // cette fonction est appelée après chaque chargement de disposition, et déplacer un dock qui
+    // est déjà au bon endroit casserait l'arrangement enregistré (en mode deux moniteurs, cela
+    // sortait « Programme » du groupe de « Voix » et « Notes », le laissant sans onglet visible).
+    QList<KDDockWidgets::QtWidgets::DockWidget *> groupeProjet;
+    bool ensemble = false;
+    for (KDDockWidgets::Core::Group *group : KDDockWidgets::DockRegistry::self()->groups()) {
+        bool contientProjet = false;
+        bool contientSource = false;
+        for (KDDockWidgets::Core::DockWidget *d : group->dockWidgets()) {
+            contientProjet = contientProjet || d->uniqueName() == QLatin1String("projectmonitor");
+            contientSource = contientSource || d->uniqueName() == QLatin1String("clipmonitor");
+        }
+        if (!contientProjet) {
+            continue;
+        }
+        ensemble = contientSource;
+        for (KDDockWidgets::Core::DockWidget *d : group->dockWidgets()) {
+            if (auto *vue = qobject_cast<KDDockWidgets::QtWidgets::DockWidget *>(KDDockWidgets::QtCommon::View_qt::asQWidget(d->view()))) {
+                groupeProjet << vue;
+            }
+        }
+        break;
+    }
+    if (ensemble == single) {
+        return;
+    }
+
+    if (single) {
+        // Le moniteur de projet rejoint le groupe du moniteur de source : deux onglets, une image.
+        // Il faut emmener tout son groupe, pas seulement lui : « Voix » et « Notes » sont des
+        // onglets du même groupe, et les laisser derrière rendait la place libérée à un éditeur
+        // vocal large de la moitié de la fenêtre (vu à l'écran le 21/09/2026).
+        // Le moniteur de projet en premier, pour qu'il donne son nom au groupe fusionné.
+        std::stable_sort(groupeProjet.begin(), groupeProjet.end(), [](auto *a, auto *b) {
+            return a->uniqueName() == QLatin1String("projectmonitor") && b->uniqueName() != QLatin1String("projectmonitor");
+        });
+        for (auto *d : std::as_const(groupeProjet)) {
+            m_clipMonitorDock->addDockWidgetAsTab(d);
+        }
+        // Source et Programme côte à côte. `addDockWidgetAsTab()` ajoute à la fin, ce qui donnait
+        // Source, Bibliothèque, Programme : les deux moniteurs, entre lesquels on bascule cinquante
+        // fois par heure, se retrouvaient séparés par la bibliothèque de médias. On ramène Programme
+        // juste après Source, le reste suit.
+        for (KDDockWidgets::Core::Group *group : KDDockWidgets::DockRegistry::self()->groups()) {
+            KDDockWidgets::Core::DockWidget *source = nullptr;
+            KDDockWidgets::Core::DockWidget *programme = nullptr;
+            for (KDDockWidgets::Core::DockWidget *d : group->dockWidgets()) {
+                if (d->uniqueName() == QLatin1String("clipmonitor")) {
+                    source = d;
+                } else if (d->uniqueName() == QLatin1String("projectmonitor")) {
+                    programme = d;
+                }
+            }
+            if (!source || !programme || !group->tabBar()) {
+                continue;
+            }
+            const int depuis = group->tabBar()->indexOfDockWidget(programme);
+            const int vers = group->tabBar()->indexOfDockWidget(source) + 1;
+            if (depuis > vers && vers >= 0) {
+                group->tabBar()->moveTabTo(depuis, vers);
+            }
+            break;
+        }
+    } else {
+        // Retour à deux moniteurs : le groupe fusionné se scinde, et « Voix » et « Notes »
+        // repartent avec le moniteur de projet, comme ils y étaient.
+        mainDockWindow->addDockWidget(m_projectMonitorDock, KDDockWidgets::Location_OnRight, m_clipMonitorDock);
+        for (const QLatin1String nom : {QLatin1String("textedit"), QLatin1String("notes_widget")}) {
+            if (auto *d = KDDockWidgets::DockRegistry::self()->dockByName(nom)) {
+                if (auto *vue = qobject_cast<KDDockWidgets::QtWidgets::DockWidget *>(KDDockWidgets::QtCommon::View_qt::asQWidget(d->view()))) {
+                    m_projectMonitorDock->addDockWidgetAsTab(vue);
+                }
+            }
+        }
+    }
+    // La bascule automatique Source / Programme ne change pas : MonitorManager appelle
+    // raiseMonitor(), qui appelle setAsCurrentTab(), et un onglet se lève aussi bien qu'un dock.
+    // On remet simplement en avant celui qui est actif.
+    if (pCore->monitorManager()) {
+        raiseMonitor(pCore->monitorManager()->isActive(Kdenlive::ClipMonitor), false);
+    }
+}
+
+void MainWindow::showModuleUnderConstruction(const QString &moduleId)
+{
+    if (!m_centralStack || !m_modulePlaceholder) {
+        return;
+    }
+    m_modulePlaceholder->setModule(moduleId);
+    const bool fromDocks = m_centralStack->currentWidget() != m_modulePlaceholder;
+    m_centralStack->setCurrentWidget(m_modulePlaceholder);
+    // KoraCut, 23 septembre 2026 : la barre d'état ne porte que des réglages de timeline (zoom,
+    // marqueurs, miniatures), sans objet sur la page d'un module en construction. On la cache, en
+    // retenant si elle était visible, pour la rendre telle quelle au retour.
+    if (fromDocks) {
+        statusBar()->setProperty("koracutVisibleAvant", statusBar()->isVisible());
+        statusBar()->hide();
+    }
+}
+
+void MainWindow::showDockArea()
+{
+    if (m_centralStack) {
+        const bool fromPlaceholder = m_centralStack->currentWidget() == m_modulePlaceholder;
+        m_centralStack->setCurrentWidget(mainDockWindow);
+        if (fromPlaceholder && statusBar()->property("koracutVisibleAvant").toBool()) {
+            statusBar()->show();
+        }
+    }
+}
+
+void MainWindow::updateTopBarProject()
+{
+    if (!m_topBar) {
+        return;
+    }
+    KdenliveDoc *project = pCore->currentDoc();
+    QString name;
+    QString path;
+    bool modified = false;
+    if (project) {
+        const QUrl url = project->url();
+        name = url.isEmpty() ? QString() : url.fileName();
+        path = url.isLocalFile() ? url.toLocalFile() : QString();
+        modified = project->isModified();
+    }
+    m_topBar->setProject(name, modified, path);
 }
 
 void MainWindow::finishUiSetup()
@@ -932,6 +2828,35 @@ void MainWindow::finishUiSetup()
     pCore->restoreLayout();
     Q_EMIT pCore->closeSplash();
     setAutoSaveSettings();
+
+    // KoraCut : la barre du haut remplace la barre d'outils standard (Nouveau, Ouvrir, Enregistrer, Rendu...).
+    // On la masque une seule fois, au premier lancement : l'utilisateur reste libre de la réafficher.
+    if (!KdenliveSettings::koracut_topbar_applied()) {
+        if (KToolBar *main = toolBar()) {
+            main->hide();
+        }
+#ifndef Q_OS_MAC
+        // Sous Windows et Linux, tout le menu passe par le chevron de la barre du haut.
+        // Sur Mac la barre de menus est native, en haut de l'écran : on n'y touche pas.
+        menuBar()->hide();
+        if (QAction *showMenu = actionCollection()->action(KStandardAction::name(KStandardAction::ShowMenubar))) {
+            showMenu->setChecked(false);
+        }
+#endif
+        KdenliveSettings::setKoracut_topbar_applied(true);
+    }
+    updateTopBarProject();
+
+    // Si la session précédente s'est terminée sur un module en construction, on y revient,
+    // sinon l'onglet actif et ce qui est à l'écran ne diraient pas la même chose.
+    const QString lastModule = KdenliveSettings::koracut_module();
+    if (KoraCutModules::isUnderConstruction(lastModule)) {
+        m_topBar->moduleTabs()->setCurrentLayout(lastModule);
+        showModuleUnderConstruction(lastModule);
+    }
+    koraCutDevScreenshot();
+    koraCutRelay();
+    koraCutStartPorte();
     QObject::disconnect(pCore.get(), &Core::GUISetupDone, this, nullptr);
     // This should connect only after splash is done
     connect(pCore.get(), &Core::loadingMessageNewStage, this, [&](const QString &message, int max = -1) {
@@ -1007,6 +2932,38 @@ void MainWindow::loadContainerActions()
         helpMenu->insertAction(whatsThis, officialHelp);
     }
 
+    // KoraCut : le menu Aide ne renvoie plus vers d'autres sites.
+    // Le signalement de bogue ouvre notre page.
+    if (QAction *bugAction = actionCollection()->action(KStandardAction::name(KStandardAction::ReportBug))) {
+        disconnect(bugAction, &QAction::triggered, nullptr, nullptr);
+        connect(bugAction, &QAction::triggered, this,
+                [] { QDesktopServices::openUrl(QUrl(QStringLiteral("https://koracut.org/bogues"))); });
+    }
+    // KMainWindow remplit tout seul la liste des traducteurs à partir du catalogue de traduction,
+    // ce qui rouvre l'onglet « Traduction » et son bandeau vers un autre projet, que les
+    // bibliothèques ne laissent pas modifier. On vide donc la liste une fois la fenêtre construite.
+    // Les traducteurs restent crédités dans les en-têtes des fichiers po/ et dans AUTHORS.
+    {
+        KAboutData about = KAboutData::applicationData();
+        about.setTranslator(QString(), QString());
+        KAboutData::setApplicationData(about);
+    }
+
+    // L'entrée « À propos de KDE » n'a pas sa place ici : la licence et les détenteurs de droits
+    // d'auteur restent dans la fenêtre « À propos de KoraCut ». Même chose pour le don,
+    // qui renvoie vers un site qui n'est pas le nôtre.
+    for (auto standardAction : {KStandardAction::AboutKDE, KStandardAction::Donate}) {
+        if (QAction *action = actionCollection()->action(KStandardAction::name(standardAction))) {
+            if (helpMenu) {
+                helpMenu->removeAction(action);
+            }
+            action->setVisible(false);
+            // 25 septembre 2026 : retirée aussi de la collection, sinon elle restait dans la fenêtre des
+            // raccourcis et la palette, avec le logo de KDE. takeAction la garde en vie (KHelpMenu la tient).
+            actionCollection()->takeAction(action);
+        }
+    }
+
     // rebuild timeline clip menu
     m_timelineTabs->buildClipMenu();
 
@@ -1014,6 +2971,39 @@ void MainWindow::loadContainerActions()
     auto *monitorConfig = qobject_cast<QMenu *>(factory()->container(QStringLiteral("monitor_config"), this));
     if (monitorConfig) {
         monitorConfig->menuAction()->setMenuRole(QAction::NoRole);
+    }
+
+    // KoraCut, 23 septembre 2026 : sur Mac, Qt déplace vers le menu de l'application toute action dont
+    // le texte ressemble à « Settings », « Preferences », « About » ou « Quit » (rôle par défaut
+    // TextHeuristicRole). « Réglages du projet… » et « Configurer KoraCut… » finissaient fusionnés en
+    // une seule entrée « Préférences… » qui n'ouvrait rien. On fixe le rôle de chacune : les trois
+    // entrées propres au Mac vont dans le menu de l'application, tout le reste reste à sa place.
+    {
+        const QMap<QString, QAction::MenuRole> roles = {
+            {KStandardAction::name(KStandardAction::Preferences), QAction::PreferencesRole},
+            {KStandardAction::name(KStandardAction::Quit), QAction::QuitRole},
+            {KStandardAction::name(KStandardAction::AboutApp), QAction::AboutRole},
+        };
+        const QList<QAction *> all = actionCollection()->actions();
+        for (QAction *action : all) {
+            action->setMenuRole(roles.value(action->objectName(), QAction::NoRole));
+        }
+        // Les sous-menus aussi (leur action de menu porte le même risque).
+        std::function<void(QMenu *)> walk = [&walk](QMenu *menu) {
+            for (QAction *action : menu->actions()) {
+                if (action->menu()) {
+                    if (action->menuRole() == QAction::TextHeuristicRole) {
+                        action->setMenuRole(QAction::NoRole);
+                    }
+                    walk(action->menu());
+                }
+            }
+        };
+        for (QAction *top : menuBar()->actions()) {
+            if (top->menu()) {
+                walk(top->menu());
+            }
+        }
     }
 
     // Connect monitor overlay info menu.
@@ -1040,6 +3030,16 @@ void MainWindow::loadContainerActions()
 
 MainWindow::~MainWindow()
 {
+    if (m_motionStudio) {
+        m_motionStudio->stopAll();
+    }
+#if KORACUT_AGENTS
+    // Le service d'agents se ferme pendant que la barre du haut et le panneau existent encore
+    // (voir KoraCutAgentClient::~KoraCutAgentClient).
+    if (m_agentClient) {
+        m_agentClient->stop();
+    }
+#endif
     pCore->prepareShutdown();
     delete m_timelineTabs;
     if (m_audioSpectrum) {
@@ -1064,8 +3064,78 @@ MainWindow::~MainWindow()
 }
 
 // virtual
+void MainWindow::koraCutTerminate()
+{
+    // Un SIGTERM (kill, un script, un agent) ferme KoraCut proprement, sans fenêtre à laquelle personne ne
+    // répondrait (28 septembre 2026) : le travail non enregistré part dans une copie de récupération, jamais
+    // par-dessus le fichier de la personne ; puis la fermeture normale retire la porte et le témoin.
+    if (qApp->property("koracut_terminer").toBool()) {
+        return;
+    }
+    qApp->setProperty("koracut_terminer", true);
+    qApp->setProperty("koracut_sans_fenetre", true);
+    KdenliveDoc *doc = pCore->currentDoc();
+    if (doc && doc->isModified()) {
+        const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH'h'mm"));
+        QString file;
+        const QFileInfo current(doc->url().toLocalFile());
+        if (!doc->url().isEmpty() && current.exists()) {
+            file = current.absoluteDir().absoluteFilePath(QStringLiteral("%1 (récupération %2).koracut").arg(current.completeBaseName(), stamp));
+        } else {
+            const QString folder = QStandardPaths::writableLocation(QStandardPaths::MoviesLocation) + QStringLiteral("/KoraCut");
+            QDir().mkpath(folder);
+            file = folder + QStringLiteral("/Projet ") + stamp + QStringLiteral(".koracut");
+        }
+        if (pCore->projectManager()->saveFileAs(file, false, true)) {
+            qWarning().noquote() << "KoraCut : arrêt demandé, copie de récupération" << file;
+            doc->setModified(false);
+        }
+    }
+    // Une fenêtre modale ouverte (une question) bloquerait la fermeture : on la referme d'abord.
+    while (QWidget *modal = QApplication::activeModalWidget()) {
+        if (auto *dialog = qobject_cast<QDialog *>(modal)) {
+            dialog->reject();
+        } else {
+            modal->close();
+        }
+        if (QApplication::activeModalWidget() == modal) {
+            break;
+        }
+    }
+    // Filet : si la fermeture n'aboutit pas quand même, on sort, porte et témoin retirés.
+    QPointer<KoraCutPorte> porte = m_porte;
+    QTimer::singleShot(15000, qApp, [porte]() {
+        if (porte) {
+            porte->close();
+        }
+        QFile::remove(Core::lockFilePath());
+        std::_Exit(0);
+    });
+    close();
+}
+
 bool MainWindow::queryClose()
 {
+    if (qApp->property("koracut_terminer").toBool()) {
+        // Arrêt par signal : les rendus en cours continuent seuls (koracut_render est un autre processus).
+        return true;
+    }
+    if (KoraCutExportQueue::self().count(QStringLiteral("en_cours")) > 0 && !qEnvironmentVariableIsSet("KORACUT_SHOT") &&
+        !qApp->property("koracut_sans_fenetre").toBool()) {
+        // Les rendus du module Export : ils continuent après la fermeture, ou s'arrêtent.
+        const int answer = KMessageBox::warningTwoActionsCancel(this, i18nc("@info", "An export is still running. What should happen to it?"), QString(),
+                                                                KGuiItem(i18nc("@action:button", "Keep exporting in the background")),
+                                                                KGuiItem(i18nc("@action:button", "Stop the export")), KStandardGuiItem::cancel(),
+                                                                QStringLiteral("koracutWarnOnExportExit"));
+        if (answer == KMessageBox::Cancel) {
+            return false;
+        }
+        if (answer == KMessageBox::SecondaryAction) {
+            for (const auto &j : KoraCutExportQueue::self().jobs()) {
+                KoraCutExportQueue::self().abort(j);
+            }
+        }
+    }
     if (m_renderWidget) {
         int waitingJobs = m_renderWidget->waitingJobsCount();
         int runningJobs = m_renderWidget->runningJobsCount();
@@ -1236,6 +3306,29 @@ QAction *MainWindow::addAction(const QString &name, const QString &text, const Q
     return addAction(name, text, receiver, member, icon, shortcut, kdenliveCategoryMap.value(category, nullptr));
 }
 
+void MainWindow::addActionWithShortcuts(const QString &name, QAction *action, const QList<QKeySequence> &shortcuts, KActionCategory *category)
+{
+    m_actionNames.append(name);
+    if (category) {
+        category->addAction(name, action);
+    } else {
+        actionCollection()->addAction(name, action);
+    }
+    actionCollection()->setDefaultShortcuts(action, shortcuts);
+}
+
+QAction *MainWindow::addActionWithShortcuts(const QString &name, const QString &text, const QObject *receiver, const char *member, const QIcon &icon,
+                                            const QList<QKeySequence> &shortcuts, KActionCategory *category)
+{
+    auto *action = new QAction(text, this);
+    if (!icon.isNull()) {
+        action->setIcon(icon);
+    }
+    addActionWithShortcuts(name, action, shortcuts, category);
+    connect(action, SIGNAL(triggered(bool)), receiver, member);
+    return action;
+}
+
 void MainWindow::setupActions()
 {
     // create edit mode buttons
@@ -1325,7 +3418,7 @@ void MainWindow::setupActions()
               m_audioZoomCycle); // kept action name zoom_audio_thumbs for backwards compatibility before in/out/reset were introduced
 
     m_timeFormatButton = new KSelectAction(QStringLiteral("00:00:00:00 / 00:00:00:00"), this);
-    m_timeFormatButton->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    m_timeFormatButton->setFont(KoraCutFonts::numbers());
     m_timeFormatButton->addAction(i18n("hh:mm:ss:ff"));
     m_timeFormatButton->addAction(i18n("Frames"));
     if (KdenliveSettings::frametimecode()) {
@@ -1599,6 +3692,9 @@ void MainWindow::setupActions()
     m_trimLabel->setToolTip(i18n("Active tool and editing mode"));
 
     toolbar->addWidget(m_trimLabel);
+    // L'aide de l'outil en cours, à gauche, dès le lancement : avant, elle n'apparaissait qu'au
+    // premier changement d'outil.
+    QTimer::singleShot(0, this, &MainWindow::showToolMessage);
     toolbar->addSeparator();
     toolbar->addAction(m_buttonMouseZoomOnPlayhead);
     toolbar->addAction(m_buttonTimelineTags);
@@ -1613,30 +3709,176 @@ void MainWindow::setupActions()
     toolbar->addWidget(m_zoomSlider);
     toolbar->addAction(m_zoomIn);
 
-    int small = style()->pixelMetric(QStyle::PM_SmallIconSize);
-    statusBar()->setMaximumHeight(2 * small);
+    // KoraCut : barre d'état de 24 px (charte), icônes de barre d'outils à 14 px.
+    statusBar()->setMaximumHeight(KoraCutMetrics::IconToolbar + 10);
     m_messageLabel = new StatusBarMessageLabel(this);
     m_messageLabel->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::MinimumExpanding);
     connect(this, &MainWindow::displayMessage, m_messageLabel, &StatusBarMessageLabel::setMessage);
     connect(this, &MainWindow::displaySelectionMessage, m_messageLabel, &StatusBarMessageLabel::setSelectionMessage);
     connect(this, &MainWindow::displayProgressMessage, m_messageLabel, &StatusBarMessageLabel::setProgressMessage);
+    auto *engineDot = new EngineDot(this);
+    statusBar()->addWidget(engineDot);
+    connect(&pCore->taskManager, &TaskManager::jobCount, engineDot, [engineDot](int count) { engineDot->setBusy(count); }, Qt::QueuedConnection);
+    connect(this, &MainWindow::displayMessage, engineDot, [engineDot](const QString &message, MessageType type, int) {
+        if (type == MltError) {
+            engineDot->setError(message);
+        }
+    });
     statusBar()->addWidget(m_messageLabel, 10);
+    // KoraCut, 25 septembre 2026 : le montage visible. Pendant qu'un agent ou un programme monte, une
+    // ligne dit ce qui se passe, avec « Accélérer » et la vitesse ; rien ne s'affiche le reste du temps.
+    statusBar()->addPermanentWidget(KoraCutVisible::self()->createStatusWidget(this));
+    // KoraCut, 23 septembre 2026 : la file de rendu dans la barre d'état, seulement quand elle n'est
+    // pas vide (« 11 - Refonte UI-UX »). Un clic ouvre la fenêtre de rendu sur la file. RenderWidget
+    // ne signale pas les changements de file : on la relit toutes les 1,5 s, ce qui ne coûte rien.
+    // KoraCut, 23 septembre 2026 : les tâches de fond (proxys, analyses audio, transcodages) dans la
+    // barre d'état, seulement quand il y en a (« 11 - Refonte UI-UX »). Le chutier les comptait déjà,
+    // mais seulement quand son panneau est ouvert. Le menu permet de toutes les arrêter.
+    auto *backgroundJobs = new QToolButton(this);
+    backgroundJobs->setObjectName(QStringLiteral("koracutBackgroundJobs"));
+    backgroundJobs->setAutoRaise(true);
+    backgroundJobs->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    backgroundJobs->setIcon(QIcon::fromTheme(QStringLiteral("view-refresh")));
+    backgroundJobs->setPopupMode(QToolButton::InstantPopup);
+    auto *jobsMenu = new QMenu(backgroundJobs);
+    jobsMenu->addAction(QIcon::fromTheme(QStringLiteral("process-stop")), i18nc("@action", "Stop All Background Tasks"), this,
+                        []() { pCore->taskManager.slotCancelJobs(); });
+    backgroundJobs->setMenu(jobsMenu);
+    backgroundJobs->hide();
+    statusBar()->addPermanentWidget(backgroundJobs);
+    connect(&pCore->taskManager, &TaskManager::jobCount, backgroundJobs, [backgroundJobs](int count) {
+        backgroundJobs->setVisible(count > 0);
+        backgroundJobs->setText(i18ncp("@info:status", "%1 task", "%1 tasks", count));
+        backgroundJobs->setToolTip(i18ncp("@info:tooltip", "%1 background task in progress (proxies, analysis, transcoding)",
+                                          "%1 background tasks in progress (proxies, analysis, transcoding)", count));
+    }, Qt::QueuedConnection);
+
+    auto *renderQueue = new QToolButton(this);
+    renderQueue->setObjectName(QStringLiteral("koracutRenderQueue"));
+    renderQueue->setAutoRaise(true);
+    renderQueue->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    renderQueue->setIcon(QIcon::fromTheme(QStringLiteral("media-playback-start")));
+    renderQueue->setToolTip(i18nc("@info:tooltip", "Open the render queue"));
+    renderQueue->hide();
+    statusBar()->addPermanentWidget(renderQueue);
+    connect(renderQueue, &QToolButton::clicked, this, [this]() {
+        slotRenderProject();
+        if (m_renderWidget) {
+            if (auto *tabs = m_renderWidget->findChild<QTabWidget *>()) {
+                tabs->setCurrentIndex(1);
+            }
+        }
+    });
+    // KoraCut, 23 septembre 2026 : le format de la séquence, à droite (« 11 - Refonte UI-UX »,
+    // barre d'état). Relu avec la file de rendu : il change rarement, et aucun signal ne l'annonce.
+    auto *sequenceFormat = new QLabel(this);
+    sequenceFormat->setObjectName(QStringLiteral("koracutSequenceFormat"));
+    sequenceFormat->setContentsMargins(8, 0, 8, 0);
+    sequenceFormat->setEnabled(false);
+    statusBar()->addPermanentWidget(sequenceFormat);
+    auto refreshFormat = [sequenceFormat]() {
+        const std::unique_ptr<ProfileModel> &profile = pCore->getCurrentProfile();
+        if (!profile) {
+            sequenceFormat->clear();
+            return;
+        }
+        const QString fps = QLocale().toString(profile->fps(), 'f', qFuzzyCompare(profile->fps(), qRound(profile->fps())) ? 0 : 2);
+        const QString text = i18nc("@info:status width × height · frames per second", "%1 × %2 · %3 fps", QString::number(profile->width()), QString::number(profile->height()), fps);
+        if (sequenceFormat->text() != text) {
+            sequenceFormat->setText(text);
+            sequenceFormat->setToolTip(profile->description());
+        }
+    };
+    refreshFormat();
+    auto *renderQueuePoll = new QTimer(this);
+    renderQueuePoll->setInterval(1500);
+    connect(renderQueuePoll, &QTimer::timeout, this, refreshFormat);
+    connect(renderQueuePoll, &QTimer::timeout, this, [this, renderQueue]() {
+        const int running = m_renderWidget ? m_renderWidget->runningJobsCount() : 0;
+        const int waiting = m_renderWidget ? m_renderWidget->waitingJobsCount() : 0;
+        if (running + waiting == 0) {
+            renderQueue->hide();
+            return;
+        }
+        QString text = i18ncp("@info barre d'état", "Rendering: %1 in progress", "Rendering: %1 in progress", running);
+        if (waiting > 0) {
+            text += i18ncp("@info barre d'état", ", %1 waiting", ", %1 waiting", waiting);
+        }
+        renderQueue->setText(text);
+        renderQueue->show();
+    });
+    renderQueuePoll->start();
     statusBar()->addPermanentWidget(toolbar);
-    toolbar->setIconSize(QSize(small, small));
-    toolbar->layout()->setContentsMargins(0, 0, 0, 0);
+    // KoraCut, 23 septembre 2026 : le « ? » au bout de la barre d'état (« 11 - Refonte UI-UX »),
+    // un accès court à l'aide. Le menu se remplit à l'ouverture : certaines de ces actions (aide,
+    // raccourcis, « À propos ») ne sont créées qu'après la barre d'état, par KXMLGUI.
+    auto *helpButton = new QToolButton(this);
+    helpButton->setObjectName(QStringLiteral("koracutHelpButton"));
+    helpButton->setAutoRaise(true);
+    helpButton->setText(QStringLiteral("?"));
+    helpButton->setToolTip(i18nc("@info:tooltip", "Help and keyboard shortcuts"));
+    helpButton->setPopupMode(QToolButton::InstantPopup);
+    auto *helpMenu = new QMenu(helpButton);
+    helpButton->setMenu(helpMenu);
+    connect(helpMenu, &QMenu::aboutToShow, this, [this, helpMenu]() {
+        helpMenu->clear();
+        const QStringList names = {QStringLiteral("help_contents"), QStringLiteral("koracut_command_palette"),
+                                   QStringLiteral("options_configure_keybinding"), QStringLiteral("help_whats_this"), QString(),
+                                   QStringLiteral("help_report_bug"), QStringLiteral("help_about_app")};
+        for (const QString &name : names) {
+            if (name.isEmpty()) {
+                helpMenu->addSeparator();
+            } else if (QAction *action = actionCollection()->action(name)) {
+                helpMenu->addAction(action);
+            }
+        }
+    });
+    statusBar()->addPermanentWidget(helpButton);
+    // KoraCut : 13 px et non 14 dans la barre d'état. Le bouton n'y fait que 15 px de haut (la
+    // barre est bornée à 24 px par la charte) : avec une icône de 14, il ne reste pas la place du
+    // trait d'accent de 2 px qui marque une bascule active, et Qt le laisse tomber sans rien dire.
+    // 13 + 2 = 15, le trait s'affiche. Le cran 13 px existe déjà dans la charte.
+    toolbar->setIconSize(KoraCutMetrics::iconInspector());
+    toolbar->layout()->setContentsMargins(4, 0, 4, 0);
+    // Le trait d'accent de 2 px sous une bascule active (23 septembre 2026).
+    KoraCutStyle::addCheckedAccent(toolbar);
     statusBar()->setContentsMargins(0, 0, 0, 0);
+
+    // KoraCut : ⌘⇧M bascule entre un moniteur à deux onglets et deux moniteurs côte à côte
+    // (« 9 - UX de l'application »). L'action est une case à cocher, son état suit le réglage.
+    QAction *dualMonitors = new QAction(i18nc("@action", "Two Monitors"), this);
+    dualMonitors->setCheckable(true);
+    dualMonitors->setChecked(!KdenliveSettings::singleMonitor());
+    connect(dualMonitors, &QAction::triggered, this, [this](bool deux) { setSingleMonitor(!deux); });
+    addAction(QStringLiteral("dual_monitors"), dualMonitors, Qt::CTRL | Qt::SHIFT | Qt::Key_M);
+    // Sur un écran large, on propose une fois les deux moniteurs, sans les imposer (document 9).
+    if (KdenliveSettings::singleMonitor() && !KdenliveSettings::koracut_dual_monitor_hint()) {
+        QTimer::singleShot(6000, this, [this, dualMonitors]() {
+            const QScreen *screen = this->screen();
+            if (!screen || screen->availableGeometry().width() < 1600 || !KdenliveSettings::singleMonitor()) {
+                return;
+            }
+            KdenliveSettings::setKoracut_dual_monitor_hint(true);
+            pCore->displayMessage(i18nc("@info:status %1 is a keyboard shortcut", "Your screen is wide: %1 shows the two monitors side by side.",
+                                        dualMonitors->shortcut().toString(QKeySequence::NativeText)),
+                                  InformationMessage, 10000);
+        });
+    }
 
     addAction(QStringLiteral("normal_mode"), m_normalEditTool);
     addAction(QStringLiteral("overwrite_mode"), m_overwriteEditTool);
     addAction(QStringLiteral("insert_mode"), m_insertEditTool);
 
     KActionCategory *toolsActionCategory = new KActionCategory(i18n("Tools"), actionCollection());
-    addAction(QStringLiteral("select_tool"), m_buttonSelectTool, Qt::Key_S, toolsActionCategory);
-    addAction(QStringLiteral("razor_tool"), m_buttonRazorTool, Qt::Key_X, toolsActionCategory);
-    addAction(QStringLiteral("spacer_tool"), m_buttonSpacerTool, Qt::Key_M, toolsActionCategory);
-    addAction(QStringLiteral("ripple_tool"), m_buttonRippleTool, {}, toolsActionCategory);
+    // KoraCut, 21 septembre 2026 : les outils prennent les touches de Resolve et de Premiere
+    // (§ 2 de « 12 - Passe montage »). L'ancien jeu reste disponible dans le schéma « Classique ».
+    addAction(QStringLiteral("select_tool"), m_buttonSelectTool, Qt::Key_A, toolsActionCategory);
+    addAction(QStringLiteral("razor_tool"), m_buttonRazorTool, Qt::Key_B, toolsActionCategory);
+    // KoraCut : « E » comme Espaceur, puisque « M » est passé au marqueur.
+    addAction(QStringLiteral("spacer_tool"), m_buttonSpacerTool, Qt::Key_E, toolsActionCategory);
+    addAction(QStringLiteral("ripple_tool"), m_buttonRippleTool, Qt::Key_T, toolsActionCategory);
     // addAction(QStringLiteral("roll_tool"), m_buttonRollTool, QKeySequence(), toolsActionCategory);
-    addAction(QStringLiteral("slip_tool"), m_buttonSlipTool, {}, toolsActionCategory);
+    addAction(QStringLiteral("slip_tool"), m_buttonSlipTool, Qt::Key_S, toolsActionCategory);
     addAction(QStringLiteral("multicam_tool"), m_buttonMulticamTool, {}, toolsActionCategory);
     // addAction(QStringLiteral("slide_tool"), m_buttonSlideTool);
 
@@ -1644,9 +3886,10 @@ void MainWindow::setupActions()
     addAction(QStringLiteral("show_video_thumbs"), m_buttonVideoThumbs);
     addAction(QStringLiteral("show_audio_thumbs"), m_buttonAudioThumbs);
     addAction(QStringLiteral("show_markers"), m_buttonShowMarkers);
-    addAction(QStringLiteral("snap"), m_buttonSnap);
+    addAction(QStringLiteral("snap"), m_buttonSnap, Qt::Key_N);
     addAction(QStringLiteral("hide_overlay"), m_buttonHideClipOverlays);
-    addAction(QStringLiteral("zoom_fit"), m_buttonFitZoom);
+    // KoraCut : Maj+Z montre toute la séquence, comme Resolve et Final Cut (document 9).
+    addAction(QStringLiteral("zoom_fit"), m_buttonFitZoom, Qt::SHIFT | Qt::Key_Z);
 
 #if defined(Q_OS_WIN)
     int glBackend = KdenliveSettings::opengl_backend();
@@ -1679,8 +3922,17 @@ void MainWindow::setupActions()
     addAction(QStringLiteral("project_settings"), i18n("Project Settings…"), this, SLOT(slotEditProjectSettings()),
               QIcon::fromTheme(QStringLiteral("configure")));
 
-    addAction(QStringLiteral("project_render"), i18n("Render…"), this, SLOT(slotRenderProject()), QIcon::fromTheme(QStringLiteral("media-record")),
-              Qt::CTRL | Qt::Key_Return);
+    // KoraCut : l'export n'est plus un bouton de barre d'outils, c'est une commande de menu.
+    // Ctrl+Entrée ne lance donc plus un rendu depuis n'importe où (décision du 20/09/2026, « 9 - UX de l'application.md »).
+    addAction(QStringLiteral("project_render"), i18nc("@action ouvre la fenêtre d'export", "Export…"), this, SLOT(slotShowExportModule()),
+              QIcon::fromTheme(QStringLiteral("document-export")), Qt::CTRL | Qt::SHIFT | Qt::Key_E);
+    // Document 23 : la fenêtre d'export de toujours (tous les préréglages MLT, scripts), derrière « Avancé… ».
+    addAction(QStringLiteral("koracut_export_avance"), i18nc("@action the full export window with every render preset", "Advanced Export…"), this,
+              SLOT(slotRenderProject()), QIcon::fromTheme(QStringLiteral("document-export")));
+
+    // Relance le dernier préréglage sans rouvrir la fenêtre.
+    addAction(QStringLiteral("project_render_again"), i18nc("@action relance le dernier export", "Export Again"), this,
+              SLOT(slotRenderAgain()), QIcon::fromTheme(QStringLiteral("document-export")), Qt::CTRL | Qt::ALT | Qt::Key_E);
 
     addAction(QStringLiteral("stop_project_render"), i18n("Stop Render"), this, SLOT(slotStopRenderProject()),
               QIcon::fromTheme(QStringLiteral("media-record")));
@@ -1696,7 +3948,8 @@ void MainWindow::setupActions()
                   QIcon::fromTheme(QStringLiteral("media-playback-start")), QKeySequence(), QStringLiteral("navandplayback"));
 
     m_playZone = addAction(QStringLiteral("monitor_play_zone"), i18n("Play Zone"), pCore->monitorManager(), SLOT(slotPlayZone()),
-                           QIcon::fromTheme(QStringLiteral("media-playback-start")), Qt::CTRL | Qt::Key_Space, QStringLiteral("navandplayback"));
+                           // KoraCut : Maj+Espace et non plus Ctrl+Espace, qui devient ⌘Espace sur Mac, c'est-à-dire Spotlight.
+                           QIcon::fromTheme(QStringLiteral("media-playback-start")), Qt::SHIFT | Qt::Key_Space, QStringLiteral("navandplayback"));
     m_loopZone = addAction(QStringLiteral("monitor_loop_zone"), i18n("Loop Zone"), pCore->monitorManager(), SLOT(slotLoopZone()),
                            QIcon::fromTheme(QStringLiteral("media-playback-start")), Qt::CTRL | Qt::SHIFT | Qt::Key_Space, QStringLiteral("navandplayback"));
     m_loopClip = new QAction(QIcon::fromTheme(QStringLiteral("media-playback-start")), i18n("Loop Selected Clip"), this);
@@ -1715,7 +3968,8 @@ void MainWindow::setupActions()
 
     addAction(QStringLiteral("archive_project"), i18n("Archive Project…"), this, SLOT(slotArchiveProject()),
               QIcon::fromTheme(QStringLiteral("document-save-all")));
-    addAction(QStringLiteral("switch_monitor"), i18n("Switch Monitor"), this, SLOT(slotSwitchMonitors()), QIcon(), Qt::Key_T);
+    // KoraCut : T passe à l'outil Trim.
+    addAction(QStringLiteral("switch_monitor"), i18n("Switch Monitor"), this, SLOT(slotSwitchMonitors()));
     addAction(QStringLiteral("focus_timecode"), i18n("Focus Timecode"), this, SLOT(slotFocusTimecode()), QIcon(), Qt::Key_Equal);
     addAction(QStringLiteral("expand_timeline_clip"), i18n("Expand Clip"), this, SLOT(slotExpandClip()), QIcon::fromTheme(QStringLiteral("document-open")));
 
@@ -1846,12 +4100,16 @@ void MainWindow::setupActions()
     addAction(QStringLiteral("grab_item"), i18n("Grab Current Item"), this, SLOT(slotGrabItem()), QIcon::fromTheme(QStringLiteral("transform-move")),
               Qt::SHIFT | Qt::Key_G);
 
-    QAction *overwriteZone = addAction(QStringLiteral("overwrite_to_in_point"), i18n("Overwrite Clip Zone in Timeline"), this, SLOT(slotInsertClipOverwrite()),
-                                       QIcon::fromTheme(QStringLiteral("timeline-overwrite")), Qt::Key_B);
+    // KoraCut : B passe à l'outil Lame. Écraser prend le point, et le point-virgule, qui est en
+    // accès direct sur AZERTY (le point y demande Maj) ; insérer prend la virgule en plus du V.
+    // La paire virgule / point remplace les crochets des logiciels américains (document 9).
+    QAction *overwriteZone = addActionWithShortcuts(QStringLiteral("overwrite_to_in_point"), i18n("Overwrite Clip Zone in Timeline"), this,
+                                                    SLOT(slotInsertClipOverwrite()), QIcon::fromTheme(QStringLiteral("timeline-overwrite")),
+                                                    {QKeySequence(Qt::Key_Period), QKeySequence(Qt::Key_Semicolon)});
     overwriteZone->setWhatsThis(xi18nc("@info:whatsthis", "When clicked the zone of the clip currently selected in the project bin is inserted at the playhead "
                                                           "position in the active timeline. Clips at the insert position are cut and overwritten."));
-    QAction *insertZone = addAction(QStringLiteral("insert_to_in_point"), i18n("Insert Clip Zone in Timeline"), this, SLOT(slotInsertClipInsert()),
-                                    QIcon::fromTheme(QStringLiteral("timeline-insert")), Qt::Key_V);
+    QAction *insertZone = addActionWithShortcuts(QStringLiteral("insert_to_in_point"), i18n("Insert Clip Zone in Timeline"), this, SLOT(slotInsertClipInsert()),
+                                                 QIcon::fromTheme(QStringLiteral("timeline-insert")), {QKeySequence(Qt::Key_V), QKeySequence(Qt::Key_Comma)});
     insertZone->setWhatsThis(xi18nc("@info:whatsthis", "When clicked the zone of the clip currently selected in the project bin is inserted at the playhead "
                                                        "position in the active timeline. Clips at the insert position are cut and shifted to the right."));
     QAction *extractZone = addAction(QStringLiteral("remove_extract"), i18n("Extract Timeline Zone"), this, SLOT(slotExtractZone()),
@@ -1860,27 +4118,46 @@ void MainWindow::setupActions()
     QAction *liftZone = addAction(QStringLiteral("remove_lift"), i18n("Lift Timeline Zone"), this, SLOT(slotLiftZone()),
                                   QIcon::fromTheme(QStringLiteral("timeline-lift")), Qt::Key_Z);
     liftZone->setWhatsThis(xi18nc("@info:whatsthis", "Click to delete the timeline zone from the timeline. All clips to the right stay in position."));
-    QAction *addPreviewZone = addAction(QStringLiteral("set_render_timeline_zone"), i18n("Add Preview Zone"), this, SLOT(slotDefinePreviewRender()),
+    QAction *addPreviewZone = addAction(QStringLiteral("set_render_timeline_zone"), i18nc("@action", "Add Zone to Render"), this, SLOT(slotDefinePreviewRender()),
                                         QIcon::fromTheme(QStringLiteral("preview-add-zone")));
     addPreviewZone->setWhatsThis(xi18nc("@info:whatsthis", "Add the currently defined timeline/selection zone as a preview render zone"));
-    QAction *removePreviewZone = addAction(QStringLiteral("unset_render_timeline_zone"), i18n("Remove Preview Zone"), this, SLOT(slotRemovePreviewRender()),
+    QAction *removePreviewZone = addAction(QStringLiteral("unset_render_timeline_zone"), i18nc("@action", "Remove Zone from Render"), this, SLOT(slotRemovePreviewRender()),
                                            QIcon::fromTheme(QStringLiteral("preview-remove-zone")));
     removePreviewZone->setWhatsThis(xi18nc(
         "@info:whatsthis",
         "Removes the currently defined timeline/selection zone from the preview render zone. Note that this can leave gaps in the preview render zones."));
-    QAction *removeAllPreviewZone = addAction(QStringLiteral("clear_render_timeline_zone"), i18n("Remove All Preview Zones"), this,
+    // KoraCut (24 septembre 2026) : le rendu d'aperçu parle simplement, « Rendu », pas « prévisualisation ».
+    QAction *removeAllPreviewZone = addAction(QStringLiteral("clear_render_timeline_zone"), i18nc("@action", "Clear Renders"), this,
                                               SLOT(slotClearPreviewRender()), QIcon::fromTheme(QStringLiteral("preview-remove-all")));
-    removeAllPreviewZone->setWhatsThis(xi18nc("@info:whatsthis", "Remove all preview render zones."));
-    QAction *startPreviewRender = addAction(QStringLiteral("prerender_timeline_zone"), i18n("Start Preview Render"), this, SLOT(slotPreviewRender()),
+    removeAllPreviewZone->setWhatsThis(xi18nc("@info:whatsthis", "Deletes the rendered passages of this sequence from the disk."));
+    QAction *startPreviewRender = addAction(QStringLiteral("prerender_timeline_zone"), i18nc("@action", "Render Zone"), this, SLOT(slotPreviewRender()),
                                             QIcon::fromTheme(QStringLiteral("preview-render-on")), QKeySequence(Qt::SHIFT | Qt::Key_Return));
-    startPreviewRender->setWhatsThis(xi18nc("@info:whatsthis",
-                                            "Click to start the rendering of all preview zones (recommended for areas with complex and many effects).<nl/>"
-                                            "Click on the down-arrow icon to get a list of options (for example: add preview render zone, remove all zones)."));
-    addAction(QStringLiteral("stop_prerender_timeline"), i18n("Stop Preview Render"), this, SLOT(slotStopPreviewRender()),
+    startPreviewRender->setWhatsThis(xi18nc("@info:whatsthis", "Renders the zone of the Program monitor, or the whole sequence if there is no zone, so that "
+                                                               "effects and grading play smoothly. The render is redone by itself after each change."));
+    addAction(QStringLiteral("stop_prerender_timeline"), i18nc("@action", "Stop Render"), this, SLOT(slotStopPreviewRender()),
               QIcon::fromTheme(QStringLiteral("preview-render-off")));
+    QAction *renderSelection = new QAction(QIcon::fromTheme(QStringLiteral("preview-render-on")), i18nc("@action", "Render Selection"), this);
+    renderSelection->setWhatsThis(xi18nc("@info:whatsthis", "Renders the passage covered by the selected clips."));
+    connect(renderSelection, &QAction::triggered, this, [this]() {
+        if (pCore->currentDoc() && getCurrentTimeline()) {
+            TimelineController *controller = getCurrentTimeline()->controller();
+            if (!controller->renderRange(controller->selectionZone())) {
+                pCore->displayMessage(i18nc("@info:status", "Select one or more clips to render."), InformationMessage, 3000);
+            }
+        }
+    });
+    addAction(QStringLiteral("koracut_render_selection"), renderSelection);
+    QAction *autoRenderAction = new QAction(QIcon::fromTheme(QStringLiteral("view-refresh")), i18nc("@action", "Automatic Render"), this);
+    autoRenderAction->setCheckable(true);
+    autoRenderAction->setChecked(KdenliveSettings::autopreview());
+    autoRenderAction->setWhatsThis(xi18nc("@info:whatsthis", "One second after each change, the passages with effects, grading, compositions or "
+                                                             "Motion are rendered again, from the playhead onwards. Simple cuts are not rendered."));
+    connect(autoRenderAction, &QAction::triggered, this, &MainWindow::slotToggleAutoPreview);
+    addAction(QStringLiteral("koracut_render_auto"), autoRenderAction);
 
     addAction(QStringLiteral("select_timeline_zone"), i18n("Adjust Timeline Zone to Selection"), this, SLOT(slotSelectTimelineZone()),
-              QIcon::fromTheme(QStringLiteral("edit-select")), Qt::SHIFT | Qt::Key_Z);
+              // KoraCut : Maj+Z est passé à « Voir toute la séquence » ; l'action reste dans le menu de la règle.
+              QIcon::fromTheme(QStringLiteral("edit-select")));
     addAction(QStringLiteral("select_timeline_clip"), i18n("Select Clip"), this, SLOT(slotSelectTimelineClip()),
               QIcon::fromTheme(QStringLiteral("edit-select")), Qt::Key_Plus);
     addAction(QStringLiteral("deselect_timeline_clip"), i18n("Deselect Clip"), this, SLOT(slotDeselectTimelineClip()),
@@ -1896,8 +4173,12 @@ void MainWindow::setupActions()
 
     addAction(QStringLiteral("delete_all_clip_markers"), i18n("Delete All Markers"), this, SLOT(slotDeleteAllClipMarkers()),
               QIcon::fromTheme(QStringLiteral("edit-delete")));
-    addAction(QStringLiteral("add_marker_guide_quickly"), i18n("Add Marker Quickly"), this, SLOT(slotAddMarkerGuideQuickly()),
-              QIcon::fromTheme(QStringLiteral("bookmark-new")), QKeySequence(Qt::KeypadModifier | Qt::Key_Asterisk));
+    // KoraCut, 22 septembre 2026 : « M » pose un marqueur, comme dans CapCut et DaVinci.
+    // L'ancien raccourci était « * » du pavé numérique, que les portables n'ont pas : il était
+    // donc inatteignable sur un MacBook. On le garde en second, on ne retire rien.
+    addActionWithShortcuts(QStringLiteral("add_marker_guide_quickly"), i18n("Add Marker Quickly"), this, SLOT(slotAddMarkerGuideQuickly()),
+                           QIcon::fromTheme(QStringLiteral("bookmark-new")),
+                           {QKeySequence(Qt::Key_M), QKeySequence(Qt::KeypadModifier | Qt::Key_Asterisk)});
 
     QAction *addMarkerWithCategory1 =
         addAction(QStringLiteral("add_marker_guide_1"), i18n("Add Marker Category 1"), this, SLOT(slotAddMarkerWithCategory()),
@@ -1951,8 +4232,10 @@ void MainWindow::setupActions()
                                    QIcon::fromTheme(QStringLiteral("bookmark-remove")), QKeySequence(), clipActionCategory);
     delMarker->setData('P');
 
+    // KoraCut : « Maj+M » ouvre le marqueur sous la tête de lecture, le pendant du « M » qui le pose.
     QAction *editClipMarker = addAction(QStringLiteral("edit_clip_marker"), i18n("Edit Marker…"), this, SLOT(slotEditClipMarker()),
-                                        QIcon::fromTheme(QStringLiteral("bookmark-edit")), QKeySequence(), clipActionCategory);
+                                        QIcon::fromTheme(QStringLiteral("bookmark-edit")), QKeySequence(Qt::SHIFT | Qt::Key_M),
+                                        clipActionCategory);
     editClipMarker->setObjectName(QStringLiteral("edit_marker"));
     editClipMarker->setData('P');
 
@@ -1962,8 +4245,10 @@ void MainWindow::setupActions()
     splitAudio->setData('S');
     splitAudio->setEnabled(false);
 
-    QAction *extractClip = addAction(QStringLiteral("extract_clip"), i18n("Extract Clip"), this, SLOT(slotExtractClip()),
-                                     QIcon::fromTheme(QStringLiteral("timeline-extract")), QKeySequence(Qt::SHIFT | Qt::Key_Delete), clipActionCategory);
+    // KoraCut : ⇧⌫ autant que ⇧⌦, même raison que ci-dessus.
+    QAction *extractClip = addActionWithShortcuts(
+        QStringLiteral("extract_clip"), i18n("Extract Clip"), this, SLOT(slotExtractClip()), QIcon::fromTheme(QStringLiteral("timeline-extract")),
+        {QKeySequence(Qt::SHIFT | Qt::Key_Delete), QKeySequence(Qt::SHIFT | Qt::Key_Backspace)}, clipActionCategory);
     extractClip->setData('C');
     extractClip->setEnabled(false);
 
@@ -1973,7 +4258,7 @@ void MainWindow::setupActions()
     extractToBin->setEnabled(false);
 
     QAction *switchEnable =
-        addAction(QStringLiteral("clip_switch"), i18n("Disable Clip"), this, SLOT(slotSwitchClip()), QIcon(), QKeySequence(), clipActionCategory);
+        addAction(QStringLiteral("clip_switch"), i18n("Disable Clip"), this, SLOT(slotSwitchClip()), QIcon(), Qt::Key_D, clipActionCategory);
     // "W" will be handled specifically to change the action name depending on current selection
     switchEnable->setData('W');
     switchEnable->setEnabled(false);
@@ -2029,21 +4314,51 @@ void MainWindow::setupActions()
     duplicateClip->setEnabled(false);
 
     addAction(QStringLiteral("cut_timeline_clip"), i18n("Cut Clip"), this, SLOT(slotCutTimelineClip()), QIcon::fromTheme(QStringLiteral("edit-cut")),
-              Qt::SHIFT | Qt::Key_R);
+              Qt::CTRL | Qt::Key_B);
 
     addAction(QStringLiteral("replace_timeline_clip"), i18n("Replace with Bin Selection"), this, SLOT(slotReplaceTimelineClip()),
               QIcon::fromTheme(QStringLiteral("edit-find-replace")), QKeySequence());
     act->setData('C');
 
     addAction(QStringLiteral("cut_timeline_all_clips"), i18n("Cut All Clips"), this, SLOT(slotCutTimelineAllClips()),
-              QIcon::fromTheme(QStringLiteral("edit-cut")), Qt::CTRL | Qt::SHIFT | Qt::Key_R);
+              QIcon::fromTheme(QStringLiteral("edit-cut")), Qt::CTRL | Qt::SHIFT | Qt::Key_B);
 
-    addAction(QStringLiteral("delete_timeline_clip"), i18n("Delete Selected Item"), this, SLOT(slotDeleteItem()),
-              QIcon::fromTheme(QStringLiteral("edit-delete")), Qt::Key_Delete);
+    // KoraCut, 22 septembre 2026 : les deux touches, pas une seule. Sur un clavier de MacBook,
+    // la touche marquée « delete » est ⌫ (`Key_Backspace`) ; `Key_Delete` c'est ⌦, qui n'existe
+    // qu'en fn + ⌫. L'action était donc inerte sous les doigts d'Amadou Ba.
+    addActionWithShortcuts(QStringLiteral("delete_timeline_clip"), i18n("Delete Selected Item"), this, SLOT(slotDeleteItem()),
+                           QIcon::fromTheme(QStringLiteral("edit-delete")), {QKeySequence(Qt::Key_Delete), QKeySequence(Qt::Key_Backspace)});
+
+    // KoraCut, 23 septembre 2026 : décaler la sélection d'une image, à gauche ou à droite (⌥⇧←,
+    // ⌥⇧→). Les autres logiciels prennent la virgule et le point (Resolve, Final Cut, pris ici par
+    // insérer et écraser) ou ⌥← (Premiere, pris ici par « nœud précédent ») : on garde la flèche et
+    // on ajoute Maj. Document 12, journal.
+    for (int delta : {-1, 1}) {
+        auto *nudge = new QAction(QIcon::fromTheme(delta < 0 ? QStringLiteral("go-previous") : QStringLiteral("go-next")),
+                                  delta < 0 ? i18nc("@action", "Nudge Selection One Frame Left") : i18nc("@action", "Nudge Selection One Frame Right"), this);
+        addAction(delta < 0 ? QStringLiteral("koracut_nudge_left") : QStringLiteral("koracut_nudge_right"), nudge,
+                  QKeySequence(Qt::ALT | Qt::SHIFT | (delta < 0 ? Qt::Key_Left : Qt::Key_Right)), QStringLiteral("navandplayback"));
+        connect(nudge, &QAction::triggered, this, [this, delta]() { koraCutNudgeSelection(delta); });
+    }
 
     QAction *resizeStart = new QAction(QIcon(), i18n("Resize Item Start"), this);
     addAction(QStringLiteral("resize_timeline_clip_start"), resizeStart, QKeySequence(Qt::Key_ParenLeft));
     connect(resizeStart, &QAction::triggered, this, &MainWindow::slotResizeItemStart);
+
+    // KoraCut, 21 septembre 2026, amendé le 22 : Q et W rognent jusqu'à la tête de lecture sans
+    // refermer le trou, et ⇧Q / ⇧W referment. C'est un écart volontaire avec Premiere, où Q et W
+    // referment toujours : Amadou Ba a essayé et n'en veut pas par défaut, « le reste de la
+    // timeline se décale et vient se coller, alors que tu ne l'as pas déplacé manuellement ».
+    // La règle de KoraCut devient : un geste simple ne déplace jamais ce qu'on n'a pas touché,
+    // il faut ⇧ pour refermer. Voir « 13 - Deuxième passe montage », § 2.
+    addAction(QStringLiteral("trim_start_to_playhead"), i18n("Trim Start to Playhead"), this, SLOT(slotTrimStartToPlayhead()),
+              QIcon::fromTheme(QStringLiteral("edit-cut")), Qt::Key_Q);
+    addAction(QStringLiteral("trim_end_to_playhead"), i18n("Trim End to Playhead"), this, SLOT(slotTrimEndToPlayhead()),
+              QIcon::fromTheme(QStringLiteral("edit-cut")), Qt::Key_W);
+    addAction(QStringLiteral("ripple_trim_start"), i18n("Ripple Trim Start to Playhead"), this, SLOT(slotRippleTrimStart()),
+              QIcon::fromTheme(QStringLiteral("edit-cut")), Qt::SHIFT | Qt::Key_Q);
+    addAction(QStringLiteral("ripple_trim_end"), i18n("Ripple Trim End to Playhead"), this, SLOT(slotRippleTrimEnd()),
+              QIcon::fromTheme(QStringLiteral("edit-cut")), Qt::SHIFT | Qt::Key_W);
 
     QAction *resizeEnd = new QAction(QIcon(), i18n("Resize Item End"), this);
     addAction(QStringLiteral("resize_timeline_clip_end"), resizeEnd, QKeySequence(Qt::Key_ParenRight));
@@ -2117,13 +4432,27 @@ void MainWindow::setupActions()
     KActionCategory *timelineActions = new KActionCategory(i18n("Tracks"), actionCollection());
     QAction *insertTrack = new QAction(QIcon(), i18nc("@action", "Insert Track…"), this);
     connect(insertTrack, &QAction::triggered, this, &MainWindow::slotInsertTrack);
-    timelineActions->addAction(QStringLiteral("insert_track"), insertTrack);
+    addAction(QStringLiteral("insert_track"), insertTrack, Qt::CTRL | Qt::SHIFT | Qt::Key_N, timelineActions);
 
     QAction *autoTrackHeight = new QAction(QIcon(), i18n("Fit all Tracks in View"), this);
     autoTrackHeight->setCheckable(true);
     autoTrackHeight->setChecked(KdenliveSettings::autotrackheight());
     connect(autoTrackHeight, &QAction::triggered, this, &MainWindow::slotAutoTrackHeight);
     timelineActions->addAction(QStringLiteral("fit_all_tracks"), autoTrackHeight);
+
+    // KoraCut, 22 septembre 2026 : une bascule unique « Tout plier / Tout déplier », avec son
+    // bouton dans la barre d'outils de la timeline. La mécanique existait déjà
+    // (`TimelineController::collapseAllTracks()`), elle n'était atteignable que par ⇧< et
+    // seulement quand la timeline avait le focus. Avec dix pistes vidéo et dix pistes audio,
+    // c'est le geste qu'on fait le plus souvent.
+    QAction *collapseTracks = new QAction(QIcon::fromTheme(QStringLiteral("collapse-all")), i18n("Collapse/Expand All Tracks"), this);
+    connect(collapseTracks, &QAction::triggered, this, [this]() {
+        if (getCurrentTimeline() && getCurrentTimeline()->controller()) {
+            // Toutes les pistes, pas seulement celles du type de la piste active.
+            getCurrentTimeline()->controller()->collapseAllTracks(true);
+        }
+    });
+    timelineActions->addAction(QStringLiteral("collapse_all_tracks"), collapseTracks);
 
     QAction *masterEffectStack = new QAction(QIcon::fromTheme(QStringLiteral("composite-track-on")), i18n("Sequence effects"), this);
     connect(masterEffectStack, &QAction::triggered, this, [&]() {
@@ -2176,7 +4505,8 @@ void MainWindow::setupActions()
     addAction(QStringLiteral("manage_cache"), i18n("Manage Cached Data…"), this, SLOT(slotManageCache()),
               QIcon::fromTheme(QStringLiteral("network-server-database")));
 
-    QAction *disablePreview = new QAction(i18n("Disable Timeline Preview"), this);
+    // KoraCut : pour comparer, la lecture directe sans les passages rendus.
+    QAction *disablePreview = new QAction(i18nc("@action", "Play Without Renders"), this);
     disablePreview->setCheckable(true);
     addAction(QStringLiteral("disable_preview"), disablePreview);
 
@@ -2226,7 +4556,10 @@ void MainWindow::setupActions()
 
     KStandardAction::quit(this, &MainWindow::close, actionCollection());
     KStandardAction::keyBindings(this, &MainWindow::slotEditKeys, actionCollection());
-    KStandardAction::preferences(this, &MainWindow::slotPreferences, actionCollection());
+    QAction *preferences = KStandardAction::preferences(this, &MainWindow::slotPreferences, actionCollection());
+    // KoraCut : ⌘, sur Mac (Ctrl+, ailleurs), la convention de toutes les applications. Celle de KDE,
+    // Ctrl+Maj+virgule, reste en second. Libre dans les 834 actions (KORACUT_DUMP_ACTIONS=all).
+    actionCollection()->setDefaultShortcuts(preferences, {QKeySequence(Qt::CTRL | Qt::Key_Comma), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Comma)});
     KStandardAction::configureNotifications(this, &MainWindow::configureNotifications, actionCollection());
     KStandardAction::fullScreen(this, &MainWindow::slotFullScreen, this, actionCollection());
 
@@ -2262,6 +4595,9 @@ void MainWindow::setupActions()
     tlsettings->setIcon(QIcon::fromTheme(QStringLiteral("application-menu")));
     tlsettings->addAction(m_compositeAction);
     tlsettings->addAction(disableEffects);
+    // KoraCut : ce réglage quitte la barre d'outils. Une barre porte des commandes, pas des
+    // réglages : c'est ce qui la faisait monter à dix-huit boutons.
+    tlsettings->addAction(m_useTimelineZone);
     tlsettings->addSeparator();
     tlsettings->addAction(mixedView);
     tlsettings->addAction(splitView);
@@ -2287,7 +4623,8 @@ void MainWindow::setupActions()
               Qt::CTRL | Qt::SHIFT | Qt::Key_L, timelineActions);
     addAction(QStringLiteral("switch_track_target"), i18n("Toggle Track Target"), pCore->projectManager(), SLOT(slotSwitchTrackTarget()), QIcon(),
               Qt::SHIFT | Qt::Key_T, timelineActions);
-    addAction(QStringLiteral("switch_active_target"), i18n("Toggle Track Active"), pCore->projectManager(), SLOT(slotSwitchTrackActive()), QIcon(), Qt::Key_A,
+    // KoraCut : A passe à l'outil Sélection.
+    addAction(QStringLiteral("switch_active_target"), i18n("Toggle Track Active"), pCore->projectManager(), SLOT(slotSwitchTrackActive()), QIcon(), {},
               timelineActions);
     addAction(QStringLiteral("switch_all_targets"), i18n("Toggle All Tracks Active"), pCore->projectManager(), SLOT(slotSwitchAllTrackActive()), QIcon(),
               Qt::SHIFT | Qt::Key_A, timelineActions);
@@ -2308,7 +4645,10 @@ void MainWindow::setupActions()
         QAction *ac2 = new QAction(QIcon(), i18n("Select Video Track %1", i), this);
         ac2->setData(i - 1);
         connect(ac2, &QAction::triggered, this, &MainWindow::slotActivateVideoTrackSequence);
-        addAction(QStringLiteral("activate_video_%1").arg(i), ac2, QKeySequence(keysequence[i - 1]), timelineActions);
+        // KoraCut : les chiffres seuls sont rendus aux modules (Maj+1 à Maj+8). Sur un clavier AZERTY,
+        // la rangée du haut ne donne un chiffre qu'avec Maj : garder « 1 » ici bloquait « Maj+1 ».
+        // La sélection de piste vidéo reste accessible par Alt+chiffre et par Configurer les raccourcis.
+        addAction(QStringLiteral("activate_video_%1").arg(i), ac2, QKeySequence(), timelineActions);
         QAction *ac3 = new QAction(QIcon(), i18n("Select Target %1", i), this);
         ac3->setData(i - 1);
         connect(ac3, &QAction::triggered, this, &MainWindow::slotActivateTarget);
@@ -2318,11 +4658,16 @@ void MainWindow::setupActions()
     // Setup effects and transitions actions.
     KActionCategory *transitionActions = new KActionCategory(i18n("Transitions"), actionCollection());
     auto allTransitions = TransitionsRepository::get()->getNames();
+    // KoraCut, 23 septembre 2026 : getNames() rend (identifiant, nom). Le texte affiché recevait
+    // l'identifiant (« frei0r.sleid0r_wipe-right ») et le nom d'action le nom traduit, qui change avec
+    // la langue et casse les raccourcis. Et ces actions n'étaient branchées sur rien : lancées depuis
+    // la palette ⌘K ou un raccourci, elles ne faisaient rien. Elles posent maintenant la composition
+    // sur le clip sélectionné, par slotAddTransition (le même chemin que le menu Compositions).
     for (const auto &transition : std::as_const(allTransitions)) {
-        auto *transAction = new QAction(transition.first, this);
-        transAction->setData(transition.second);
+        auto *transAction = new QAction(transition.second, this);
+        transAction->setData(transition.first);
         transAction->setIconVisibleInMenu(false);
-        transitionActions->addAction("transition_" + transition.second, transAction);
+        transitionActions->addAction("transition_" + transition.first, transAction);
     }
 
     // monitor actions
@@ -2334,6 +4679,302 @@ void MainWindow::setupActions()
 
     addAction(QStringLiteral("extract_frame_to_clipboard"), i18n("Extract Frame to Clipboard"), pCore->monitorManager(),
               SLOT(slotExtractCurrentFrameToClipboard()), QIcon::fromTheme(QStringLiteral("insert-image")));
+
+    // ----- KoraCut -----
+    auto *koraCutActions = new KActionCategory(i18nc("@title catégorie de raccourcis", "KoraCut"), actionCollection());
+    kdenliveCategoryMap.insert(QStringLiteral("koracut"), koraCutActions);
+
+    // Les modules : Maj+2 à Maj+8, plus la variante sans Maj (jouable en QWERTY).
+    // Maj+1 est réservé à l'Accueil, qui n'est pas encore écrit.
+    auto shortcutsFor = [](int number) {
+        const Qt::Key key = static_cast<Qt::Key>(Qt::Key_0 + number);
+        return QList<QKeySequence>{QKeySequence(Qt::SHIFT | key), QKeySequence(key)};
+    };
+    addActionWithShortcuts(QStringLiteral("koracut_home"), i18nc("@action va à l'écran d'accueil", "Home"), this, SLOT(slotShowHome()), QIcon(),
+                           shortcutsFor(1), koraCutActions);
+    const QList<KoraCutModules::Module> &koraCutModules = KoraCutModules::all();
+    for (const KoraCutModules::Module &module : koraCutModules) {
+        auto *moduleAction = new QAction(module.name, this);
+        moduleAction->setData(module.id);
+        connect(moduleAction, &QAction::triggered, this, &MainWindow::slotSwitchModule);
+        addActionWithShortcuts(QStringLiteral("koracut_module_%1").arg(module.id), moduleAction, shortcutsFor(module.number), koraCutActions);
+    }
+
+    // Palette de commandes : le « Find Action » de KXmlGui, sur ⌘K comme chez Figma et Resolve.
+    addAction(QStringLiteral("koracut_command_palette"), i18nc("@action ouvre la palette de commandes", "Command Palette"), this,
+              SLOT(slotCommandPalette()), QIcon::fromTheme(QStringLiteral("search")), QKeySequence(Qt::CTRL | Qt::Key_K), koraCutActions);
+
+    // Baisse automatique de la musique sous la voix (boîte aux lettres, 22 septembre 2026).
+    auto *ducking = new QAction(QIcon::fromTheme(QStringLiteral("audio-volume-low")), i18nc("@action", "Automatic Music Ducking…"), this);
+    ducking->setToolTip(i18nc("@info:tooltip", "Lowers the music where someone speaks, with keyframes you can adjust"));
+    connect(ducking, &QAction::triggered, this, [this]() {
+        auto *dialog = new KoraCutDuckingDialog(this);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->show();
+    });
+    addActionWithShortcuts(QStringLiteral("koracut_auto_ducking"), ducking, {}, koraCutActions);
+
+    // Coupe automatique, type AutoCut : les silences (document 15, lot 1).
+    // Icône : la baguette à étincelles (et non les ciseaux, qui sont déjà la Lame), texte court pour
+    // la barre d'outils de la timeline, où il est posé depuis le 23 septembre 2026 (Amadou Ba : « je
+    // ne vois pas où tu l'as mis, si j'en ai besoin il faut que je cherche »).
+    auto *autoCut = new QAction(QIcon::fromTheme(QStringLiteral("tools-wizard")), i18nc("@action", "Automatic Cut…"), this);
+    autoCut->setIconText(i18nc("@action:intoolbar short label", "Auto Cut"));
+    autoCut->setToolTip(i18nc("@info:tooltip", "Automatic cut: syncs the sources, picks the cameras, then finds silences, filler words and retakes, with its settings"));
+    connect(autoCut, &QAction::triggered, this, [this]() {
+        auto *dialog = new KoraCutAutoCutDialog(this);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->show();
+    });
+    addActionWithShortcuts(QStringLiteral("koracut_auto_cut"), autoCut, {}, koraCutActions);
+
+    // La voix off rapide, comme CapCut (29 septembre 2026, demande d'Amadou Ba) : un micro dans la barre
+    // de la timeline, en tête du groupe de droite, qui ouvre le petit panneau d'enregistrement. Pendant
+    // qu'on enregistre, le bouton reste enfoncé et un clic arrête. « Couper le son du projet » est coché
+    // par défaut : le micro ne reprend pas ce qui joue dans la timeline.
+    auto *voiceRecord = new QAction(QIcon::fromTheme(QStringLiteral("audio-input-microphone")), i18nc("@action", "Record Voice-over…"), this);
+    voiceRecord->setIconText(i18nc("@action:intoolbar short label", "Voice-over"));
+    voiceRecord->setToolTip(i18nc("@info:tooltip", "Record a voice-over at the playhead with the microphone (the project sound is muted while you talk)"));
+    voiceRecord->setCheckable(true);
+    connect(voiceRecord, &QAction::triggered, this, [this, voiceRecord]() {
+        KoraCutVoiceRecord *panel = KoraCutVoiceRecord::instance(this);
+        if (panel->isRecording()) {
+            panel->startOrStop();
+        } else {
+            panel->toggleNear(m_timelineToolBar ? m_timelineToolBar->widgetForAction(voiceRecord) : nullptr);
+        }
+        voiceRecord->setChecked(panel->isRecording());
+    });
+    connect(KoraCutVoiceRecord::instance(this), &KoraCutVoiceRecord::recordingChanged, voiceRecord, &QAction::setChecked);
+    addActionWithShortcuts(QStringLiteral("koracut_voice_record"), voiceRecord, {}, koraCutActions);
+    // Sans panneau : démarre ou arrête tout de suite (palette de commandes, raccourci à poser, agents et porte de commande).
+    auto *voiceNow = new QAction(QIcon::fromTheme(QStringLiteral("audio-input-microphone")), i18nc("@action", "Start or Stop Voice-over Recording"), this);
+    connect(voiceNow, &QAction::triggered, this, [this]() { KoraCutVoiceRecord::instance(this)->startOrStop(); });
+    addActionWithShortcuts(QStringLiteral("koracut_voice_record_now"), voiceNow, {}, koraCutActions);
+
+    // Le panneau Agents (chantier 3) : ⌘J, libre dans les 839 actions (KORACUT_DUMP_ACTIONS=all,
+    // 23 septembre 2026 ; ⌘⇧A est « Tout désélectionner »).
+    auto *agentsPanel = new QAction(QIcon::fromTheme(QStringLiteral("dialog-messages")), i18nc("@action", "Agents Panel"), this);
+    agentsPanel->setToolTip(i18nc("@info:tooltip", "Talk to the agents: they edit for you, one Undo takes back a whole turn"));
+    connect(agentsPanel, &QAction::triggered, this, &MainWindow::slotShowAgentsPanel);
+    addActionWithShortcuts(QStringLiteral("koracut_agents_panel"), agentsPanel, {QKeySequence(Qt::CTRL | Qt::Key_J)}, koraCutActions);
+
+    // Le panneau Diagnostic (chantier 10) : pas de raccourci, il est dans Réglages.
+    auto *diagnosticPanel = new QAction(QIcon::fromTheme(QStringLiteral("speedometer")), i18nc("@action", "Diagnostic Panel"), this);
+    diagnosticPanel->setToolTip(i18nc("@info:tooltip", "How smoothly this computer plays the project, and a test that suggests the right settings"));
+    connect(diagnosticPanel, &QAction::triggered, this, &MainWindow::slotShowDiagnosticPanel);
+    addAction(QStringLiteral("koracut_diagnostic_panel"), diagnosticPanel, QKeySequence(), koraCutActions);
+
+    // Le panneau Console (document 18) : ⌘⇧J, à côté des agents.
+    auto *consolePanel = new QAction(QIcon::fromTheme(QStringLiteral("utilities-terminal")), i18nc("@action", "Console Panel"), this);
+    consolePanel->setToolTip(i18nc("@info:tooltip", "What external programs ask KoraCut to do, and a terminal in the project folder"));
+    connect(consolePanel, &QAction::triggered, this, &MainWindow::slotShowConsolePanel);
+    addActionWithShortcuts(QStringLiteral("koracut_console_panel"), consolePanel, {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_J)}, koraCutActions);
+
+    // Le terminal intégré (document 18, 25 septembre 2026) : ⌃` comme VS Code (Ctrl+` sous Windows et Linux).
+    // Sur un clavier AZERTY, ` est une touche morte et ⌃` ne part jamais : ⌃ù en second, comme VS Code
+    // en AZERTY (même touche physique sur un Mac français). Libre dans toutes les actions (dump du 25/09/2026).
+    auto *terminalPanel = new QAction(QIcon::fromTheme(QStringLiteral("utilities-terminal")), i18nc("@action", "Terminal"), this);
+    terminalPanel->setToolTip(i18nc("@info:tooltip", "A terminal inside KoraCut, in the project folder, where a command line agent edits with you"));
+    connect(terminalPanel, &QAction::triggered, this, &MainWindow::slotToggleTerminalPanel);
+#ifdef Q_OS_MACOS
+    addActionWithShortcuts(QStringLiteral("koracut_terminal_panel"), terminalPanel,
+                           {QKeySequence(Qt::META | Qt::Key_QuoteLeft), QKeySequence(Qt::META | Qt::Key_Ugrave)}, koraCutActions);
+#else
+    addActionWithShortcuts(QStringLiteral("koracut_terminal_panel"), terminalPanel,
+                           {QKeySequence(Qt::CTRL | Qt::Key_QuoteLeft), QKeySequence(Qt::CTRL | Qt::Key_Ugrave)}, koraCutActions);
+#endif
+
+    // Le panneau Motion (chantier 9, document 19) : ⌘⌥M, libre (⌘⇧M est « deux moniteurs », ⇧M un marqueur).
+    auto *motionPanel = new QAction(QIcon::fromTheme(QStringLiteral("motion_path_animations")), i18nc("@action", "Motion Panel"), this);
+    motionPanel->setToolTip(i18nc("@info:tooltip", "HyperFrames compositions in the timeline: titles, badges, animated overlays"));
+    connect(motionPanel, &QAction::triggered, this, &MainWindow::slotShowMotionPanel);
+    addActionWithShortcuts(QStringLiteral("koracut_motion_panel"), motionPanel, {QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_M)}, koraCutActions);
+
+    // Le panneau Script (document 21) : ⌘⌥S, libre dans les 850 actions (KORACUT_DUMP_ACTIONS=all, 24 septembre 2026).
+    auto *scriptAction = new QAction(QIcon::fromTheme(QStringLiteral("text-plain")), i18nc("@action", "Script Panel"), this);
+    scriptAction->setToolTip(i18nc("@info:tooltip", "The script of the project: text and tables, ready-made for the video type, shared with the agents"));
+    connect(scriptAction, &QAction::triggered, this, [this]() {
+        if (auto *d = KDDockWidgets::DockRegistry::self()->dockByName(QStringLiteral("script"))) {
+            d->open();
+            d->setAsCurrentTab();
+        }
+        if (auto *panel = findChild<KoraCutScriptPanel *>()) {
+            panel->setFocus();
+        }
+    });
+    addActionWithShortcuts(QStringLiteral("koracut_script_panel"), scriptAction, {QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_S)}, koraCutActions);
+
+    // Extensions : les six sources de téléchargement au même endroit (document 14, § 3).
+    auto *extensions = new QAction(QIcon::fromTheme(QStringLiteral("get-hot-new-stuff")), i18nc("@action", "Extensions…"), this);
+    extensions->setToolTip(i18nc("@info:tooltip", "Download effects, transitions, titles, LUTs, export presets and shortcuts"));
+    connect(extensions, &QAction::triggered, this, [this]() {
+        auto *dialog = new KoraCutExtensionsDialog(this);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        connect(dialog, &KoraCutExtensionsDialog::installed, this, &MainWindow::koraCutReloadExtensions);
+        dialog->show();
+    });
+    addActionWithShortcuts(QStringLiteral("koracut_extensions"), extensions, {}, koraCutActions);
+}
+
+static void koraCutConvertShortcutSchemes(const QList<KNSCore::Entry> &changedEntries);
+
+void MainWindow::koraCutReloadExtensions(const QString &knsrc, const QList<KNSCore::Entry> &entries)
+{
+    // Ce que chaque panneau fait déjà après son propre bouton de téléchargement, rassemblé ici. Les
+    // modèles de titres et les LUT se relisent d'eux-mêmes à l'ouverture de leur fenêtre ou réglage.
+    if (knsrc.contains(QLatin1String("koracut_effects"))) {
+        for (const auto &entry : entries) {
+            if (entry.status() == KNSCore::Entry::Status::Deleted) {
+                m_effectList2->reloadTemplates();
+                continue;
+            }
+            const QStringList files = entry.installedFiles();
+            for (const QString &f : files) {
+                m_effectList2->reloadCustomEffect(f);
+            }
+        }
+        m_effectList2->reloadEffectMenu(m_effectsMenu, m_effectActions);
+    } else if (knsrc.contains(QLatin1String("koracut_wipes"))) {
+        MltConnection::refreshLumas();
+    } else if (knsrc.contains(QLatin1String("koracut_renderprofiles"))) {
+        if (m_renderWidget) {
+            m_renderWidget->reloadPresets();
+        } else {
+            RenderPresetRepository::get()->refresh();
+        }
+    } else if (knsrc.contains(QLatin1String("koracut_keyboardschemes"))) {
+        koraCutConvertShortcutSchemes(entries);
+    }
+}
+
+void MainWindow::koraCutNudgeSelection(int delta)
+{
+    TimelineWidget *timeline = getCurrentTimeline();
+    if (!timeline || !timeline->model()) {
+        return;
+    }
+    const auto model = timeline->model();
+    const std::unordered_set<int> selection = model->getCurrentSelection();
+    if (selection.empty()) {
+        pCore->displayMessage(i18nc("@info:status", "Select a clip to nudge it."), InformationMessage);
+        return;
+    }
+    // Un seul appel suffit : si l'élément fait partie d'un groupe, et une sélection de plusieurs
+    // éléments en est un, le modèle déplace tout le groupe du même écart, en une étape d'annulation.
+    int id = -1;
+    for (int item : selection) {
+        if (model->isClip(item) || model->isComposition(item)) {
+            id = item;
+            break;
+        }
+    }
+    bool moved = false;
+    if (id != -1) {
+        const int track = model->getItemTrackId(id);
+        const int position = model->getItemPosition(id) + delta;
+        if (position >= 0) {
+            moved = model->isClip(id) ? model->requestClipMove(id, track, position, true, true, true)
+                                      : model->requestCompositionMove(id, track, position, true, true);
+        }
+    }
+    if (!moved) {
+        pCore->displayMessage(i18nc("@info:status", "Cannot nudge: another clip is in the way, or the selection is at the start."), ErrorMessage);
+    }
+}
+
+void MainWindow::slotShowHome()
+{
+    Q_EMIT displayMessage(i18n("The home screen is not written yet."), InformationMessage, 4000);
+}
+
+void MainWindow::slotSwitchModule()
+{
+    auto *action = qobject_cast<QAction *>(sender());
+    if (!action) {
+        return;
+    }
+    const QString moduleId = action->data().toString();
+    if (moduleId.isEmpty() || !m_topBar) {
+        return;
+    }
+    m_topBar->moduleTabs()->setCurrentLayout(moduleId);
+    if (KoraCutModules::isUnderConstruction(moduleId)) {
+        showModuleUnderConstruction(moduleId);
+        return;
+    }
+    showDockArea();
+    Q_EMIT pCore->loadLayoutById(moduleId);
+}
+
+void MainWindow::slotCommandPalette()
+{
+    // On donne à KCommandBar tout ce que la barre de menus contient : c'est déjà toute l'application.
+    auto *bar = new KCommandBar(this);
+    QList<KCommandBar::ActionGroup> groups;
+    const QList<QAction *> menus = menuBar()->actions();
+    for (QAction *menuAction : menus) {
+        if (QMenu *menu = menuAction->menu()) {
+            KCommandBar::ActionGroup group;
+            group.name = KLocalizedString::removeAcceleratorMarker(menuAction->text());
+            group.actions = menu->actions();
+            groups << group;
+        }
+    }
+    // KoraCut, 23 septembre 2026 : les médias du chutier aussi, pour ouvrir un rush par son nom dans le
+    // moniteur de source. Des actions éphémères, détruites avec la palette.
+    KCommandBar::ActionGroup medias;
+    medias.name = i18nc("@title groupe de la palette de commandes", "Media");
+    const std::vector<QString> ids = pCore->projectItemModel()->getAllClipIds();
+    for (const QString &id : ids) {
+        std::shared_ptr<ProjectClip> clip = pCore->projectItemModel()->getClipByBinID(id);
+        if (!clip || clip->clipType() == ClipType::Timeline) {
+            continue;
+        }
+        auto *open = new QAction(clip->icon(), clip->name(), bar);
+        connect(open, &QAction::triggered, this, [id]() { pCore->selectBinClip(id, true); });
+        medias.actions << open;
+    }
+    if (!medias.actions.isEmpty()) {
+        groups.prepend(medias);
+    }
+    bar->setActions(groups);
+    bar->show();
+}
+
+void MainWindow::slotShowAgentsPanel()
+{
+#if KORACUT_AGENTS
+    if (!m_agentDock) {
+        return;
+    }
+    m_agentDock->open();
+    m_agentDock->setAsCurrentTab();
+    m_agentPanel->focusInput();
+#else
+    Q_EMIT displayMessage(i18n("This build of KoraCut has no agents."), InformationMessage, 4000);
+#endif
+}
+
+void MainWindow::slotShowMotionPanel()
+{
+    if (!m_motionDock) {
+        return;
+    }
+    m_motionDock->open();
+    m_motionDock->setAsCurrentTab();
+    m_motionPanel->setFocus();
+}
+
+void MainWindow::koraCutEditMotionClip(int clipId)
+{
+    if (!m_motionInspector || !m_effectStackDock) {
+        return;
+    }
+    m_motionInspector->showClip(clipId);
+    m_effectStackDock->open();
+    m_effectStackDock->setAsCurrentTab();
+    m_motionInspector->focusText();
 }
 
 void MainWindow::saveOptions()
@@ -2362,7 +5003,7 @@ bool MainWindow::readOptions()
     }
     bool firstRun = false;
     KConfigGroup initialGroup(config, "version");
-    if (!initialGroup.exists() || KdenliveSettings::sdlAudioBackend().isEmpty() || KdenliveSettings::kdenliverendererpath().isEmpty()) {
+    if (!initialGroup.exists() || KdenliveSettings::sdlAudioBackend().isEmpty() || KdenliveSettings::koracutrendererpath().isEmpty()) {
         // First run, check if user is on a KDE Desktop
         firstRun = true;
         // Define default video location for first run
@@ -2605,6 +5246,17 @@ void MainWindow::updateProjectPath(const QString &path)
     }
 }
 
+void MainWindow::slotShowExportModule()
+{
+    // Document 23 : « Exporter… » (⌘⇧E) ouvre le module Export, comme la page Deliver de Resolve.
+    // L'ancienne fenêtre reste derrière le bouton « Avancé… » du module et dans le menu.
+    if (!pCore->currentDoc() || !m_topBar) {
+        slotRenderProject();
+        return;
+    }
+    koraCutSetModule(QStringLiteral("export"));
+}
+
 void MainWindow::slotRenderProject()
 {
     KdenliveDoc *project = pCore->currentDoc();
@@ -2632,6 +5284,22 @@ void MainWindow::slotRenderProject()
     // What are the following lines supposed to do?
     // m_renderWidget->enableAudio(false);
     // m_renderWidget->export_audio;
+}
+
+void MainWindow::slotRenderAgain()
+{
+    // KoraCut : « Exporter de nouveau ». On prépare la fenêtre d'export si besoin, mais on ne la montre pas :
+    // le rendu part avec le préréglage et les réglages retenus la dernière fois.
+    if (!m_renderWidget) {
+        slotRenderProject();
+        if (m_renderWidget) {
+            m_renderWidget->hide();
+        }
+    }
+    if (!m_renderWidget) {
+        return;
+    }
+    m_renderWidget->slotPrepareExport();
 }
 
 void MainWindow::slotCheckRenderStatus()
@@ -2747,6 +5415,134 @@ void MainWindow::slotUpdateDocumentState(bool modified)
     m_timelineTabs->updateWindowTitle();
     setWindowModified(modified);
     m_saveAction->setEnabled(modified);
+    updateTopBarProject();
+    if (m_porte) {
+        m_porte->publish(QStringLiteral("projet"), QJsonObject{{QStringLiteral("quoi"), QStringLiteral("modifie")}, {QStringLiteral("modifie"), modified}});
+    }
+}
+
+// ---- La porte de commande (document 18)
+
+void MainWindow::koraCutStartPorte()
+{
+    if (!m_porte) {
+        return;
+    }
+    koraCutApplyPorteSettings();
+    QString reglage = QFileInfo(KSharedConfig::openConfig()->name()).fileName();
+    if (reglage.isEmpty()) {
+        reglage = QStringLiteral("koracutrc");
+    }
+    m_porte->listen(reglage, KoraCutPorte::defaultConfigDir());
+}
+
+void MainWindow::koraCutApplyPorteSettings()
+{
+    if (m_porte) {
+        m_porte->setEnabled(KSharedConfig::openConfig()->group(QStringLiteral("KoraCut")).readEntry("porteOuverte", true));
+    }
+}
+
+RenderWidget *MainWindow::koraCutRenderWidget(bool create)
+{
+    if (!m_renderWidget && create) {
+        slotRenderProject();
+    }
+    return m_renderWidget;
+}
+
+int MainWindow::koraCutZoomLevel() const
+{
+    return m_zoomSlider ? m_zoomSlider->value() : 0;
+}
+
+void MainWindow::koraCutSetZoom(int level, bool fit)
+{
+    if (fit) {
+        slotFitZoom();
+    } else {
+        slotSetZoom(level);
+    }
+}
+
+QString MainWindow::koraCutCurrentModule() const
+{
+    return m_topBar ? m_topBar->moduleTabs()->currentLayout() : QString();
+}
+
+void MainWindow::koraCutSetModule(const QString &id)
+{
+    if (!m_topBar) {
+        return;
+    }
+    m_topBar->moduleTabs()->setCurrentLayout(id);
+    if (KoraCutModules::isUnderConstruction(id)) {
+        showModuleUnderConstruction(id);
+    } else {
+        showDockArea();
+        Q_EMIT pCore->loadLayoutById(id);
+    }
+}
+
+void MainWindow::slotShowTerminalPanel()
+{
+    if (!m_terminalDock) {
+        return;
+    }
+    if (!m_terminalDock->isOpen()) {
+        // Jamais posé (un plan de travail qui ne le connaît pas) : sous la timeline, comme dans VS Code.
+        if (m_terminalDock->dockWidget()->hasPreviousDockedLocation()) {
+            m_terminalDock->open();
+        } else {
+            mainDockWindow->addDockWidget(m_terminalDock, KDDockWidgets::Location_OnBottom, m_timelineDock, QSize(0, 260));
+        }
+        // 25 septembre 2026 : un panneau posé fait réapparaître les barres de titre (« Montage »,
+        // « Terminal ») pendant cinq secondes, le délai de Kdenlive. On les retire tout de suite.
+        if (!KdenliveSettings::showtitlebars()) {
+            QTimer::singleShot(0, this, []() { Q_EMIT pCore->hideBars(true); });
+        }
+    }
+    m_terminalDock->setAsCurrentTab();
+    m_terminalPanel->openHere();
+}
+
+void MainWindow::slotToggleTerminalPanel()
+{
+    if (!m_terminalDock) {
+        return;
+    }
+    // Ouvert et le terminal a le focus : on le ferme ; sinon on l'ouvre et on lui donne le focus.
+    if (m_terminalDock->isOpen() && m_terminalPanel->isAncestorOf(QApplication::focusWidget())) {
+        m_terminalDock->close();
+        if (getCurrentTimeline()) {
+            getCurrentTimeline()->setFocus();
+        }
+        return;
+    }
+    slotShowTerminalPanel();
+}
+
+void MainWindow::slotShowDiagnosticPanel()
+{
+    if (!m_perfDock) {
+        return;
+    }
+    // Fermé, il revient en onglet à côté de l'inspecteur plutôt qu'en petite fenêtre flottante.
+    if ((!m_perfDock->isOpen() || m_perfDock->isFloating()) && m_effectStackDock && m_effectStackDock->isOpen()) {
+        m_effectStackDock->addDockWidgetAsTab(m_perfDock);
+    }
+    m_perfDock->open();
+    m_perfDock->setAsCurrentTab();
+}
+
+void MainWindow::slotShowConsolePanel()
+{
+    if (!m_consoleDock) {
+        return;
+    }
+    m_consoleDock->open();
+    m_consoleDock->setAsCurrentTab();
+    m_consolePanel->focusInput();
 }
 
 void MainWindow::connectDocument()
@@ -2758,6 +5554,13 @@ void MainWindow::connectDocument()
     slotSwitchTimelineZone(project->getDocumentProperty(QStringLiteral("enableTimelineZone")).toInt() == 1);
     slotUpdateProjectDuration(getCurrentTimeline()->model()->duration() - 1);
     const QUuid uuid = getCurrentTimeline()->getUuid();
+    if (m_motionMirror) {
+        // Le miroir Motion suit ce document : ses compositions, leurs clips, leurs rendus.
+        m_motionMirror->setDocument(project, getCurrentTimeline()->model());
+    }
+    if (m_porte) {
+        m_porte->watchTimeline(getCurrentTimeline()->model());
+    }
     m_clipMonitor->updateDocumentUuid();
     pCore->guidesList()->refreshDar();
     connect(m_projectMonitor, &Monitor::multitrackView, getCurrentTimeline()->controller(), &TimelineController::slotMultitrackView, Qt::UniqueConnection);
@@ -2820,49 +5623,57 @@ void MainWindow::connectDocument()
     getCurrentTimeline()->focusTimeline();
 }
 
+// Les schémas de raccourcis téléchargés sont parfois au format .rc de KDE (groupe [Shortcuts]) :
+// on les réécrit dans le format XML que lit KShortcutsDialog. Sorti de slotEditKeys le
+// 23 septembre 2026 pour servir aussi à la fenêtre Extensions.
+static void koraCutConvertShortcutSchemes(const QList<KNSCore::Entry> &changedEntries)
+{
+    for (auto &entry : changedEntries) {
+        const QStringList files = entry.installedFiles();
+        for (auto &file : files) {
+            KConfig conf(file);
+            KConfigGroup group(&conf, "Shortcuts");
+            if (group.exists()) {
+                QMap<QString, QString> values = group.entryMap();
+                // This is an ui.rc file, convert to xml
+                QDomDocument doc;
+                auto node = doc.createElement(QStringLiteral("gui"));
+                node.setAttribute(QStringLiteral("name"), QStringLiteral("koracut"));
+                node.setAttribute(QStringLiteral("version"), QStringLiteral("1"));
+                doc.appendChild(node);
+                auto list = doc.createElement(QStringLiteral("ActionProperties"));
+                node.appendChild(list);
+                for (auto i = values.cbegin(), end = values.cend(); i != end; ++i) {
+                    if (i.value() == QLatin1String("none")) {
+                        continue;
+                    }
+                    auto e = doc.createElement(QStringLiteral("Action"));
+                    e.setAttribute(QStringLiteral("name"), i.key());
+                    e.setAttribute(QStringLiteral("shortcut"), i.value());
+                    list.appendChild(e);
+                }
+                QFile f(file);
+                if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                    qDebug() << "/// COULD NOT open shortcut file : " << file;
+                    continue;
+                }
+                QTextStream stream(&f);
+                stream << doc.toString();
+                f.close();
+            }
+        }
+    }
+}
+
 void MainWindow::slotEditKeys()
 {
     KShortcutsDialog *dialog = new KShortcutsDialog(KShortcutsEditor::AllActions, KShortcutsEditor::LetterShortcutsAllowed, this);
 
     KNSWidgets::Action *downloadKeybordSchemes =
-        new KNSWidgets::Action(i18n("Download New Keyboard Schemes…"), QStringLiteral(":data/kdenlive_keyboardschemes.knsrc"), this);
-    connect(downloadKeybordSchemes, &KNSWidgets::Action::dialogFinished, this, [&, dialog](const QList<KNSCore::Entry> &changedEntries) {
+        new KNSWidgets::Action(i18n("Download New Keyboard Schemes…"), QStringLiteral(":data/koracut_keyboardschemes.knsrc"), this);
+    connect(downloadKeybordSchemes, &KNSWidgets::Action::dialogFinished, this, [dialog](const QList<KNSCore::Entry> &changedEntries) {
         if (changedEntries.count() > 0) {
-            for (auto &entry : changedEntries) {
-                const QStringList files = entry.installedFiles();
-                for (auto &file : files) {
-                    KConfig conf(file);
-                    KConfigGroup group(&conf, "Shortcuts");
-                    if (group.exists()) {
-                        QMap<QString, QString> values = group.entryMap();
-                        // This is an ui.rc file, convert to xml
-                        QDomDocument doc;
-                        auto node = doc.createElement(QStringLiteral("gui"));
-                        node.setAttribute(QStringLiteral("name"), QStringLiteral("kdenlive"));
-                        node.setAttribute(QStringLiteral("version"), QStringLiteral("1"));
-                        doc.appendChild(node);
-                        auto list = doc.createElement(QStringLiteral("ActionProperties"));
-                        node.appendChild(list);
-                        for (auto i = values.cbegin(), end = values.cend(); i != end; ++i) {
-                            if (i.value() == QLatin1String("none")) {
-                                continue;
-                            }
-                            auto e = doc.createElement(QStringLiteral("Action"));
-                            e.setAttribute(QStringLiteral("name"), i.key());
-                            e.setAttribute(QStringLiteral("shortcut"), i.value());
-                            list.appendChild(e);
-                        }
-                        QFile f(file);
-                        if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                            qDebug() << "/// COULD NOT open shortcut file : " << file;
-                            continue;
-                        }
-                        QTextStream stream(&f);
-                        stream << doc.toString();
-                        f.close();
-                    }
-                }
-            }
+            koraCutConvertShortcutSchemes(changedEntries);
             dialog->refreshSchemes();
         }
     });
@@ -2942,7 +5753,7 @@ void MainWindow::slotRestart(bool clean)
 {
     if (clean) {
         if (KMessageBox::warningContinueCancel(this,
-                                               i18n("This will delete Kdenlive's configuration file and restart the application. Do you want to proceed?"),
+                                               i18n("This will delete KoraCut's configuration file and restart the application. Do you want to proceed?"),
                                                i18nc("@title:window", "Reset Configuration")) != KMessageBox::Continue) {
             return;
         }
@@ -3056,7 +5867,17 @@ void MainWindow::slotDeleteItem()
         }
 
         // effect stack has no focus
-        getCurrentTimeline()->controller()->deleteSelectedClips();
+        // KoraCut, 22 septembre 2026 : le geste de DaVinci. Quand aucun clip n'est sélectionné
+        // mais qu'une zone est posée dans la timeline, Supprimer retire cette zone. Sans cela,
+        // « je sélectionne un bout de la timeline et j'appuie sur supprimer » ne faisait rien.
+        // La zone part sans décaler le reste (relever) : c'est la même règle que Q et W, le
+        // geste simple ne déplace jamais ce qu'on n'a pas touché. ⇧ referme le trou.
+        TimelineController *controleur = getCurrentTimeline()->controller();
+        if (controleur->zoneOut() > controleur->zoneIn() && controleur->getModel() && controleur->getModel()->getCurrentSelection().empty()) {
+            controleur->extractZone(QPoint(controleur->zoneIn(), controleur->zoneOut()), true);
+            return;
+        }
+        controleur->deleteSelectedClips();
     }
 }
 
@@ -3454,7 +6275,13 @@ void MainWindow::slotExtractZone()
 
 void MainWindow::slotExtractClip()
 {
-    getCurrentTimeline()->controller()->extract();
+    // KoraCut : sans sélection mais avec une zone, ⇧⌫ retire la zone et referme le trou.
+    TimelineController *controleur = getCurrentTimeline()->controller();
+    if (controleur->zoneOut() > controleur->zoneIn() && controleur->getModel() && controleur->getModel()->getCurrentSelection().empty()) {
+        controleur->extractZone(QPoint(controleur->zoneIn(), controleur->zoneOut()));
+        return;
+    }
+    controleur->extract();
 }
 
 void MainWindow::slotSaveZoneToBin()
@@ -3470,7 +6297,8 @@ void MainWindow::slotLiftZone()
 void MainWindow::slotPreviewRender()
 {
     if (pCore->currentDoc()) {
-        getCurrentTimeline()->controller()->startPreviewRender();
+        // KoraCut : la zone du moniteur Programme, ou toute la séquence.
+        getCurrentTimeline()->controller()->renderMonitorZone();
     }
 }
 
@@ -3498,7 +6326,12 @@ void MainWindow::slotRemovePreviewRender()
 void MainWindow::slotClearPreviewRender(bool resetZones)
 {
     if (pCore->currentDoc()) {
-        getCurrentTimeline()->controller()->clearPreviewRange(resetZones);
+        if (resetZones) {
+            // KoraCut : « Effacer les rendus » libère aussi le disque.
+            getCurrentTimeline()->controller()->clearRenders();
+        } else {
+            getCurrentTimeline()->controller()->clearPreviewRange(resetZones);
+        }
     }
 }
 
@@ -3574,20 +6407,38 @@ void MainWindow::slotAddProjectClipList(const QList<QUrl> &urls)
 
 void MainWindow::slotAddTransition(QAction *result)
 {
+    // KoraCut, 23 septembre 2026 : cette fonction était vide (un « TODO refac » hérité, code commenté).
+    // Le menu Compositions, la palette ⌘K et les raccourcis de composition ne faisaient donc rien. Elle
+    // pose maintenant la composition sur le clip vidéo sélectionné ; dans une sélection vidéo + son
+    // (un clip de caméra), on prend la partie vidéo.
     if (!result) {
         return;
     }
-    // TODO refac
-    /*
-    QStringList info = result->data().toStringList();
-    if (info.isEmpty() || info.count() < 2) {
+    const QString id = result->data().toString();
+    TimelineWidget *timeline = getCurrentTimeline();
+    if (id.isEmpty() || !timeline || !timeline->controller()) {
         return;
     }
-    QDomElement transition = transitions.getEffectByTag(info.at(0), info.at(1));
-    if (pCore->projectManager()->currentTimeline() && !transition.isNull()) {
-        pCore->projectManager()->currentTimeline()->projectView()->slotAddTransitionToSelectedClips(transition.cloneNode().toElement());
+    auto model = timeline->model();
+    int target = -1;
+    for (int item : timeline->controller()->selection()) {
+        if (model->isClip(item) && !model->isAudioTrack(model->getClipTrackId(item))) {
+            target = item;
+            break;
+        }
     }
-    */
+    // Sinon le clip principal, celui que Kdenlive prend pour cible partout ailleurs (le dernier cliqué).
+    if (target < 0) {
+        const int main = timeline->controller()->getMainSelectedClip();
+        if (main > -1 && !model->isAudioTrack(model->getClipTrackId(main))) {
+            target = main;
+        }
+    }
+    if (target < 0) {
+        pCore->displayMessage(i18nc("@info:status", "First select the video clip that will receive the composition."), ErrorMessage, 3000);
+        return;
+    }
+    timeline->controller()->addCompositionToClip(id, target, 0);
 }
 
 void MainWindow::slotAddEffect(QAction *result)
@@ -3818,44 +6669,39 @@ void MainWindow::slotSetTool(ToolType::ProjectTool tool)
 
 void MainWindow::showToolMessage()
 {
+    // KoraCut, 23 septembre 2026 : l'aide de l'outil réécrite, courte, avec le nom des touches tel
+    // que le système l'écrit (⇧ ⌥ ⌘ ⌃ sur Mac, Maj Alt Ctrl ailleurs). L'ancienne, traduite mot à
+    // mot, disait « Windows + ALT » et « Ctrl » sur un Mac, et poussait la barre hors de la fenêtre.
+    // Une séquence sans touche ne s'écrit pas : on l'écrit avec « A », puis on retire le « A ».
+    auto key = [](Qt::KeyboardModifiers modifiers) {
+        QString text = QKeySequence(QKeyCombination(modifiers, Qt::Key_A)).toString(QKeySequence::NativeText);
+        text.chop(1);
+        while (text.endsWith(QLatin1Char('+'))) {
+            text.chop(1);
+        }
+        return text;
+    };
+    const QString shift = key(Qt::ShiftModifier);
+    const QString ctrl = key(Qt::ControlModifier);
+#ifdef Q_OS_WIN
+    const QString moveGrouped = key(Qt::MetaModifier);
+#else
+    const QString moveGrouped = key(Qt::MetaModifier | Qt::AltModifier);
+#endif
     QString message;
     QString toolLabel;
-    if (m_buttonSelectTool->isChecked()) {
-#ifdef Q_OS_WIN
-        message = xi18nc("@info:whatsthis",
-                         "<shortcut>Shift drag</shortcut> for rubber-band selection, <shortcut>Shift click</shortcut> for multiple "
-                         "selection, <shortcut>Meta drag</shortcut> to move a grouped clip to another track, <shortcut>Ctrl drag</shortcut> to pan");
-#else
-        message = xi18nc("@info:whatsthis",
-                         "<shortcut>Shift drag</shortcut> for rubber-band selection, <shortcut>Shift click</shortcut> for multiple "
-                         "selection, <shortcut>Meta + Alt drag</shortcut> to move a grouped clip to another track, <shortcut>Ctrl drag</shortcut> to pan");
-#endif
-        toolLabel = i18n("Select");
+    if (m_buttonSelectTool->isChecked() || m_buttonRippleTool->isChecked()) {
+        message = i18nc("@info:status tool help, %1 %2 %3 are modifier keys",
+                        "%1 drag: lasso · %1 click: add to selection · %2 drag: grouped clip to another track · %3 drag: scroll", shift, moveGrouped,
+                        ctrl);
     } else if (m_buttonRazorTool->isChecked()) {
-        message = xi18nc("@info:whatsthis", "<shortcut>Shift</shortcut> to preview cut frame");
-        toolLabel = i18n("Razor");
+        message = i18nc("@info:status tool help, %1 is a modifier key", "Click: cut · %1: preview the cut frame", shift);
     } else if (m_buttonSpacerTool->isChecked()) {
-        message =
-            xi18nc("@info:whatsthis",
-                   "<shortcut>Ctrl</shortcut> to apply on current track only, <shortcut>Shift</shortcut> to also move guides. You can combine both modifiers.");
-        toolLabel = i18n("Spacer");
+        message = i18nc("@info:status tool help, %1 %2 are modifier keys", "%1: current track only · %2: move the guides too", ctrl, shift);
     } else if (m_buttonSlipTool->isChecked()) {
-        message = xi18nc("@info:whatsthis", "<shortcut>Click</shortcut> on an item to slip, <shortcut>Shift click</shortcut> for multiple selection");
-        toolLabel = i18nc("Timeline Tool", "Slip");
-    } /*else if (m_buttonSlideTool->isChecked()) { // TODO implement Slide
-        toolLabel = i18nc("Timeline Tool", "Slide");
-    }*/
-    else if (m_buttonRippleTool->isChecked()) {
-        message = xi18nc("@info:whatsthis", "<shortcut>Shift drag</shortcut> for rubber-band selection, <shortcut>Shift click</shortcut> for multiple "
-                                            "selection, <shortcut>Alt click</shortcut> to select an item in a group, <shortcut>Ctrl drag</shortcut> to pan");
-        toolLabel = i18nc("Timeline Tool", "Ripple");
-    } /*else if (m_buttonRollTool->isChecked()) { // TODO implement Slide
-        toolLabel = i18nc("Timeline Tool", "Roll");
-    }*/
-    else if (m_buttonMulticamTool->isChecked()) {
-        message =
-            xi18nc("@info:whatsthis", "<shortcut>Click</shortcut> on a track view in the project monitor to perform a lift of all tracks except active one");
-        toolLabel = i18n("Multicam");
+        message = i18nc("@info:status tool help, %1 is a modifier key", "Drag a clip: slip its content · %1 click: add to selection", shift);
+    } else if (m_buttonMulticamTool->isChecked()) {
+        message = i18nc("@info:status tool help", "Click a view in the project monitor: keep that camera");
     }
     TimelineMode::EditMode mode = TimelineMode::NormalEdit;
     if (getCurrentTimeline() && getCurrentTimeline()->model()) {
@@ -3865,20 +6711,22 @@ void MainWindow::showToolMessage()
     // Store the current edit mode for palette updates
     m_currentEditMode = mode;
 
-    if (mode != TimelineMode::NormalEdit) {
-        if (!toolLabel.isEmpty()) {
-            toolLabel.append(QStringLiteral(" | "));
-        }
-        if (mode == TimelineMode::InsertEdit) {
-            toolLabel.append(i18n("Insert"));
-        } else if (mode == TimelineMode::OverwriteEdit) {
-            toolLabel.append(i18n("Overwrite"));
-        }
+    // KoraCut, 23 septembre 2026 : la barre d'état ne répète plus le nom de l'outil, que la barre
+    // d'outils de la timeline montre déjà (« 11 - Refonte UI-UX », barre d'état). Elle ne garde que
+    // le mode d'édition quand il n'est pas le mode normal : Insertion ou Écrasement change ce que
+    // fait un dépôt, ça doit se voir.
+    Q_UNUSED(toolLabel)
+    QString modeLabel;
+    if (mode == TimelineMode::InsertEdit) {
+        modeLabel = i18n("Insert");
+    } else if (mode == TimelineMode::OverwriteEdit) {
+        modeLabel = i18n("Overwrite");
     }
 
     applyToolMessageStyling();
 
-    m_trimLabel->setText(toolLabel);
+    m_trimLabel->setText(modeLabel);
+    m_trimLabel->setVisible(!modeLabel.isEmpty());
     m_messageLabel->setKeyMap(message);
 }
 
@@ -4080,6 +6928,30 @@ void MainWindow::slotResizeItemEnd()
     getCurrentTimeline()->controller()->setOutPoint(m_activeTool == ToolType::RippleTool);
 }
 
+// KoraCut : Q, rogne du bord gauche du clip jusqu'au curseur, sans toucher au reste.
+void MainWindow::slotTrimStartToPlayhead()
+{
+    getCurrentTimeline()->controller()->setInPoint(false);
+}
+
+// KoraCut : W, rogne du curseur jusqu'au bord droit du clip, sans toucher au reste.
+void MainWindow::slotTrimEndToPlayhead()
+{
+    getCurrentTimeline()->controller()->setOutPoint(false);
+}
+
+// KoraCut : ⇧Q, comme Q mais le reste de la piste vient combler le trou.
+void MainWindow::slotRippleTrimStart()
+{
+    getCurrentTimeline()->controller()->setInPoint(true);
+}
+
+// KoraCut : ⇧W, comme W mais le reste de la piste vient combler le trou.
+void MainWindow::slotRippleTrimEnd()
+{
+    getCurrentTimeline()->controller()->setOutPoint(true);
+}
+
 void MainWindow::slotSplitAV()
 {
     getCurrentTimeline()->controller()->splitAV();
@@ -4258,7 +7130,7 @@ void MainWindow::buildDynamicActions()
     // transcoders
     auto ts = new KActionCategory(i18n("Transcoders"), m_extraFactory->actionCollection());
     auto ats = new KActionCategory(i18n("Extract Audio"), m_extraFactory->actionCollection());
-    KSharedConfigPtr config = KSharedConfig::openConfig(QStringLiteral("kdenlivetranscodingrc"), KConfig::CascadeConfig, QStandardPaths::AppDataLocation);
+    KSharedConfigPtr config = KSharedConfig::openConfig(QStringLiteral("koracuttranscodingrc"), KConfig::CascadeConfig, QStandardPaths::AppDataLocation);
     KConfigGroup transConfig(config, "Transcoding");
     // read the entries
     QMap<QString, QString> profiles = transConfig.entryMap();
@@ -4462,7 +7334,7 @@ void MainWindow::slotUpdateTimecodeFormat(int ix)
     m_clipMonitor->updateTimecodeFormat();
     m_projectMonitor->updateTimecodeFormat();
     Q_EMIT getCurrentTimeline()->controller()->frameFormatChanged();
-    m_timeFormatButton->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    m_timeFormatButton->setFont(KoraCutFonts::numbers());
 }
 
 void MainWindow::applyToolMessageStyling()
@@ -4675,6 +7547,13 @@ KDDockWidgets::QtWidgets::DockWidget *MainWindow::addDock(const QString &title, 
     dock->setWidget(widget);
     dock->setObjectName(objectName);
     dock->toggleAction()->setData(QStringLiteral("%1#%2").arg(title, objectName));
+    // KoraCut, 23 septembre 2026 : un panneau en onglet impose sa largeur minimale à tout son
+    // groupe. « Propriétés » (367 px) et « Voix » (545 px) empêchaient les médias et le moniteur
+    // de tenir dans une rangée sur un portable. KDDockWidgets prend minimumWidth() quand il est
+    // posé : on borne ces deux-là, leur contenu défile ou se rogne quand le groupe est plus étroit.
+    if (objectName == QLatin1String("clip_properties") || objectName == QLatin1String("textedit")) {
+        dock->setMinimumWidth(240);
+    }
     if (area == KDDockWidgets::Location_None) {
         // Add widget as tab
         qDebug() << "Creating dock: " << objectName;
@@ -4753,8 +7632,16 @@ void MainWindow::raiseMonitor(bool clipMonitor, bool raise)
 void MainWindow::slotToggleAutoPreview(bool enable)
 {
     KdenliveSettings::setAutopreview(enable);
-    if (enable && getCurrentTimeline()) {
-        getCurrentTimeline()->controller()->startPreviewRender();
+    if (QAction *autoAction = actionCollection()->action(QStringLiteral("koracut_render_auto"))) {
+        autoAction->setChecked(enable);
+    }
+    if (getCurrentTimeline() && getCurrentTimeline()->controller()) {
+        // KoraCut : actif, on relit les zones lourdes ; coupé, le rendu en cours s'arrête.
+        if (enable) {
+            getCurrentTimeline()->controller()->scheduleAutoRender();
+        } else {
+            getCurrentTimeline()->controller()->stopPreviewRender();
+        }
     }
 }
 
@@ -4885,7 +7772,11 @@ void MainWindow::showMenuBar(bool show)
 
 TimelineWidget *MainWindow::getCurrentTimeline() const
 {
-    return m_timelineTabs->getCurrentTimeline();
+    // KoraCut, 23 septembre 2026 : les moniteurs sont construits avant les onglets de timeline. Un
+    // moniteur resté en plein écran à la fermeture repasse en plein écran dès sa construction, et
+    // son rappel « fenêtre recréée » demandait la timeline courante : plantage au lancement, à
+    // chaque lancement, tant que le réglage restait (la version d'Amadou Ba, le matin du 23).
+    return m_timelineTabs ? m_timelineTabs->getCurrentTimeline() : nullptr;
 }
 
 TimelineWidget *MainWindow::getTimeline(const QUuid uuid) const
@@ -5062,6 +7953,24 @@ void MainWindow::slotCollapseAll()
         // Collapse / expand track
         getCurrentTimeline()->controller()->collapseAllTracks();
     }
+}
+
+bool MainWindow::timelineIsDetached() const
+{
+    return m_timelineDock && m_timelineDock->isFloating();
+}
+
+void MainWindow::slotDetachTimeline()
+{
+    // KoraCut, 22 septembre 2026 : premier temps de « plusieurs timelines à la fois ». Le
+    // panneau de timeline sort dans sa propre fenêtre, qu'on peut poser à côté de la fenêtre
+    // principale, et y revient de la même façon. C'est ce que KDDockWidgets sait déjà faire.
+    // Ce qui n'est PAS livré : deux timelines vivantes côte à côte dans la même fenêtre, avec
+    // deux moteurs et deux têtes de lecture. Voir « 13 - Deuxième passe montage », § 5.
+    if (!m_timelineDock) {
+        return;
+    }
+    m_timelineDock->setFloating(!m_timelineDock->isFloating());
 }
 
 void MainWindow::slotExpandClip()
@@ -5301,6 +8210,8 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
         }
         break;
     case QEvent::ApplicationPaletteChange: {
+        // KoraCut : la feuille de style suit le schéma de couleurs choisi dans le menu (sans redémarrer)
+        UiUtils::applyKoraCutStyleSheet();
         if (m_assetPanel) {
             m_assetPanel->clear();
         }
@@ -5554,17 +8465,16 @@ void MainWindow::checkMaxCacheSize()
                             QAction *updateAction = new QAction(i18n("Go to download page"), this);
                             connect(updateAction, &QAction::triggered, this, []() {
                                 QDesktopServices::openUrl(
-                                    QUrl(QStringLiteral("https://kdenlive.org/download?mtm_campaign=kdenlive_inapp&mtm_kwd=update_reminder&mtm_content=%1")
-                                             .arg(KAboutData::applicationData().version())));
+                                    QUrl(QStringLiteral("https://koracut.org/telecharger")));
                             });
                             QAction *abortAction = new QAction(i18n("Never check again"), this);
                             connect(abortAction, &QAction::triggered, this, []() { KdenliveSettings::setCheckForUpdate(false); });
                             if (days > 360) {
-                                Q_EMIT pCore->displayBinMessage(i18n("Your Kdenlive version is older than 1 year, we strongly encourage you to upgrade"),
+                                Q_EMIT pCore->displayBinMessage(i18n("Your KoraCut version is older than 1 year, we strongly encourage you to upgrade"),
                                                                 KMessageWidget::Warning, {updateAction, abortAction}, true,
                                                                 BinMessage::BinCategory::UpdateMessage);
                             } else {
-                                Q_EMIT pCore->displayBinMessage(i18n("Your Kdenlive version is older than 6 months, we encourage you to upgrade"),
+                                Q_EMIT pCore->displayBinMessage(i18n("Your KoraCut version is older than 6 months, we encourage you to upgrade"),
                                                                 KMessageWidget::Information, {updateAction, abortAction}, true,
                                                                 BinMessage::BinCategory::UpdateMessage);
                             }
@@ -5688,6 +8598,14 @@ void MainWindow::connectTimeline()
     m_projectMonitor->resetScene();
     const QUuid uuid = getCurrentTimeline()->getUuid();
     pCore->projectManager()->setActiveTimeline(uuid);
+    if (m_porte) {
+        // La porte publie la sélection de la séquence active (événement `selection`, document 18).
+        m_porte->watchTimeline(getCurrentTimeline()->model());
+    }
+    if (m_motionMirror) {
+        // Le module Motion suit la séquence active : ses compositions vivent chacune dans une séquence.
+        m_motionMirror->setTimeline(getCurrentTimeline()->model());
+    }
     connect(m_projectMonitor, &Monitor::multitrackView, getCurrentTimeline()->controller(), &TimelineController::slotMultitrackView, Qt::UniqueConnection);
     connect(m_projectMonitor, &Monitor::activateTrack, getCurrentTimeline()->controller(), &TimelineController::activateTrackAndSelect, Qt::UniqueConnection);
     connect(getCurrentTimeline()->controller(), &TimelineController::timelineClipSelected, this, [&](bool selected) {
@@ -5710,6 +8628,8 @@ void MainWindow::connectTimeline()
     connect(project, &KdenliveDoc::docModified, this, &MainWindow::slotUpdateDocumentState);
     slotUpdateDocumentState(project->isModified());
 
+    // KoraCut : les rendus des projets non ouverts depuis 30 jours partent (une fois par jour, en tâche de fond).
+    KoraCutRender::cleanupOldProjects(project->getDocumentProperty(QStringLiteral("documentid")));
     // Timeline preview
     QAction *previewRender = actionCollection()->action(QStringLiteral("prerender_timeline_zone"));
     if (previewRender) {
@@ -5838,10 +8758,8 @@ QProcessEnvironment MainWindow::getCleanEnvironement()
 
 void MainWindow::appHelpActivated()
 {
-    // Don't use default help, show our website
-    // QDesktopServices::openUrl(QUrl(QStringLiteral("help:kdenlive")));
-    const QString helpUrl =
-        QStringLiteral("https://docs.kdenlive.org?mtm_campaign=kdenlive_inapp&mtm_kwd=help_action&mtm_content=%1").arg(KAboutData::applicationData().version());
+    // Pas d'aide locale : on ouvre notre documentation en ligne.
+    const QString helpUrl = QStringLiteral("https://koracut.org/docs");
     if (pCore->packageType() == LinuxPackageType::AppImage) {
         qDebug() << "::::: LAUNCHING APPIMAGE BROWSER.........";
         QProcessEnvironment env = getCleanEnvironement();

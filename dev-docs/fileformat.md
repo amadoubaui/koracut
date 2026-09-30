@@ -4,38 +4,38 @@
     SPDX-License-Identifier: CC0-1.0
 -->
 
-# Kdenlive File Format
+# KoraCut File Format
 
-Kdenlive's project files (`.kdenlive` files) use an XML format, based on MLT's format (see [MLT’s XML documentation][mlt-xml-doc] and [MLT’s DTD/document type definition][mlt-xml-dtd]) to describe the source media used in a project, as well as the use of that media as in the timeline.
+KoraCut's project files (`.koracut` files, and the `.kdenlive` files of older projects, which still open) use an XML format, based on MLT's format (see [MLT’s XML documentation][mlt-xml-doc] and [MLT’s DTD/document type definition][mlt-xml-dtd]) to describe the source media used in a project, as well as the use of that media as in the timeline.
 
-For most media, such as video, audio, and images, Kdenlive stores only a reference in a project, but not the media itself. Only some media gets stored directly inside Kdenlive’s project files, most notably Kdenlive title and color clips.
+For most media, such as video, audio, and images, KoraCut stores only a reference in a project, but not the media itself. Only some media gets stored directly inside KoraCut’s project files, most notably KoraCut title and color clips.
 
 Important aspects of this file format decision are:
 
-* **MLT is able to directly render Kdenlive project files.** MLT simply ignores all the additional Kdenlive-specific project data and just sticks to its rendering information. The Kdenlive-specific data is the additional icing on top that makes working with projects much easier than editing at the (lower) rendering level.
-* **Kdenlive can directly include and work with MLT rendering files,** just the same way it works with other media. In fact, Kdenlive’s library clips are simply MLT rendering files, and nothing more.
+* **MLT is able to directly render KoraCut project files.** MLT simply ignores all the additional KoraCut-specific project data and just sticks to its rendering information. The KoraCut-specific data is the additional icing on top that makes working with projects much easier than editing at the (lower) rendering level.
+* **KoraCut can directly include and work with MLT rendering files,** just the same way it works with other media. In fact, KoraCut’s library clips are simply MLT rendering files, and nothing more.
 
 ## History and Generations
 
-There are different file format generations depending on the version of Kdenlive you're using.
+There are different file format generations depending on the version of KoraCut you're using.
 
 ### Generation 1
 
-Generation 1 (gen-1) projects were created and edited the last time using Kdenlive up to 0.9.10. These are the Kdenlive versions developed for KDE 4.x. (While this isn’t strictly true, we won’t go into discussions about the early KDE 3.x versions of Kdenlive.)
+Generation 1 (gen-1) projects were created and edited the last time using KoraCut up to 0.9.10. These are the KoraCut versions developed for KDE 4.x. (While this isn’t strictly true, we won’t go into discussions about the early KDE 3.x versions of KoraCut.)
 
-The gen-1 projects contain a lot of project data that needs to be duplicated into the outer MLT XML data in order to MLT understanding what it needs to do. As an unfortunate consequence of this data duplicity, gen-1 projects had the habit of getting the outer MLT data out of sync with the inner Kdenlive project data. For instance, sometimes the effects as rendered got out of sync with the effect parameters as set in the Kdenlive user interface. As the proper remedy for this situation, the Kdenlive developers switched to Generation 2 as part of their porting Kdenlive to the KDE Frameworks 5 (KF5).
+The gen-1 projects contain a lot of project data that needs to be duplicated into the outer MLT XML data in order to MLT understanding what it needs to do. As an unfortunate consequence of this data duplicity, gen-1 projects had the habit of getting the outer MLT data out of sync with the inner KoraCut project data. For instance, sometimes the effects as rendered got out of sync with the effect parameters as set in the KoraCut user interface. As the proper remedy for this situation, the KoraCut developers switched to Generation 2 as part of their porting KoraCut to the KDE Frameworks 5 (KF5).
 
 ### Generation 2: KF5
 
-*Used in Kdenlive versions 15.04 to 17.08*
+*Used in KoraCut versions 15.04 to 17.08*
 
-With the KF5/Qt5 version of Kdenlive, we now store all Kdenlive data through MLT's xml module to remove the data duplicity from the Kdenlive project file structure. This fixed project data model results in much more stable Kdenlive project behavior. As another positive side effect, it’s now much easier to manually edit or create Kdenlive XML project files from outside Kdenlive.
+With the KF5/Qt5 version of KoraCut, we now store all KoraCut data through MLT's xml module to remove the data duplicity from the KoraCut project file structure. This fixed project data model results in much more stable KoraCut project behavior. As another positive side effect, it’s now much easier to manually edit or create KoraCut XML project files from outside KoraCut.
 
 #### Slightly Invalid XML?
 
-When you need to process Kdenlive project files using XML tools, there’s a gotcha to be aware in case of gen-2 project files. As soon as a project makes use of track-wide effects, the project XML as written by Kdenlive becomes invalid. You won’t notice this when editing Kdenlive project files just inside Kdenlive, and render them using MLT. You will only notice when editing them using standard XML tools.
+When you need to process KoraCut project files using XML tools, there’s a gotcha to be aware in case of gen-2 project files. As soon as a project makes use of track-wide effects, the project XML as written by KoraCut becomes invalid. You won’t notice this when editing KoraCut project files just inside KoraCut, and render them using MLT. You will only notice when editing them using standard XML tools.
 
-The reason is that gen-2 project files used their own attributes inside a separate “kdenlive” namespace. Unfortunately, Kdenlive forgets to declare this additional namespace it uses at the beginning of every XML project document. As a simple fix, you’ll need to add the missing namespace yourself before processing the Kdenlive project file with XML tools:
+The reason is that gen-2 project files used their own attributes inside a separate “kdenlive” namespace. Unfortunately, KoraCut forgets to declare this additional namespace it uses at the beginning of every XML project document. As a simple fix, you’ll need to add the missing namespace yourself before processing the KoraCut project file with XML tools:
 
 ```xml
 <?xml version='1.0' encoding='utf-8'?>
@@ -46,13 +46,13 @@ The reason is that gen-2 project files used their own attributes inside a separa
 
 ### Generation 3: Timeline 2
 
-*Used in Kdenlive versions 19.04.0 to 20.04.3*
+*Used in KoraCut versions 19.04.0 to 20.04.3*
 
-Generation 3 projects are those projects created or edited using Kdenlive versions with the new Timeline 2 engine.
+Generation 3 projects are those projects created or edited using KoraCut versions with the new Timeline 2 engine.
 
 ### Generation 4: Comma / Point
 
-*Used in Kdenlive versions 20.08.0 to 22.12.3, Kdenlive document version: 1.00*
+*Used in KoraCut versions 20.08.0 to 22.12.3, KoraCut document version: 1.00*
 
 With version 20.08.0 a major refactoring of the project file fixed a long standing [issue with the decimal separator][comma-point-issue] (comma/point) conflict causing many crashes. Projects created with 20.08 forward are not backwards compatible.
 
@@ -62,9 +62,9 @@ some minor updates were done to support new features, like:
 
 ### Generation 5: Current format
 
-*Used in Kdenlive versions from 23.04.0, Kdenlive document version: 1.1*
+*Used in KoraCut versions from 23.04.0, KoraCut document version: 1.1*
 
-An important change was introduced with Kdenlive 23.04.0: multiple sequences. Each timeline sequence clip is embedded in an MLT *tractor*.
+An important change was introduced with KoraCut 23.04.0: multiple sequences. Each timeline sequence clip is embedded in an MLT *tractor*.
 The "main_bin" playlist lists all clips and timeline sequences used in the project as *entries*.
 
 The very last *tractor* in the project file is just a wrapper for the last opened timeline sequence, so that when playing the project file through the *melt* command line, it will play the last active sequence clip.
@@ -73,7 +73,7 @@ Previously, all timeline properties were stored in the "main_bin" playlist as *k
 
 ## Project XML Structure
 
-The overall structure of the XML data inside Kdenlive project files is roughly as illustrated next:
+The overall structure of the XML data inside KoraCut project files is roughly as illustrated next:
 
 ```xml
 <mlt producer="main_bin" ...>
@@ -96,7 +96,7 @@ The overall structure of the XML data inside Kdenlive project files is roughly a
     ...
   <playlist id="playlist1"/>
 
-  <!-- After that we have the tracks embedded in a tractor. Each Kdenlive timeline track is made of 2 *tracks* to allow mixes-->
+  <!-- After that we have the tracks embedded in a tractor. Each KoraCut timeline track is made of 2 *tracks* to allow mixes-->
   <tractor id="tractor0" in="00:00:00.000" out="00:02:20.840">
     <property name="kdenlive:..">...</property>
     ...
@@ -146,7 +146,7 @@ The overall structure of the XML data inside Kdenlive project files is roughly a
 </mlt>
 ```
 
-We avoid storing any inner Kdenlive project data that’s already present in the outer MLT data layer, this means that all information must be stored in MLT objects like Tractor, Playlist, Producer, etc.
+We avoid storing any inner KoraCut project data that’s already present in the outer MLT data layer, this means that all information must be stored in MLT objects like Tractor, Playlist, Producer, etc.
 
 To separate these properties from other MLT properties, we prefix them with `kdenlive:`. This page lists the properties that we use in this new file format.
 
@@ -173,7 +173,7 @@ The (project) bin is represented by an MLT `<playlist>` element with the well-kn
 
 > **Note**
 >
-> While Kdenlive now mainly uses the term “bin” when talking about what formerly was the “project bin”, the early internal name “name bin” has stuck since the early days of Kdenlive.
+> While KoraCut now mainly uses the term “bin” when talking about what formerly was the “project bin”, the early internal name “name bin” has stuck since the early days of KoraCut.
 
 Properties applied to the Bin Playlist (MLT Playlist object "main_bin"):
 
@@ -189,17 +189,17 @@ Properties applied to the Bin Playlist (MLT Playlist object "main_bin"):
 
 The setup of the timeline tracks is represented by an MLT `<tractor>` element, this “maintractor“ can be identified by being the last `<tractor>` in the file. The elements inside are the individual timeline tracks: these are referenced, with the actual tracks then being MLT producers.
 
-The individual Kdenlive timeline tracks can be found in form of MLT `<tractor>` elements holding `<playlist>` elements. They can also easily be identified according to their “tractor#”/“playlist#” id naming scheme; here, “#” is a number internally maintained by Kdenlive. The tracks feature additional properties that describe their title, locking state, and some more. The reason for the extra level with `<playlist>` elements are mixes (see below).
+The individual KoraCut timeline tracks can be found in form of MLT `<tractor>` elements holding `<playlist>` elements. They can also easily be identified according to their “tractor#”/“playlist#” id naming scheme; here, “#” is a number internally maintained by KoraCut. The tracks feature additional properties that describe their title, locking state, and some more. The reason for the extra level with `<playlist>` elements are mixes (see below).
 
-There is one semi-internal track here, the built-in “black_track”. As you can see here, while it is built into Kdenlive, it isn’t so into MLT. Instead, to MLT this is just another track that happen to be created by Kdenlive. Kdenlive never shows this background track in the timeline as an individual track. But you can reference it from transitions (the composite ones, that is).
+There is one semi-internal track here, the built-in “black_track”. As you can see here, while it is built into KoraCut, it isn’t so into MLT. Instead, to MLT this is just another track that happen to be created by KoraCut. KoraCut never shows this background track in the timeline as an individual track. But you can reference it from transitions (the composite ones, that is).
 
 ### Subtitle Track
 
 While for the user it feels like this subtitle track is a track like an audio or video track, in fact it is not. It is a "fake" track and internally a filter, the [`avfilter.subtitles`][subtitle-mlt-doc] filter to be more precise (see also [this ffmpeg doc][subtile-ffmpeg-doc]). If an internal `avfilter.subtitles` is detected, the subtitle track gets enabled.
 
-The subtitles are stored in a `*.srt` file next to the project. If your project is named `mymovie.kdenlive`, the subtitle file will be `mymovie.kdenlive.srt`. This file will only be update if you save your project, but the internal subtitle model is not sufficient during work since `avfilter.subtitles` needs a `*.srt` file to always show the up-to-date state of work in the monitor. Therefore there is another `*.srt` file in the temp directory (`/tmp` on Linux).
+The subtitles are stored in a `*.srt` file next to the project. If your project is named `mymovie.koracut`, the subtitle file will be `mymovie.koracut.srt`. This file will only be update if you save your project, but the internal subtitle model is not sufficient during work since `avfilter.subtitles` needs a `*.srt` file to always show the up-to-date state of work in the monitor. Therefore there is another `*.srt` file in the temp directory (`/tmp` on Linux).
 
-This is how the subtitle trakc is represented in the kdenlive xml:
+This is how the subtitle track is represented in the project XML:
 
 ```xml
   <filter id="filter9">
@@ -215,7 +215,7 @@ This is how the subtitle trakc is represented in the kdenlive xml:
 Transitions come in two (three) flavors, but always represented by MLT `<transition>` elements:
 
 * user transitions are the ones added by, you’ve guessed it … users. These are the transitions currently shown slightly moved down and overlaying timeline tracks and their clips.
-* internally added transitions are basically a convenience to make the timeline do automatic audio mixing across multiple tracks, and (with more recent Kdenlive versions) transparent tracks.
+* internally added transitions are basically a convenience to make the timeline do automatic audio mixing across multiple tracks, and (with more recent KoraCut versions) transparent tracks.
 
 ### Same-Track-Transitions (Mixes)
 
@@ -233,7 +233,7 @@ TODO
 
 ## Further Reading
 
-* The [Kdenlive Project Analyzer][project-analyizer-blog] is kind of a (crazy) simple Kdenlive doctor, showing some statistics and details when given a Kdenlive gen-2 project file. You can even try the Kdenlive Project Analyzer [online][project-analyizer-tool] using Chrome/Chromium or Firefox. [Sources are available on GitHub.][project-analyizer-code]
+* The [KoraCut Project Analyzer][project-analyizer-blog] is kind of a (crazy) simple KoraCut doctor, showing some statistics and details when given a KoraCut gen-2 project file. You can even try the KoraCut Project Analyzer [online][project-analyizer-tool] using Chrome/Chromium or Firefox. [Sources are available on GitHub.][project-analyizer-code]
 
 [mlt-xml-doc]: https://www.mltframework.org/docs/mltxml/
 [mlt-xml-dtd]: https://github.com/mltframework/mlt/blob/master/src/modules/xml/mlt-xml.dtd

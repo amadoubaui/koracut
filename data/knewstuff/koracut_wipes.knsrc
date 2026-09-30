@@ -1,0 +1,6 @@
+[KNewStuff3]
+Name=Transitions KoraCut
+ProvidersUrl=https://autoconfig.kde.org/ocs/providers.xml
+Categories=Kdenlive FX
+TargetDir=koracut/lumas/HD
+Uncompress=archive

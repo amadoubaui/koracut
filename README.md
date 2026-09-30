@@ -1,52 +1,56 @@
-![](data/pics/kdenlive-logo.png)
+![](data/pics/koracut-logo.png)
 
-# Kdenlive
+# KoraCut
 
-Kdenlive is a powerful, free and open-source video editor that brings professional-grade video editing capabilities to everyone. Whether you're creating a simple family video or working on a complex project, Kdenlive provides the tools you need to bring your vision to life.
+KoraCut est une application de création multimédia de bureau : montage vidéo,
+étalonnage, audio, VFX, photo, illustration, motion design. Chaque module est
+pilotable par des agents IA, avec le modèle de langage de ton choix.
 
-For more information about Kdenlive's features, tutorials, and community, please visit our [official website](https://kdenlive.org).
+Développée par PIXEWORK à Dakar. Logiciel libre, sous licence GPL v3.
 
-There you can also find downloads for both stable releases and experimental daily builds for Kdenlive.
+## Modules
 
-## Contributing to Kdenlive
+| Numéro | Module | État |
+|---|---|---|
+| 1 | Montage | en place |
+| 2 | Étalonnage | en place |
+| 3 | Audio et DAW | en place, module complet à venir |
+| 4 | VFX | en place, graphe de nœuds à venir |
+| 5 | Photo | à venir |
+| 6 | Illustration | à venir |
+| 7 | Export | à venir |
 
-Kdenlive is a community-driven project, and we welcome contributions from everyone! There are many ways to contribute beyond coding:
+## Construire
 
-- Help translate Kdenlive into your language
-- Report and triage bugs
-- Write documentation
-- Create tutorials
-- Help other users on forums and bug trackers
+Les dépendances sont Qt 6.10 ou plus récent, KDE Frameworks 6.21 ou plus
+récent, MLT 7.38 ou plus récent, KDDockWidgets 2.4 et CMake. Le détail par
+système est dans [dev-docs/build.md](dev-docs/build.md).
 
-Visit [kdenlive.org](https://kdenlive.org) to learn more about non-code contributions.
+En résumé :
 
-## Developer Information
+```
+cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build
+```
 
-### Technology Stack
+Sur macOS, la chaîne utilisée au studio passe par KDE Craft. La procédure
+complète, avec les pièges, est dans `Sources/BUILD.md` du dossier de projet.
 
-Kdenlive is written in C++ and is using these technologies and frameworks:
+## Empaqueter
 
-- **Core Framework**: MLT for video editing functionality
-- **GUI Framework**: Qt and KDE Frameworks 6
-- **Additional Libraries**: frei0r (video effects), LADSPA (audio effects)
+- Flatpak : `.flatpak-manifest.json` à la racine, notes dans [packaging/flatpak/README.md](packaging/flatpak/README.md)
+- Snap : `snapcraft.yaml`
+- Windows avec MSYS2 : `packaging/koracut-msys2.sh`
+- Linux avec toutes les dépendances : `packaging/koracut-lnx-withalldeps.sh`
 
-### Getting Started
+## Licence
 
-1. Check out our [build instructions](dev-docs/build.md) to set up your development environment
-2. Familiarize yourself with the [architecture](dev-docs/architecture.md) and [coding guidelines](dev-docs/coding.md)
-4. If the MLT library is new to you check out [MLT Introduction](dev-docs/mlt-intro.md)
-3. Join our Matrix channel `#kdenlive-dev:kde.org` for developer discussions and support
+GPL v3. Le texte complet est dans `COPYING`, les licences des composants dans
+`LICENSES/`.
 
-### Contributing Code
+Copyright © 2026 PIXEWORK.
 
-Kdenlive's primary development happens on [KDE Invent](https://invent.kde.org/multimedia/kdenlive). While we maintain a GitHub mirror, all code contributions should be submitted through KDE's GitLab instance. For more information about KDE's development infrastructure, visit the [KDE GitLab documentation](https://community.kde.org/Infrastructure/GitLab).
-
-### Finding Things to Work On
-
-- Browse open issues on [KDE Invent](https://invent.kde.org/multimedia/kdenlive/-/issues), for example those labeled with [First Task](https://invent.kde.org/multimedia/kdenlive/-/issues?label_name%5B%5D=First%20Task)
-- Check the [KDE Bug Tracker](https://bugs.kde.org) for reported issues
-- Look for issues tagged with "good first issue" or "help wanted"
-
-Need help getting started? Join our Matrix channel `#kdenlive-dev:kde.org` - our community is friendly and always ready to help new contributors!
-
-Please get in touch with us before working on a task, either by commenting in the issue or through our Matrix channel.
+KoraCut est un dérivé d'un logiciel libre de montage vidéo publié sous GPL v3 :
+https://invent.kde.org/multimedia/kdenlive. Le code d'origine, ses auteurs et
+sa licence sont conservés. Les détenteurs de droits d'auteur sont listés dans
+`AUTHORS` et dans les en-têtes SPDX des fichiers source.

@@ -5,7 +5,7 @@
   * [Signals and Slots][qt-sig]
 * [MLT introduction][mlt-intro].
 * [The KDE Frameworks][kf]
-  * [XMLGUI Technology][xmlgui-tut] (e.g. for the `kdenliveui.rc` file)
+  * [XMLGUI Technology][xmlgui-tut] (e.g. for the `koracutui.rc` file)
 
 
 ## Locale handling
@@ -14,9 +14,9 @@ Locales are important e.g. for formatting numbers in a way that the user is
 familiar with. Some countries would write `12500.42` as `12.000,42`, for
 example.
 
-Since 20.08, Kdenlive follows the following rules:
+KoraCut follows the following rules:
 
-* When parsing data (by Kdenlive or by other libraries like MLT), **the `C`
+* When parsing data (by KoraCut or by other libraries like MLT), **the `C`
   locale is used.** This is especially important for project files. The reason
   is that for passing data between programs, the format has to be well-defined
   and *not* depend on where the user happens to live.
@@ -27,11 +27,21 @@ MLT uses the C locale which is set by `setlocale()` and which must be set to
 properties are converted to this format upon saving the project file, and the
 project file ends up corrupted.
 
-In Kdenlive, `QLocale` should only be used in one case: when data is shown to
+In KoraCut, `QLocale` should only be used in one case: when data is shown to
 the user or read from the user. Usually that is handled by Qt already. A
 `QDoubleSpinBox`, for example, presents the double value in the user’s local
 number format.
 
+
+## Internal names
+
+Some internal identifiers keep the name of the project KoraCut derives from:
+the `Kdenlive::` namespace, the `KdenliveDoc` and `KdenliveSettings` classes,
+`kdenlivesettings.kcfg`, `config-kdenlive.h`, `kdenlive_debug.h`, the QML module
+URI `org.kde.kdenlive`, the MLT service `kdenlivetitle` and the `kdenlive:*`
+document properties. None of them is ever shown to the user, and renaming them
+breaks either the build, the QML module or the project file format. Leave them
+alone. Everything a user can see carries the KoraCut name.
 
 ## Configuration
 

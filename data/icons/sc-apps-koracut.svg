@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="1024" height="1024">
+<rect width="64" height="64" rx="14" fill="#2B1AD6"/>
+<defs>
+<mask id="kc-cut3" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
+<rect width="64" height="64" fill="#fff"/>
+<rect x="-12" y="28" width="88" height="8" transform="rotate(-32 32 32)" fill="#000"/>
+</mask>
+</defs>
+<g fill="#F6F4EE" mask="url(#kc-cut3)" transform="translate(32 32) scale(0.6875) translate(-32 -32)">
+<rect x="11.5" y="8" width="9" height="48" rx="4.5"/>
+<rect x="27.5" y="8" width="9" height="48" rx="4.5"/>
+<rect x="43.5" y="8" width="9" height="48" rx="4.5"/>
+</g>
+</svg>

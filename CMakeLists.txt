@@ -35,6 +35,9 @@ endif()
 option(USE_DBUS "Build components using DBus" ${USE_DBUS_DEFAULT})
 
 option(BUILD_DESIGNERPLUGIN "Build plugin for Qt Designer" OFF)
+# KoraCut, chantier 3 : le client du service d'agents, la session et le panneau Agents. ON dans les
+# binaires officiels ; la version libre se compile avec -DKORACUT_AGENTS=OFF (document 5).
+option(KORACUT_AGENTS "KoraCut: build the agents client, session and panel" ON)
 
 # Minimum versions of main dependencies.
 set(MLT_MIN_MAJOR_VERSION 7)
@@ -80,7 +83,7 @@ if (NOT DEFINED KF_MAJOR)
   set(KF_MAJOR ${QT_MAJOR_VERSION})
 endif()
 
-add_definitions(-DTRANSLATION_DOMAIN=\"kdenlive\")
+add_definitions(-DTRANSLATION_DOMAIN=\"koracut\")
 find_package(KF${KF_MAJOR} ${KF_DEP_VERSION}
     REQUIRED COMPONENTS
     I18n
@@ -131,6 +134,27 @@ find_package(Qt${QT_MAJOR_VERSION}
 )
 
 find_package(KDDockWidgets-qt6 2.4.0 REQUIRED)
+
+if(KORACUT_AGENTS)
+  find_package(Qt${QT_MAJOR_VERSION} REQUIRED COMPONENTS WebSockets)
+  # Les définitions d'outils des agents vivent dans « Agents in-app/outils/ », à côté du dépôt, pour
+  # qu'il n'y ait qu'une seule copie (le banc et le service les lisent aussi). On les embarque en
+  # ressource Qt par une qrc générée ici, avec des chemins absolus.
+  set(KORACUT_AGENT_TOOLS_DIR "${CMAKE_SOURCE_DIR}/../../Agents in-app/outils" CACHE PATH "KoraCut: folder of the agent tool definitions (Agents in-app/outils)")
+  file(GLOB KORACUT_AGENT_TOOL_FILES "${KORACUT_AGENT_TOOLS_DIR}/*.json")
+  if(NOT KORACUT_AGENT_TOOL_FILES)
+    message(FATAL_ERROR "KORACUT_AGENTS is ON but no *.json was found in '${KORACUT_AGENT_TOOLS_DIR}'. Set KORACUT_AGENT_TOOLS_DIR, or build with -DKORACUT_AGENTS=OFF.")
+  endif()
+  set(KORACUT_AGENTS_QRC "${CMAKE_BINARY_DIR}/koracut-agents.qrc")
+  set(_koracut_qrc "<RCC>\n  <qresource prefix=\"/koracut/agents\">\n")
+  foreach(_tool_file ${KORACUT_AGENT_TOOL_FILES})
+    get_filename_component(_tool_name "${_tool_file}" NAME)
+    string(APPEND _koracut_qrc "    <file alias=\"${_tool_name}\">${_tool_file}</file>\n")
+  endforeach()
+  string(APPEND _koracut_qrc "  </qresource>\n</RCC>\n")
+  file(WRITE "${KORACUT_AGENTS_QRC}" "${_koracut_qrc}")
+  message(STATUS "KoraCut agents: tool definitions from ${KORACUT_AGENT_TOOLS_DIR}")
+endif()
 
 if(USE_DBUS)
     find_package(KF${KF_MAJOR} ${KF_DEP_VERSION} REQUIRED COMPONENTS DBusAddons)
@@ -185,13 +209,13 @@ endif()
 if(APPLE)
     set(DATA_INSTALL_PREFIX "")
 else()
-    set(DATA_INSTALL_PREFIX "/kdenlive")
+    set(DATA_INSTALL_PREFIX "/koracut")
 endif()
 
-if(KF${KF_MAJOR}DocTools_FOUND)
-    add_subdirectory(doc)
-    kdoctools_install(po)
-endif()
+# Pas de manuel local : l'aide de KoraCut est en ligne, sur koracut.org/docs
+# (voir MainWindow::appHelpActivated). Le guide de démarrage hérité était marqué
+# « deprecated » en amont, écrit en 2011, avec des captures d'une interface qui
+# n'existe plus. Retiré le 21 septembre 2026, il reste dans l'historique git.
 
 # Get current version.
 set(KDENLIVE_VERSION_STRING "${KDENLIVE_VERSION}")
@@ -228,8 +252,12 @@ configure_file(config-kdenlive.h.cmake config-kdenlive.h @ONLY)
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 
 # Sources
+# KoraCut, document 22 : le moteur d'étalonnage et le module MLT koracut_grade.
+add_subdirectory(grade)
 add_subdirectory(src)
 add_subdirectory(renderer)
+# KoraCut : koracut-ctl, la ligne de commande de la porte (document 18).
+add_subdirectory(src/koracut-ctl)
 add_subdirectory(thumbnailer)
 add_subdirectory(data)
 
@@ -251,7 +279,7 @@ install(DIRECTORY LICENSES DESTINATION ${CMAKE_INSTALL_DOCDIR})
 
 ecm_qt_install_logging_categories(
     EXPORT KDENLIVE
-    FILE kdenlive.categories
+    FILE koracut.categories
     DESTINATION ${KDE_INSTALL_LOGGINGCATEGORIESDIR}
 )
 

@@ -19,7 +19,7 @@ TitleTemplateDialog::TitleTemplateDialog(const QString &folder, QWidget *parent)
 {
     m_view.setupUi(this);
     // Get the list of existing templates
-    const QStringList filter = {QStringLiteral("*.kdenlivetitle")};
+    const QStringList filter = {QStringLiteral("*.koracuttitle"), QStringLiteral("*.kdenlivetitle")};
     const QString path = folder + QStringLiteral("/titles/");
 
     // Project templates
@@ -47,7 +47,7 @@ TitleTemplateDialog::TitleTemplateDialog(const QString &folder, QWidget *parent)
     if (current > -1) {
         m_view.template_list->comboBox()->setCurrentIndex(current);
     }
-    const QStringList mimeTypeFilters = {QStringLiteral("application/x-kdenlivetitle")};
+    const QStringList mimeTypeFilters = {QStringLiteral("application/x-koracuttitle"), QStringLiteral("application/x-kdenlivetitle")};
     m_view.template_list->setMimeTypeFilters(mimeTypeFilters);
     connect(m_view.template_list->comboBox(), static_cast<void (KComboBox::*)(int)>(&KComboBox::currentIndexChanged), this,
             &TitleTemplateDialog::updatePreview);

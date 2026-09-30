@@ -9,6 +9,7 @@
 #include "core.h"
 #include "kdenlivesettings.h"
 #include "project/projectmanager.h"
+#include "koracut/koracutmetrics.h"
 
 #include <QAction>
 #include <QDropEvent>
@@ -155,7 +156,10 @@ LibraryWidget::LibraryWidget(ProjectManager *manager, QWidget *parent)
     m_libraryTree->setHeaderHidden(true);
     m_libraryTree->setDragEnabled(true);
     m_libraryTree->setItemDelegate(new LibraryItemDelegate(this));
-    m_libraryTree->setAlternatingRowColors(true);
+    // KoraCut : pas de zébrure. Elle alternait #1E1E1E et #2C2C2C, soit deux des quatre
+    // marches de surface : on ne savait plus si une ligne claire était une ligne paire
+    // ou une surface différente. La hauteur de ligne suffit à suivre une ligne.
+    m_libraryTree->setAlternatingRowColors(false);
     lay->addWidget(m_libraryTree);
 
     // Library path
@@ -175,8 +179,7 @@ LibraryWidget::LibraryWidget(ProjectManager *manager, QWidget *parent)
     lay->addWidget(m_progressBar);
     m_toolBar = new QToolBar(this);
     m_toolBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    int size = style()->pixelMetric(QStyle::PM_SmallIconSize);
-    m_toolBar->setIconSize(QSize(size, size));
+    m_toolBar->setIconSize(KoraCutMetrics::iconToolbar());
     m_progressBar->setRange(0, 100);
     m_progressBar->setFormat(i18nc("%p is the percent value, % is the percent sign", "%p%"));
     m_progressBar->setOrientation(Qt::Horizontal);
@@ -621,7 +624,7 @@ void LibraryWidget::slotItemsAdded(const QUrl &url, const KFileItemList &list)
             treeItem->setData(0, Qt::UserRole + 2, int(LibraryItem::Folder));
             m_folders << treeItem;
             m_coreLister->openUrl(fileUrl, KCoreDirLister::Keep);
-        } else if (name.endsWith(QLatin1String(".mlt")) || name.endsWith(QLatin1String(".kdenlive"))) {
+        } else if (name.endsWith(QLatin1String(".mlt")) || name.endsWith(QLatin1String(".koracut")) || name.endsWith(QLatin1String(".kdenlive"))) {
             treeItem->setData(0, Qt::UserRole + 2, int(LibraryItem::PlayList));
         } else {
             treeItem->setData(0, Qt::UserRole + 2, int(LibraryItem::Clip));

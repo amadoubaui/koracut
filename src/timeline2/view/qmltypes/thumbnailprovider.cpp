@@ -16,6 +16,52 @@
 #include <QDebug>
 #include <mlt++/MltFilter.h>
 
+namespace {
+/* KoraCut, 25 septembre 2026 (SPDX-FileCopyrightText: 2026 KoraCut contributors / PIXEWORK,
+   GPL-3.0-or-later) : une vignette de timeline est rendue à la forme du projet, avec des bandes
+   quand le média n'a pas cette forme (une vidéo 16:9 dans un projet 9:16 n'occupait qu'une
+   tranche au milieu). On rend ici l'image seule, sans ses bandes : la timeline la recadre
+   ensuite pour remplir sa case. Le cache garde l'image entière, le recadrage ne coûte qu'une
+   copie d'une petite image. */
+QImage koraCutWithoutBars(const QImage &image, const std::shared_ptr<ProjectClip> &clip)
+{
+    if (image.isNull()) {
+        return image;
+    }
+    switch (clip->clipType()) {
+    case ClipType::Video:
+    case ClipType::AV:
+    case ClipType::Image:
+        break;
+    default:
+        return image;
+    }
+    if (clip->getProducerIntProperty(QStringLiteral("rotate")) != 0) {
+        return image;
+    }
+    const QSize source = clip->getFrameSize();
+    if (source.width() <= 0 || source.height() <= 0) {
+        return image;
+    }
+    const double sourceRatio = double(source.width()) / source.height();
+    const double imageRatio = double(image.width()) / image.height();
+    if (qAbs(sourceRatio - imageRatio) < 0.02) {
+        return image;
+    }
+    QRect content;
+    if (sourceRatio > imageRatio) {
+        // Plus large que le projet : bandes en haut et en bas.
+        const int h = qMax(1, qRound(image.width() / sourceRatio));
+        content = QRect(0, (image.height() - h) / 2, image.width(), h);
+    } else {
+        // Plus haut que le projet : bandes à gauche et à droite.
+        const int w = qMax(1, qRound(image.height() * sourceRatio));
+        content = QRect((image.width() - w) / 2, 0, w, image.height());
+    }
+    return image.copy(content);
+}
+} // namespace
+
 ThumbnailProvider::ThumbnailProvider()
     : QQuickImageProvider(QQmlImageProviderBase::Image, QQmlImageProviderBase::ForceAsynchronousImageLoading)
 {
@@ -40,7 +86,7 @@ QImage ThumbnailProvider::requestImage(const QString &id, QSize *size, const QSi
             }
             result = ThumbnailCache::get()->getThumbnail(binClip->hashForThumbs(), binId, frameNumber);
             if (!result.isNull()) {
-
+                result = koraCutWithoutBars(result, binClip);
                 *size = result.size();
                 return result;
             }
@@ -57,6 +103,7 @@ QImage ThumbnailProvider::requestImage(const QString &id, QSize *size, const QSi
                 }
                 result = makeThumbnail(std::move(prod), frameNumber, requestedSize);
                 ThumbnailCache::get()->storeThumbnail(binId, frameNumber, result, false);
+                result = koraCutWithoutBars(result, binClip);
             }
         }
     }

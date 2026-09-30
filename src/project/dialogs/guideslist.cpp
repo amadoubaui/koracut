@@ -18,6 +18,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "project/projectmanager.h"
 #include "utils/thumbnailcache.hpp"
 #include "utils/timecode.h"
+#include "koracut/koracutmetrics.h"
 
 #include <KLocalizedString>
 #include <KMessageBox>
@@ -840,7 +841,9 @@ void GuidesList::slotShowThumbs(bool show)
         fontHeight *= 3;
         guides_list->setIconSize(QSize(fontHeight * pCore->getCurrentDar(), fontHeight));
     } else {
-        fontHeight -= 2;
+        // KoraCut : sans vignette, la liste montre l'icône de catégorie du repère. On garde le calcul
+        // d'origine (il suit la taille du texte) mais on le borne aux valeurs de la charte.
+        fontHeight = KoraCutMetrics::clampIcon(fontHeight - 2);
         guides_list->setIconSize(QSize(fontHeight, fontHeight));
     }
     // Check for missing Thumbnails

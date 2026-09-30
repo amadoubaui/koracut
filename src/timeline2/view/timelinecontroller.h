@@ -12,6 +12,7 @@
 #include <KActionCollection>
 #include <QApplication>
 #include <QDir>
+#include <QTimer>
 
 class QAction;
 class QQuickItem;
@@ -67,6 +68,8 @@ class TimelineController : public QObject
     Q_PROPERTY(QColor lockedColor READ lockedColor NOTIFY colorsChanged)
     Q_PROPERTY(QColor selectionColor READ selectionColor NOTIFY colorsChanged)
     Q_PROPERTY(QColor groupColor READ groupColor NOTIFY colorsChanged)
+    /** @brief KoraCut : le rouge de la charte, pour un média qui manque vraiment. */
+    Q_PROPERTY(QColor missingColor READ missingColor NOTIFY colorsChanged)
     Q_PROPERTY(bool subtitlesWarning READ subtitlesWarning NOTIFY subtitlesWarningChanged)
     Q_PROPERTY(bool subtitlesDisabled READ subtitlesDisabled NOTIFY subtitlesDisabledChanged)
     Q_PROPERTY(bool subtitlesLocked READ subtitlesLocked NOTIFY subtitlesLockedChanged)
@@ -138,6 +141,11 @@ public:
     /** @brief Show/hide audio record controls on a track
      */
     Q_INVOKABLE void switchRecording(int trackId = -1, bool record = true);
+    /** @brief KoraCut (voix off rapide, 29 septembre 2026) : la piste audio où poser une voix enregistrée
+        à la tête de lecture. Une piste « Voix » libre d'abord, puis n'importe quelle piste audio libre sur
+        au moins 10 secondes, sinon une nouvelle piste « Voix off » tout en bas (une étape d'annulation).
+        Rend -1 s'il n'y a pas de timeline. */
+    int koraCutVoiceOverTrack();
     /** @brief Get the shortcut for an action
      */
     Q_INVOKABLE const QString getActionShortcut(const QString actionName);
@@ -188,6 +196,20 @@ public:
     Q_INVOKABLE int trimmingMainClip() const { return m_trimmingMainClip; }
     Q_INVOKABLE QColor videoColor() const;
     Q_INVOKABLE QColor audioColor() const;
+    /** @brief KoraCut : la couleur des clips audio de cette piste. Orange « musique » (#E07B39)
+     * pour une piste de musique, sinon la couleur audio habituelle (« voix »). Le rôle vient de
+     * la propriété de piste kdenlive:koracut_role (posée par la baisse automatique de la musique),
+     * à défaut du nom de la piste. */
+    Q_INVOKABLE QColor audioColorForTrack(int trackId, const QColor &voiceColor) const;
+    /** @brief KoraCut : la couleur des clips vidéo d'une piste Motion (violet #7C5CFF des titres,
+     * propriété de piste kdenlive:koracut_motion), sinon la couleur vidéo. */
+    Q_INVOKABLE QColor videoColorForTrack(int trackId, const QColor &videoColor) const;
+    /** @brief KoraCut : vrai si ce clip vient d'un projet Motion (document 19). */
+    Q_INVOKABLE bool isMotionClip(int clipId) const;
+    /** @brief KoraCut : double-clic sur un clip Motion, l'inspecteur montre son texte. */
+    Q_INVOKABLE void editMotionClip(int clipId);
+    /** @brief KoraCut : prévient la timeline que les rôles des pistes ont changé. */
+    void refreshTrackColors();
     Q_INVOKABLE QColor titleColor() const;
     Q_INVOKABLE QColor imageColor() const;
     Q_INVOKABLE QColor slideshowColor() const;
@@ -196,6 +218,7 @@ public:
     Q_INVOKABLE QColor lockedColor() const;
     Q_INVOKABLE QColor selectionColor() const;
     Q_INVOKABLE QColor groupColor() const;
+    Q_INVOKABLE QColor missingColor() const;
     QColor getDefaultClipColor(ClipType::ProducerType type) const;
     QColor getTimelineClipColor(ClipType::ProducerType type) const;
     Q_INVOKABLE int doubleClickInterval() const { return QApplication::doubleClickInterval(); }
@@ -242,6 +265,11 @@ public:
        @return the id of the inserted clip
      */
     Q_INVOKABLE int insertClip(int tid, int position, const QString &xml, bool logUndo, bool refreshView, bool useTargets);
+    /** @brief KoraCut : un média lâché sous la dernière piste. Crée une piste du type du média et y pose
+     * le clip, en une seule étape d'annulation. Un son : piste audio tout en bas. Une vidéo ou une
+     * image : piste vidéo en bas des pistes vidéo, juste au-dessus de l'audio (document 13, § 10.3).
+     * @return l'identifiant du clip, -1 en cas d'échec. */
+    Q_INVOKABLE int insertClipOnNewTrack(int position, const QString &data);
     /** @brief Request inserting multiple clips into the timeline (dragged from bin or monitor)
      * @param tid is the destination track
      * @param position is the timeline position
@@ -417,7 +445,9 @@ public:
     */
     Q_INVOKABLE void adjustTrackHeight(int trackId, int height);
     Q_INVOKABLE void adjustAllTrackHeight(int trackId, int height);
-    Q_INVOKABLE void collapseAllTrackHeight(int trackId, bool collapse, int collapsedHeight);
+    /** @brief KoraCut : @p allTypes à vrai agit sur toutes les pistes, pas seulement sur celles
+     *  du même type que @p trackId. */
+    Q_INVOKABLE void collapseAllTrackHeight(int trackId, bool collapse, int collapsedHeight, bool allTypes = false);
 
     /** @brief Reset track \@trackId height to default track height. Adjusts all tracks if \@trackId == -1
     */
@@ -652,6 +682,22 @@ public:
      */
     int workingPreview() const;
 
+    // KoraCut, rendu d'aperçu (24 septembre 2026, chantier 10)
+    /** @brief Rend une plage de la séquence (out inclus). Faux si la plage est vide ou le rendu impossible. */
+    bool renderRange(QPoint zone);
+    /** @brief Rend la zone du moniteur Programme, ou toute la séquence s'il n'y en a pas. */
+    bool renderMonitorZone();
+    /** @brief La plage qui couvre les clips sélectionnés, (-1, -1) sans sélection. */
+    QPoint selectionZone() const;
+    /** @brief Efface tous les rendus de la séquence (zones et fichiers). */
+    void clearRenders();
+    /** @brief Relit les zones lourdes après une seconde d'inactivité et relance le rendu automatique. */
+    void scheduleAutoRender();
+    /** @brief Les débuts de morceaux qu'il faut rendre pour lire sans saccade : effets vidéo (clip,
+     * piste, séquence), compositions, fondus enchaînés, clips superposés (Motion, incrustations),
+     * séquences imbriquées. Une coupe simple sans effet n'y est pas : la lecture directe suffit. */
+    QList<int> heavyPreviewChunks() const;
+
     /** @brief Return true if we want to use timeline ruler zone for editing */
     bool useRuler() const;
 
@@ -708,7 +754,8 @@ public:
     bool refreshIfVisible(int cid);
     /** @brief Collapse / expand active track */
     void collapseActiveTrack();
-    void collapseAllTracks();
+    /** @brief KoraCut : @p allTypes à vrai plie ou déplie toutes les pistes d'un coup. */
+    void collapseAllTracks(bool allTypes = false);
     /** @brief Expand MLT playlist to its contained clips/compositions */
     void expandActiveClip();
     /** @brief Retrieve a list of possible audio stream targets */
@@ -827,6 +874,9 @@ private:
     KActionCollection *m_actionCollection;
     std::shared_ptr<TimelineItemModel> m_model;
     bool m_usePreview;
+    /** @brief KoraCut : attend une seconde sans changement avant de relire les zones lourdes. */
+    QTimer m_autoRenderTimer;
+    void autoRenderTick();
     int m_audioTarget;
     int m_videoTarget;
     int m_audioRef{-1};

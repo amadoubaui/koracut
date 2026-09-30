@@ -12,6 +12,8 @@
 #include <QImage>
 #include <QObject>
 #include <QUrl>
+#include <QVariantMap>
+#include <utility>
 
 class TimecodeDisplay;
 
@@ -73,6 +75,17 @@ class MonitorProxy : public QObject
     Q_PROPERTY(bool monitorIsActive READ monitorIsActive NOTIFY activeMonitorChanged)
     Q_PROPERTY(bool isKeyframe READ isKeyframe WRITE setIsKeyframe NOTIFY isKeyframeChanged)
     Q_PROPERTY(bool cursorOutsideEffect READ cursorOutsideEffect WRITE setCursorOutsideEffect NOTIFY cursorOutsideEffectChanged)
+    /** @name KoraCut, document 20 : règles, repères et repères de plateforme du moniteur. */
+    ///@{
+    Q_PROPERTY(bool rulersVisible READ rulersVisible WRITE setRulersVisible NOTIFY rulersVisibleChanged)
+    Q_PROPERTY(bool guidesVisible READ guidesVisible WRITE setGuidesVisible NOTIFY guidesChanged)
+    Q_PROPERTY(bool guidesLocked READ guidesLocked WRITE setGuidesLocked NOTIFY guidesChanged)
+    /** Liste de maps : « vertical » (bool) et « pos » (pixels du projet). */
+    Q_PROPERTY(QVariantList guides READ guides NOTIFY guidesChanged)
+    /** Les zones de la plateforme choisie, en pixels du projet (voir KoraCutMonitorGuides::platformZones). */
+    Q_PROPERTY(QVariantList platformZones READ platformZones NOTIFY platformChanged)
+    Q_PROPERTY(QString platformName READ platformName NOTIFY platformChanged)
+    ///@}
 
 public:
     MonitorProxy(VideoWidget *parent);
@@ -175,6 +188,37 @@ public:
     const QString dragType();
     void setDragType(QString dragType);
 
+    /** @name KoraCut, document 20 */
+    ///@{
+    bool rulersVisible() const;
+    void setRulersVisible(bool visible);
+    bool guidesVisible() const;
+    void setGuidesVisible(bool visible);
+    bool guidesLocked() const;
+    void setGuidesLocked(bool locked);
+    QVariantList guides() const;
+    /** @brief Pose un repère et rend son index. */
+    Q_INVOKABLE int addGuide(bool vertical, double pos);
+    Q_INVOKABLE void moveGuide(int index, double pos);
+    Q_INVOKABLE void removeGuide(int index);
+    Q_INVOKABLE void clearGuides();
+    /** @brief Remplace tous les repères (chargement d'une séquence), sans signaler d'édition. */
+    void setGuides(const QList<std::pair<bool, double>> &guides, bool visible, bool locked);
+    const QList<std::pair<bool, double>> &guideList() const { return m_guides; }
+    QVariantList platformZones() const;
+    QString platformName() const;
+    /** @brief Choisit la plateforme (identifiant du fichier de données, vide pour aucune). */
+    void setPlatform(const QString &id, const QString &name, const QVariantList &zones);
+    /** @brief Aimante un cadre aux bords, au centre, aux tiers et aux repères. Rend x, y, w, h, lineX, lineY. */
+    Q_INVOKABLE QVariantMap snapRect(const QRectF &rect, double threshold) const;
+    /** @brief Le pas des graduations d'une règle pour cette échelle (pixels d'écran par pixel du projet). */
+    Q_INVOKABLE double rulerStep(double scale) const;
+    /** @brief Ouvre le menu des superpositions et repères (construit en C++ par le moniteur). */
+    Q_INVOKABLE void openOverlayMenu();
+    /** @brief Le QML signale la fin d'un glisser du cadre de transformation. */
+    Q_INVOKABLE void transformDragEnded();
+    ///@}
+
 Q_SIGNALS:
     void positionChanged(int);
     void seekFinishedChanged();
@@ -230,8 +274,27 @@ Q_SIGNALS:
     void dragTypeChanged();
     /** @brief Trigger a rebuild of the audio waveform */
     void rebuildAudio(int cid);
+    /** @name KoraCut, document 20 */
+    ///@{
+    void rulersVisibleChanged();
+    void guidesChanged();
+    /** @brief Les repères ont été changés par la personne (à enregistrer dans la séquence). */
+    void guidesEdited();
+    void platformChanged();
+    void overlayMenuRequested();
+    void transformDragFinished();
+    ///@}
 
 private:
+    /** @name KoraCut, document 20 */
+    ///@{
+    bool m_rulersVisible{false};
+    bool m_guidesVisible{true};
+    bool m_guidesLocked{false};
+    QList<std::pair<bool, double>> m_guides;
+    QString m_platformName;
+    QVariantList m_platformZones;
+    ///@}
     VideoWidget *q;
     int m_position;
     int m_zoneIn;

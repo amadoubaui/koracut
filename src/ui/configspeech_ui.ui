@@ -656,7 +656,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
          <item>
           <widget class="KContextualHelpButton" name="kcontextualhelpbutton_4">
            <property name="contextualHelpText">
-            <string>When enabled, Kdenlive will use the speech to text packages installed on your system. For advanced users only, as you will have to properly setup everything by yourself.</string>
+            <string>When enabled, KoraCut will use the speech to text packages installed on your system. For advanced users only, as you will have to properly setup everything by yourself.</string>
            </property>
           </widget>
          </item>
@@ -1071,7 +1071,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
          <item>
           <widget class="KContextualHelpButton" name="kcontextualhelpbutton_2">
            <property name="contextualHelpText">
-            <string>When enabled, Kdenlive will use the SAM2 version installed on your system. For advanced users only, as you will have to properly setup everything by yourself.</string>
+            <string>When enabled, KoraCut will use the SAM2 version installed on your system. For advanced users only, as you will have to properly setup everything by yourself.</string>
            </property>
           </widget>
          </item>

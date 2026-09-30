@@ -240,7 +240,8 @@ const QVariant AbstractProjectItem::getData(DataType type) const
 
 int AbstractProjectItem::supportedDataCount() const
 {
-    return 9;
+    // KoraCut : 11 depuis l'ajout de la résolution et des images par seconde (colonnes 9 et 10).
+    return 11;
 }
 
 QString AbstractProjectItem::name() const

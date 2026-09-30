@@ -1,0 +1,6 @@
+[KNewStuff3]
+Name=Modèles d'effets KoraCut
+ProvidersUrl=https://autoconfig.kde.org/ocs/providers.xml
+Categories=Kdenlive Effect Templates
+TargetDir=koracut/effect-templates
+Uncompress=archive

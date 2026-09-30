@@ -12,6 +12,8 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
+#include "koracut/koracutmodules.h"
+
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QStandardPaths>
@@ -24,9 +26,9 @@ LayoutCollection::LayoutCollection()
 void LayoutCollection::initTranslations()
 {
     // Ensure we have a reference to the translated names
-    QStringList translations = {i18nc("Short layout name for logging interface", "Logging"), i18nc("Short layout name for editing interface", "Editing"),
-                                i18nc("Short layout name for audio interface", "Audio"), i18nc("Short layout name for effects interface", "Effects"),
-                                i18nc("Short layout name for color grading interface", "Color")};
+    // KoraCut : les noms des modules, tels qu'ils apparaissent dans les fichiers de data/layouts.
+    QStringList translations = {i18nc("Nom court du module de montage", "Montage"), i18nc("Nom court du module d'étalonnage", "Étalonnage"),
+                                i18nc("Nom court du module audio", "Audio"), i18nc("Nom court du module d'effets visuels", "VFX"), i18nc("Nom court du module d'export", "Export")};
 }
 
 void LayoutCollection::addLayout(const LayoutInfo &layout)
@@ -152,6 +154,10 @@ void LayoutCollection::loadLayouts()
                 qDebug() << "// No Kdenlive data found in layout: " << fInfo.absoluteFilePath();
                 continue;
             }
+            // KoraCut : « _compact » puis « _vertical » à retirer du nom de fichier (montage_vertical_compact.json).
+            if (layoutId.endsWith(QLatin1String("_compact"))) {
+                layoutId.chop(8);
+            }
             if (layoutId.endsWith(QLatin1String("_vertical"))) {
                 // Remove _vertical suffix from id
                 layoutId.chop(9);
@@ -160,6 +166,7 @@ void LayoutCollection::loadLayouts()
             const QString insideId = results[0].toMap().value(QStringLiteral("id")).toString();
             bool isDefault = results[0].toMap().value(QStringLiteral("default"), false).toBool();
             bool isVertical = results[0].toMap().value(QStringLiteral("vertical"), false).toBool();
+            const bool isCompact = results[0].toMap().value(QStringLiteral("compact"), false).toBool();
             if (!insideId.isEmpty()) {
                 // Allow overriding id based on file name
                 layoutId = insideId;
@@ -168,7 +175,8 @@ void LayoutCollection::loadLayouts()
             LayoutInfo layout;
             if (foundlayouts.contains(layoutId)) {
                 layout = foundlayouts.value(layoutId);
-                if ((isVertical && !layout.verticalPath.isEmpty()) || (!isVertical && !layout.path.isEmpty())) {
+                const QString &slot = isCompact ? (isVertical ? layout.verticalCompactPath : layout.compactPath) : (isVertical ? layout.verticalPath : layout.path);
+                if (!slot.isEmpty()) {
                     // Duplicate layout
                     qDebug() << "Duplicate layout, ignoring: " << layoutId << " = " << fInfo.absoluteFilePath();
                     continue;
@@ -177,7 +185,9 @@ void LayoutCollection::loadLayouts()
                 layout = LayoutInfo(layoutId, isDefault ? i18n(displayName.toUtf8().constData()) : displayName);
             }
             layout.isDefault = isDefault;
-            if (isVertical) {
+            if (isCompact) {
+                (isVertical ? layout.verticalCompactPath : layout.compactPath) = fInfo.absoluteFilePath();
+            } else if (isVertical) {
                 layout.verticalPath = fInfo.absoluteFilePath();
             } else {
                 layout.path = fInfo.absoluteFilePath();
@@ -205,7 +215,9 @@ void LayoutCollection::loadLayouts()
     }
     // Add remaining layouts not yet in order
     for (auto i = foundlayouts.cbegin(), end = foundlayouts.cend(); i != end; ++i) {
-        if (i.value().isDefault) {
+        // KoraCut : la disposition d'un module (Export depuis le 28 septembre 2026) arrive dans une version
+        // plus récente que la liste enregistrée ; elle n'a pas été retirée par la personne, on la garde.
+        if (i.value().isDefault && !KoraCutModules::byId(i.key())) {
             // Default layout not in list, was removed so skip
             continue;
         }

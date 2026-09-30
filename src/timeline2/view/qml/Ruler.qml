@@ -85,9 +85,10 @@ Item {
             x: modelData * rulerRoot.timeline.scaleFactor
             anchors.bottom: parent.bottom
             anchors.bottomMargin: rulerRoot.zoneHeight
-            width: 25 * rulerRoot.timeline.scaleFactor
+            width: K.KdenliveSettings.timelinechunks * rulerRoot.timeline.scaleFactor
             height: rulerRoot.previewHeight
-            color: 'darkred'
+            // KoraCut : à rendre en rouge de la charte, rendu en vert « prêt », en cours en bleu accent.
+            color: '#FF7262'
         }
     }
 
@@ -99,9 +100,9 @@ Item {
             x: modelData * rulerRoot.timeline.scaleFactor
             anchors.bottom: parent.bottom
             anchors.bottomMargin: rulerRoot.zoneHeight
-            width: 25 * rulerRoot.timeline.scaleFactor
+            width: K.KdenliveSettings.timelinechunks * rulerRoot.timeline.scaleFactor
             height: rulerRoot.previewHeight
-            color: 'darkgreen'
+            color: '#4ADE80'
         }
     }
     Rectangle {
@@ -109,9 +110,9 @@ Item {
         x: rulerRoot.workingPreview * rulerRoot.timeline.scaleFactor
         anchors.bottom: parent.bottom
         anchors.bottomMargin: rulerRoot.zoneHeight
-        width: 25 * rulerRoot.timeline.scaleFactor
+        width: K.KdenliveSettings.timelinechunks * rulerRoot.timeline.scaleFactor
         height: rulerRoot.previewHeight
-        color: 'orange'
+        color: '#0D99FF'
         visible: rulerRoot.workingPreview > -1
     }
 
@@ -612,13 +613,8 @@ Item {
                 rulerRoot.timeline.switchGuide(Math.round(mouseX / rulerRoot.timeline.scaleFactor), false)
             }
         }
-        onWheel: wheel => {
-            if (wheel.modifiers & Qt.ControlModifier) {
-                root.zoomByWheel(wheel)
-            } else {
-                wheel.accepted = false
-            }
-        }
+        // KoraCut : au-dessus de la règle aussi, deux doigts font défiler la timeline.
+        onWheel: wheel => root.zoomByWheel(wheel)
     }
     
     RulerZone {

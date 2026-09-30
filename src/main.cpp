@@ -6,6 +6,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 */
 
 #include "core.h"
+#include "mainwindow.h"
 #ifdef CRASH_AUTO_TEST
 #include "logger.hpp"
 #endif
@@ -13,15 +14,21 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "dialogs/wizard.h"
 #include "kdenlive_debug.h"
 #include "kdenlivesettings.h"
+#include "koracut/koracutmetrics.h"
+#include "koracut/koracutfonts.h"
+#include "koracut/koracutstyle.h"
 // Required for MacOS definition of MLT_LC_NAME
 #include "lib/localeHandling.h"
 #include "render/renderrequest.h"
+#include "utils/uiutils.h"
+#include "koracut/koracutthemes.h"
 #include <config-kdenlive.h>
 #include <project/projectmanager.h>
 
 #include <mlt++/Mlt.h>
 
 #include <KAboutData>
+#include <KColorSchemeManager>
 #include <KConfigGroup>
 #ifdef USE_DRMINGW
 #include <exchndl.h>
@@ -47,17 +54,28 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QDir>
+#include <cstdlib>
+#include <QFile>
+#include <QTimer>
+#include <QFont>
 #include <QIcon>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
 #include <QQuickStyle>
+#include <QStyleFactory>
 #include <QQuickWindow>
 #include <QResource>
+#include <QStandardPaths>
 
 #include <QUndoGroup>
 #include <QUrl> //new
+#include <QSocketNotifier>
+#ifdef Q_OS_UNIX
+#include <csignal>
+#include <unistd.h>
+#endif
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -119,7 +137,7 @@ static void resetConfig()
 {
     // Delete config file
     KSharedConfigPtr config = KSharedConfig::openConfig();
-    if (config->name().contains(QLatin1String("kdenlive"))) {
+    if (config->name().contains(QLatin1String("koracut"))) {
         // Make sure we delete our config file
         QFile f(QStandardPaths::locate(QStandardPaths::GenericConfigLocation, config->name(), QStandardPaths::LocateFile));
         if (f.exists()) {
@@ -129,7 +147,7 @@ static void resetConfig()
     }
 
     // Delete xml ui rc file
-    const QString configFile = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("kxmlgui5/kdenlive/kdenliveui.rc"));
+    const QString configFile = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("kxmlgui5/koracut/koracutui.rc"));
 
     if (configFile.isEmpty()) {
         return;
@@ -148,7 +166,7 @@ static void resetConfig()
         if (!shortcuts.isNull()) {
             qDebug() << "==== FOUND CUSTOM SHORTCUTS!!!";
             // Copy the original settings and append custom shortcuts
-            QFile f2(QStringLiteral(":/kxmlgui5/kdenlive/kdenliveui.rc"));
+            QFile f2(QStringLiteral(":/kxmlgui5/koracut/koracutui.rc"));
             if (f2.exists() && f2.open(QIODevice::ReadOnly)) {
                 QDomDocument doc2;
                 doc2.setContent(&f2);
@@ -237,9 +255,10 @@ int main(int argc, char *argv[])
     // Block MLT Qt5 module to prevent crashes
     qputenv("MLT_REPOSITORY_DENY", "libmltqt:libmltglaxnimate");
 
-#if defined(Q_OS_WIN)
-    QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::RoundPreferFloor);
-#endif
+    // KoraCut : un écran réglé à 125 % ou 150 % donne la même interface qu'un Mac à la même
+    // échelle. Kdenlive arrondissait vers le bas sous Windows seulement (125 % devenait 100 %,
+    // donc une interface plus petite que partout ailleurs). Chantier 12, 30 septembre 2026.
+    QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
     // TODO: is it a good option ?
     QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts, true);
 
@@ -248,13 +267,47 @@ int main(int argc, char *argv[])
 
     Application app(argc, argv);
 
+    // KoraCut : thème d'icônes en trait fin. Breeze reste le repli (Inherits= de index.theme).
+    // On passe par KIconTheme et pas par QIcon::setThemeName : initTheme() a réglé le nom Qt
+    // sur "KIconEngine" pour garder le moteur KDE, celui qui recolore les SVG.
+    // Débrayable avec la variable d'environnement KORACUT_NO_ICONS.
+    if (!qEnvironmentVariableIsSet("KORACUT_NO_ICONS")) {
+        KIconTheme::forceThemeForTests(QStringLiteral("koracut"));
+        KIconLoader::global()->reconfigure(QString());
+    }
+
     // Default to org.kde.desktop style unless the user forces another style
     if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE")) {
         QQuickStyle::setStyle(QStringLiteral("org.kde.desktop"));
     }
 
-    // trigger initialisation of proper application style
-    KStyleManager::initStyle();
+    // KoraCut : le même style de base sur les trois systèmes. KStyleManager suivait le bureau
+    // (sous Plasma le style choisi par la personne, Oxygen, Kvantum ou autre ; ailleurs Breeze, ou le
+    // dernier choix du menu Style), si bien qu'une même fenêtre changeait d'un ordinateur à l'autre.
+    // Breeze est livré avec KoraCut sur les trois systèmes et c'est lui que la feuille de style
+    // KoraCut a été réglée sur Mac ; Fusion (dans Qt) en repli. KORACUT_NATIVE_STYLE rend la main
+    // au bureau, pour comparer. Chantier 12, 30 septembre 2026.
+    if (qEnvironmentVariableIsSet("KORACUT_NATIVE_STYLE")) {
+        KStyleManager::initStyle();
+    } else {
+        QStyle *base = QStyleFactory::create(QStringLiteral("Breeze"));
+        if (!base) {
+            base = QStyleFactory::create(QStringLiteral("Fusion"));
+        }
+        if (base) {
+            app.setStyle(base);
+        }
+    }
+
+    // KoraCut : le style KoraCut se pose par-dessus celui du système, et avant la feuille de style.
+    // Il traite les trois choses que le CSS de Qt ne sait pas faire : l'anneau de focus
+    // (« there is no way of getting rid of the focus rect through the style sheet », forum Qt),
+    // la sélection arrondie d'une ligne de liste (le fond est peint par le style, pas par la boîte
+    // CSS), et les guides d'arborescence (styliser QTreeView::branch fait disparaître les chevrons
+    // avec les pointillés, essayé le 21/09/2026). Débrayable avec KORACUT_NO_STYLE.
+    if (!qEnvironmentVariableIsSet("KORACUT_NO_STYLE")) {
+        app.setStyle(new KoraCutStyle(app.style()));
+    }
 
     // Try to detect package type
     LinuxPackageType packageType = getPackageType();
@@ -276,41 +329,53 @@ int main(int argc, char *argv[])
         break;
     }
     if (!packageName.isEmpty()) {
-        KConfig::setMainConfigName(QStringLiteral("kdenlive-%1rc").arg(packageName));
+        KConfig::setMainConfigName(QStringLiteral("koracut-%1rc").arg(packageName));
     }
 
-    KLocalizedString::setApplicationDomain("kdenlive");
+    KLocalizedString::setApplicationDomain("koracut");
 
     // Create KAboutData
-    QString otherText = i18n("Please report bugs to <a href=\"%1\">%2</a>", QStringLiteral("https://bugs.kde.org/enter_bug.cgi?product=kdenlive"),
-                             QStringLiteral("https://bugs.kde.org/"));
+    QString otherText = i18n("Report bugs at <a href=\"%1\">%2</a>", QStringLiteral("https://koracut.org/bogues"),
+                             QStringLiteral("koracut.org/bogues"));
 
-    KAboutData aboutData(QByteArray("kdenlive"), i18n("Kdenlive"), KDENLIVE_VERSION, i18n("An open source video editor."), KAboutLicense::GPL_V3,
-                         i18n("Copyright © 2007–2025 Kdenlive authors"), otherText, QStringLiteral("https://kdenlive.org"));
-    // main developers (alphabetical)
-    aboutData.addAuthor(i18n("Jean-Baptiste Mardelle"), i18n("Core team member, main developer and maintainer, MLT, and KDE SC 4 / KF5 port"), QStringLiteral("jb@kdenlive.org"));
-    // active developers with major involvement
-    aboutData.addAuthor(i18n("Julius Künzel"), i18n("Core team member, feature development, packaging, bug fixing"), QStringLiteral("julius.kuenzel@kde.org"));
-    aboutData.addAuthor(i18n("Vincent Pinon"), i18n("KF5 port, Windows cross-build, packaging, bug fixing"), QStringLiteral("vpinon@kde.org"));
+    // KoraCut : nom, description, site et copyright PIXEWORK.
+    // La licence GPL v3 impose de garder la liste des détenteurs de droits d'auteur : elle reste
+    // consultable dans l'onglet Auteurs, avec des rôles réécrits sans nom de projet ni de version.
+    KAboutData aboutData(QByteArray("koracut"), i18n("KoraCut"), KDENLIVE_VERSION,
+                         i18n("Multimedia creation application (editing, color, audio, VFX, photo, illustration) driven by AI agents."),
+                         KAboutLicense::GPL_V3, i18n("Copyright © 2026 PIXEWORK"), otherText,
+                         QStringLiteral("https://koracut.org"));
+    // KoraCut
+    aboutData.addAuthor(i18n("PIXEWORK (Amadou BA)"), i18n("Product direction and development"), QString(), QStringLiteral("https://pixework.pro"));
+    // Détenteurs de droits d'auteur antérieurs, conservés au titre de la GPL v3.
+    aboutData.addAuthor(i18n("Jean-Baptiste Mardelle"), i18n("Editing engine development"), QStringLiteral("jb@kdenlive.org"));
+    aboutData.addAuthor(i18n("Julius Künzel"), i18n("Earlier work on the application core"), QStringLiteral("julius.kuenzel@kde.org"));
+    aboutData.addAuthor(i18n("Vincent Pinon"), i18n("Earlier work on the application core"), QStringLiteral("vpinon@kde.org"));
     // other active developers (alphabetical)
-     aboutData.addAuthor(i18n("Eric Jiang"), i18n("Bug fixing and test improvements"), QStringLiteral("erjiang@alumni.iu.edu"));
-    // non active developers with major improvement (alphabetical)
-    aboutData.addAuthor(i18n("Simon A. Eugster"), i18n("Color scopes, decimal separator issue, bug fixing"), QStringLiteral("simon.eu@gmail.com"));
-    aboutData.addAuthor(i18n("Jason Wood"), i18n("Original KDE 3 version author (not active anymore)"), QStringLiteral("jasonwood@blueyonder.co.uk"));
+     aboutData.addAuthor(i18n("Eric Jiang"), i18n("Bug fixing and testing"), QStringLiteral("erjiang@alumni.iu.edu"));
+    aboutData.addAuthor(i18n("Simon A. Eugster"), i18n("Color scopes, bug fixing"), QStringLiteral("simon.eu@gmail.com"));
+    aboutData.addAuthor(i18n("Jason Wood"), i18n("Earlier work on the application core"), QStringLiteral("jasonwood@blueyonder.co.uk"));
     // non developers (alphabetical)
     aboutData.addCredit(i18n("Farid Abdelnour"), i18n("Logo, promotion, testing"));
-    aboutData.addCredit(i18n("balooii"),  i18n("Monitor, scopes, and timeline QOL improvements"));
-    aboutData.addCredit(i18n("Nicolas Carion"), i18n("Code re-architecture & timeline rewrite (2019)"));
+    aboutData.addCredit(i18n("balooii"),  i18n("Monitor, scopes and timeline"));
+    aboutData.addCredit(i18n("Nicolas Carion"), i18n("Code and timeline architecture"));
     aboutData.addCredit(i18n("Dan Dennedy"), i18n("MLT maintainer, Bug fixing, etc."));
     aboutData.addCredit(i18n("Darby Johnston"), i18n("OTIO rewrite"));
-    aboutData.addCredit(i18n("Bernd Jordan"), i18n("Core team member, documentation, effect UI and testing, community support"));
-    aboutData.addCredit(i18n("Eugen Mohr"), i18n("Core team member, documentation maintainer, bug triaging, testing"));
+    aboutData.addCredit(i18n("Bernd Jordan"), i18n("Documentation, effects interface, testing"));
+    aboutData.addCredit(i18n("Eugen Mohr"), i18n("Documentation, bug triage, testing"));
     aboutData.addCredit(i18n("Nara Oliveira"), i18n("Logo"));
     aboutData.addCredit(i18n("Bruno Santos"), i18n("Testing"));
-    aboutData.addCredit(i18n("Massimo Stella"), i18n("Core team member, expert advice, testing"));
+    aboutData.addCredit(i18n("Massimo Stella"), i18n("Advice and testing"));
 
-    aboutData.setTranslator(i18n("NAME OF TRANSLATORS"), i18n("EMAIL OF TRANSLATORS"));
-    aboutData.setOrganizationDomain(QByteArray("kde.org"));
+    // Pas d'onglet Traduction : le bandeau que les bibliothèques y posent renvoie vers un autre
+    // projet et n'est pas modifiable depuis ici. Les traducteurs restent crédités dans les
+    // en-têtes des fichiers po/ et dans AUTHORS.
+    aboutData.setTranslator(QString(), QString());
+    aboutData.setOrganizationDomain(QByteArray("pixework.pro"));
+    aboutData.setBugAddress(QByteArray("https://koracut.org/bogues"));
+    // Remplace le bandeau par défaut de l'onglet Auteurs, qui pointe vers un autre projet.
+    aboutData.setCustomAuthorText(i18n("Report bugs at koracut.org/bogues"),
+                                  i18n("Report bugs at <a href=\"https://koracut.org/bogues\">koracut.org/bogues</a>."));
 
     aboutData.addComponent(aboutData.displayName(), QString(), KDENLIVE_FULL_VERSION_STRING, aboutData.homepage());
 
@@ -319,15 +384,75 @@ int main(int argc, char *argv[])
     aboutData.addComponent(i18n("FFmpeg"), i18n("A complete, cross-platform solution to record, convert and stream audio and video."), QString(),
                            QStringLiteral("https://ffmpeg.org"));
 
-    aboutData.setDesktopFileName(QStringLiteral("org.kde.kdenlive"));
+    aboutData.setDesktopFileName(QStringLiteral("pro.pixework.koracut"));
 
     // Set application data
     KAboutData::setApplicationData(aboutData);
 #ifndef Q_OS_MACOS // skip this on macOS to have proper mime-type icon visible
-    app.setWindowIcon(QIcon(QStringLiteral(":/pics/kdenlive.png")));
+    app.setWindowIcon(QIcon(QStringLiteral(":/pics/koracut.png")));
 #endif
 
     app.setAttribute(Qt::AA_DontCreateNativeWidgetSiblings, true);
+
+    // KoraCut: thème par défaut
+    // 1) Les schémas de couleurs KoraCut sont installés dans share/color-schemes. S'ils n'y sont pas
+    //    (paquet incomplet, bundle macOS sans dossier share), on copie la version embarquée dans les
+    //    ressources vers le dossier utilisateur, avant que KColorSchemeManager ne construise sa liste.
+    // KoraCut, 25 septembre 2026 : les autres thèmes livrés (Très sombre, Gris, Contraste élevé, Matrix,
+    // Spider-Man, Punk, Océan, Sable, Nuit violette) sont écrits depuis data/koracut-themes.json par le
+    // moteur de thèmes, seulement quand ils diffèrent de ce qui est déjà sur le disque.
+    KoraCutThemes::self()->installBuiltins();
+    for (const QString &scheme : {QStringLiteral("KoraCutDark"), QStringLiteral("KoraCutLight")}) {
+        const QString relPath = QStringLiteral("color-schemes/%1.colors").arg(scheme);
+        const QString destDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/color-schemes");
+        const QString userCopy = destDir + QStringLiteral("/%1.colors").arg(scheme);
+        // KoraCut, 23 septembre 2026 : une copie déjà faite n'était jamais rafraîchie. Celle du
+        // 19 septembre a masqué une heure durant la nouvelle marche #252525, parce que le dossier de
+        // l'utilisateur passe avant celui de l'installation. Ces fichiers sont les nôtres (un thème
+        // installé par l'utilisateur porte un autre nom) : s'ils diffèrent de la version embarquée,
+        // on les remplace.
+        QFile embedded(QStringLiteral(":/%1.colors").arg(scheme));
+        QFile existing(userCopy);
+        if (existing.exists() && embedded.open(QIODevice::ReadOnly) && existing.open(QIODevice::ReadOnly)) {
+            const bool stale = embedded.readAll() != existing.readAll();
+            existing.close();
+            if (stale) {
+                QFile::remove(userCopy);
+                QFile::copy(embedded.fileName(), userCopy);
+                QFile::setPermissions(userCopy, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ReadGroup | QFileDevice::ReadOther);
+            }
+        } else if (QStandardPaths::locate(QStandardPaths::GenericDataLocation, relPath).isEmpty()) {
+            if (QDir().mkpath(destDir)) {
+                QFile::copy(embedded.fileName(), userCopy);
+                QFile::setPermissions(userCopy, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ReadGroup | QFileDevice::ReadOther);
+            }
+        }
+    }
+    // 2) Feuille de style Qt pour l'aplat KoraCut (boutons, champs, onglets, menus, barres de défilement).
+    //    Chargée seulement si le schéma actif est un schéma KoraCut (ou aucun schéma, cas du premier
+    //    lancement où l'écran de démarrage active « KoraCutDark »), pour ne pas casser les autres thèmes.
+    //    Débrayable avec la variable d'environnement KORACUT_NO_QSS. Le code est dans UiUtils, il est rappelé
+    //    par l'écran de démarrage et à chaque changement de palette.
+    UiUtils::applyKoraCutStyleSheet();
+    // 3) KoraCut: police d'interface au cran « base » de la charte, 12 px (« 11 - Refonte UI-UX », 3.2).
+    //    Elle était à 11 px, c'est-à-dire sous le minimum normatif de Microsoft (12 px en Regular,
+    //    « illisible dans certaines langues ») et au cran secondaire d'Apple. Le 11 px reste, mais
+    //    comme cran dense volontaire, réservé aux listes longues et à la timeline.
+    //    Posée sur la police de l'application, pas dans la feuille de style : un « font-size » global en QSS
+    //    écrase les textes à taille relative (constaté le 19/09/2026 sur le message d'accueil du chutier).
+    //    Même taille sur macOS, Windows et Linux. Débrayable avec KORACUT_NO_FONT.
+    //    Depuis le 30 septembre 2026, la famille aussi est la même partout : IBM Plex Sans, embarquée
+    //    (koracutfonts.h). Avec la police du système, la largeur de chaque libellé changeait d'un
+    //    système à l'autre, et avec elle les alignements.
+    if (!qEnvironmentVariableIsSet("KORACUT_NO_FONT")) {
+        QFont koraCutFont = app.font();
+        if (KoraCutFonts::active()) {
+            koraCutFont = QFont(KoraCutFonts::uiFamily());
+            koraCutFont.setStyleHint(QFont::SansSerif);
+        }
+        koraCutFont.setPixelSize(KoraCutMetrics::FontBase);
+        app.setFont(koraCutFont);
+    }
 
     // Create command line parser with options
     QCommandLineParser parser;
@@ -347,7 +472,7 @@ int main(int argc, char *argv[])
     QCommandLineOption renderOption(QStringLiteral("render"), i18n("Directly render the project and exit."));
     parser.addOption(renderOption);
 
-    QCommandLineOption presetOption(QStringLiteral("render-preset"), i18n("Kdenlive render preset name (MP4-H264/AAC will be used if none given)."),
+    QCommandLineOption presetOption(QStringLiteral("render-preset"), i18n("KoraCut render preset name (MP4-H264/AAC will be used if none given)."),
                                     QStringLiteral("renderPreset"), QString());
     parser.addOption(presetOption);
 
@@ -364,7 +489,7 @@ int main(int argc, char *argv[])
     QCommandLineOption saveDebugOption(QStringLiteral("setup-report"), i18n("Save a json report about components in the given path."), QStringLiteral("reportFile"));
     parser.addOption(saveDebugOption);
 
-    parser.addPositionalArgument(QStringLiteral("file"), i18n("Kdenlive document to open."));
+    parser.addPositionalArgument(QStringLiteral("file"), i18n("KoraCut document to open."));
     parser.addPositionalArgument(QStringLiteral("rendering"), i18n("Output file for rendered video."));
 
     // Parse command line
@@ -424,8 +549,8 @@ int main(int argc, char *argv[])
             } else {
                 // We may want to open several clips in a project
                 if (!app.url.isEmpty()) {
-                    // Check if first url is not a .kdenlive project file
-                    if (!app.url.toLocalFile().endsWith(QLatin1String(".kdenlive"))) {
+                    // Check if first url is not a project file
+                    if (!app.url.toLocalFile().endsWith(QLatin1String(".koracut")) && !app.url.toLocalFile().endsWith(QLatin1String(".kdenlive"))) {
                         if (!ProjectManager::isKdenliveProjectFile(app.url)) {
                             // We are trying to open clips
                             clipsToLoad << app.url.toLocalFile();
@@ -465,7 +590,7 @@ int main(int argc, char *argv[])
         pCore->initHeadless(app.url);
         app.processEvents();
 
-        // ensure we have a proper kdenlive_render path, particular important for AppImage
+        // ensure we have a proper koracut_render path, particular important for AppImage
         Wizard::fixKdenliveRenderPath();
 
         RenderRequest *renderrequest = new RenderRequest();
@@ -498,14 +623,14 @@ int main(int argc, char *argv[])
                 argsJob << "--debug";
             }
             qDebug() << "* CREATED JOB WITH ARGS: " << argsJob;
-            qDebug() << "starting kdenlive_render process using: " << KdenliveSettings::kdenliverendererpath();
+            qDebug() << "starting koracut_render process using: " << KdenliveSettings::koracutrendererpath();
             if (!parser.isSet(exitOption)) {
-                if (QProcess::execute(KdenliveSettings::kdenliverendererpath(), argsJob) != EXIT_SUCCESS) {
+                if (QProcess::execute(KdenliveSettings::koracutrendererpath(), argsJob) != EXIT_SUCCESS) {
                     exitCode = EXIT_FAILURE;
                     break;
                 }
             } else {
-                if (!QProcess::startDetached(KdenliveSettings::kdenliverendererpath(), argsJob)) {
+                if (!QProcess::startDetached(KdenliveSettings::koracutrendererpath(), argsJob)) {
                     qCritical() << "Error starting render job" << argsJob;
                     exitCode = EXIT_FAILURE;
                     break;
@@ -558,6 +683,64 @@ int main(int argc, char *argv[])
     }
 
     KDDockWidgets::initFrontend(KDDockWidgets::FrontendType::QtWidgets);
+
+    // KoraCut, relais de version (voir MainWindow::koraCutRelay). Tant que la fenêtre principale
+    // n'existe pas, par exemple sur l'écran d'accueil, aucun projet n'est ouvert : une demande de
+    // relais n'a rien à enregistrer, on quitte tout de suite. Dès que la fenêtre existe, c'est
+    // elle qui prend la main et ce minuteur s'arrête.
+    const QString relais = qEnvironmentVariable("KORACUT_RELAIS");
+    if (!relais.isEmpty()) {
+        auto *relaisTimer = new QTimer(&app);
+        relaisTimer->setInterval(1000);
+        QObject::connect(relaisTimer, &QTimer::timeout, &app, [relais, relaisTimer]() {
+            if (Core::self() && Core::self()->window()) {
+                relaisTimer->stop();
+                return;
+            }
+            if (!QFile::exists(relais + QStringLiteral("/demande"))) {
+                return;
+            }
+            QFile::remove(relais + QStringLiteral("/demande"));
+            QFile::remove(Core::lockFilePath());
+            QFile out(relais + QStringLiteral("/projet"));
+            if (out.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                out.close();
+            }
+            std::_Exit(0);
+        });
+        relaisTimer->start();
+    }
+
+#ifdef Q_OS_UNIX
+    // KoraCut, 28 septembre 2026 : SIGTERM et SIGINT ferment proprement (copie de récupération, porte et
+    // témoin retirés), au lieu de laisser une instance qui ne répond plus aux scripts et aux agents. Le
+    // gestionnaire de signal ne fait qu'écrire un octet ; tout le reste se passe dans la boucle de Qt.
+    static int terminatePipe[2] = {-1, -1};
+    if (::pipe(terminatePipe) == 0) {
+        struct sigaction action {};
+        action.sa_handler = [](int) {
+            const char c = 1;
+            [[maybe_unused]] const ssize_t n = ::write(terminatePipe[1], &c, 1);
+        };
+        sigemptyset(&action.sa_mask);
+        action.sa_flags = SA_RESTART;
+        sigaction(SIGTERM, &action, nullptr);
+        sigaction(SIGINT, &action, nullptr);
+        auto *notifier = new QSocketNotifier(terminatePipe[0], QSocketNotifier::Read, &app);
+        QObject::connect(notifier, &QSocketNotifier::activated, &app, [notifier]() {
+            char c;
+            [[maybe_unused]] const ssize_t n = ::read(terminatePipe[0], &c, 1);
+            if (Core::self() && Core::self()->window()) {
+                QMetaObject::invokeMethod(Core::self()->window(), "koraCutTerminate", Qt::QueuedConnection);
+            } else {
+                // Écran d'accueil ou démarrage : rien à enregistrer.
+                QFile::remove(Core::lockFilePath());
+                notifier->setEnabled(false);
+                QCoreApplication::quit();
+            }
+        });
+    }
+#endif
 
     if (!Core::build(packageType, false, parser.isSet(debugOption), app.url.isEmpty() && clipsToLoad.isEmpty() && !parser.isSet(disableWelcome))) {
         // App is crashing, delete config files and restart

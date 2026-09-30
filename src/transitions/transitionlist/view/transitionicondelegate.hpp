@@ -24,6 +24,8 @@ public:
 
     void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override;
     QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override;
+    /** @brief KoraCut, 27 septembre 2026 : la taille des aperçus suit − et + du panneau. */
+    void setIconSize(const QSize &size) { m_iconSize = size; }
 
     /**
      * @brief Get a movie for a transition

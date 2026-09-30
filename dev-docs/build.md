@@ -1,8 +1,10 @@
-# Building Kdenlive
+# Building KoraCut
 
 ## Supported platforms
 
-Kdenlive is primarily developed on GNU/Linux, but it is also possible to [build Kdenlive on Microsoft Windows and macOS using Craft](#build-craft). For Windows also [other possibilities exist](https://community.kde.org/Kdenlive/Development/WindowsBuild).
+KoraCut is primarily developed on GNU/Linux, but it can also be [built on Microsoft Windows and macOS using Craft](#build-craft).
+
+On macOS the studio's own procedure, with the pitfalls we hit, is in `Sources/BUILD.md` of the project folder.
 
 Currently supported GNU/Linux distributions are:
 
@@ -12,14 +14,15 @@ Currently supported GNU/Linux distributions are:
 But it should work on any platform fulfilling the requirements described below.
 
 The minimum required dependencies are:
-- [Qt](https://doc.qt.io/) >= 6.10.0 (Kdenlive dropped Qt5 support with version 24.12)
+- [Qt](https://doc.qt.io/) >= 6.10.0 (Qt 5 is not supported)
 - [KDE frameworks 6 (KF6)](https://develop.kde.org/products/frameworks/) >= 6.21,
-- [MLT](https://www.mltframework.org/) >= 7.38.0.
+- [MLT](https://www.mltframework.org/) >= 7.38.0,
+- [KDDockWidgets](https://github.com/KDAB/KDDockWidgets) >= 2.4.
 
 ## Building on Linux
 
-Kdenlive usually requires the latest version of MLT, in which go several API updates, bugfixes and optimizations.
-So, except if your distribution ships a very recent version of MLT, you'll have to build MLT alongside kdenlive.
+KoraCut usually requires the latest version of MLT, in which go several API updates, bugfixes and optimizations.
+So, except if your distribution ships a very recent version of MLT, you'll have to build MLT alongside KoraCut.
 
 You can check your installed MLT version with:
 
@@ -27,7 +30,8 @@ You can check your installed MLT version with:
 melt --version
 ```
 
-It is recommended to uninstall the official kdenlive packages to avoid potential conflicts.
+Your distribution's own build of the video editor KoraCut derives from ships MLT modules that can
+conflict with the ones you are about to build. Removing it is the simplest way out:
 
 ```bash
 # Debian/Ubuntu
@@ -53,7 +57,10 @@ sudo pacman -S base-devel git cmake extra-cmake-modules libx11
 sudo pacman -S ninja
 ```
 
-You can use your distribution packages information (if not too old) to easily get a complete build environment:
+You can use your distribution packages information (if not too old) to easily get a complete build environment.
+The package names below are the distribution's, for the editor KoraCut derives from: it pulls in the same
+build dependencies, which is all we want here.
+
 
 ```bash
 # Debian/Ubuntu -- Enable deb-src entries /etc/apt/sources beforehand
@@ -150,7 +157,7 @@ If your distribution ships a recent enough version of MLT, you could install the
 sudo apt install libmlt++-dev libmlt-dev melt
 ```
 
-And start building Kdenlive itself.
+And start building KoraCut itself.
 
 Otherwise, you should make sure these packages are not installed:
 
@@ -185,13 +192,13 @@ If you want to uninstall it later, you can try
 sudo xargs -d '\n' rm < install_manifest.txt
 ```
 
-### Build Kdenlive itself
+### Build KoraCut itself
 
 In your development directory, run:
 
 ```bash
-git clone https://invent.kde.org/multimedia/kdenlive.git
-cd kdenlive
+git clone <the KoraCut repository>
+cd koracut
 mkdir build && cd build
 cmake .. -GNinja -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX -DKDE_INSTALL_USE_QT_SYS_PATHS=ON \
 -DRELEASE_BUILD=OFF -DCMAKE_FIND_ROOT_PATH=/usr/local/KDAB/KDDockWidgets-2.5.0
@@ -199,69 +206,72 @@ ninja -j$JOBS
 sudo ninja install
 ```
 
-Please note that `ninja install` is required for Kdenlive, otherwise the effects will not be installed and cannot be used.
+Please note that `ninja install` is required for KoraCut, otherwise the effects will not be installed and cannot be used.
 
-To uninstall Kdenlive:
+To uninstall KoraCut:
 
 ```bash
 sudo ninja uninstall
 ```
 
-### Running Kdenlive
+### Running KoraCut
 
 If you didn't build in a system path in which all libs and data are automatically found, you will need to set environment variables to point to them.
-This is done by the auto-generated script in `kdenlive/build` that must be sourced (to keep variables set in current shell, unlike just executing the script):
+This is done by the auto-generated script in `koracut/build` that must be sourced (to keep variables set in current shell, unlike just executing the script):
 
 ```bash
 . prefix.sh
-kdenlive
+koracut
 ```
 
 ## <a name="build-craft">Build with KDE Craft (Linux, Windows, macOS)</a>
 
-[Craft](https://community.kde.org/Craft) is a convenient tool for building and packaging Kdenlive and its third-party dependencies across Linux, Windows and macOS.
+[Craft](https://community.kde.org/Craft) is a convenient tool for building and packaging KoraCut and its third-party dependencies across Linux, Windows and macOS.
 
 It is well suited for quickly setting up a working build environment or creating distributable packages. However, manual builds are generally preferred for active development workflows, debugging and dependency customization.
 
 1. Set up Craft as described [here](https://community.kde.org/Craft#Setting_up_Craft). (On Windows choose MinGW as compiler!)
-2. Start building kdenlive. You can simply run `craft --option kdenlive.version=master kdenlive`
-3. Within the craft environment running Kdenlive is as simple as `kdenlive`
+2. Point Craft at your working copy with the `srcDir` option and build it.
+3. Within the craft environment, running the result is as simple as `koracut`
 
 ### Tips for Craft
 
-* If you want to compile kdenlive in debug mode, you can do so by running `craft --buildtype Debug kdenlive`
-* If you want to compile the stable version instead of the master branch with that last changes, remove `--option kdenlive.version=master` from the craft command: `craft kdenlive`
-* If you want to compile a specific branch from the kdenlive repository use `craft --option kdenlive.version=master --option kdenlive.branch=BRANCHNAME kdenlive` where `BRANCHNAME` is the name of the branch.
-* With Craft you can also easily package Kdenlive as `.dmg`, `.exe` or `.appimage` (depending on your platform): `craft --target=master --package kdenlive` The output can be found in `CraftRoot/tmp`
+* Build from a local checkout instead of a remote: `craft --option <blueprint>.srcDir=/path/to/koracut <blueprint>`
+* Debug build: add `--buildtype Debug`
+* Incremental rebuild after editing the source: `--compile --install --qmerge`
+* Craft can also package the result as `.dmg`, `.exe` or `.appimage`, depending on your platform, with `--package`. The output lands in `CraftRoot/tmp`
 * For more instructions and tips on Craft see https://community.kde.org/Craft
+
+At the studio these commands are wrapped in `~/CraftRoot/koracut-build.sh` and
+`~/CraftRoot/koracut-run.sh`. Read `Sources/BUILD.md` before changing them.
 
 ## Optional advanced development tools
 
 ### Debugging
 
 Having debug symbols helps getting much more useful information from crash logs or analyzers outputs; this is enabled at configure stage.
-- append `-DCMAKE_BUILD_TYPE=Debug` to `cmake` line of kdenlive and/or mlt
+- append `-DCMAKE_BUILD_TYPE=Debug` to `cmake` line of KoraCut and/or mlt
 
 
 ### Running tests
 
-Kdenlive test coverage is focused mostly on timeline model code (extending tests to more parts is highly desired). To run those tests, append to `cmake` line for the build `-DBUILD_TESTING=ON` and execute `ctest` to run them.
+Test coverage is focused mostly on timeline model code (extending tests to more parts is highly desired). To run those tests, append to `cmake` line for the build `-DBUILD_TESTING=ON` and execute `ctest` to run them.
 
 ### Fuzzer
 
-Kdenlive embeds a fuzzing engine that can detect crashes and auto-generate tests. It requires to have clang installed (generally in `/usr/bin/clang++`). This can be activated in `cmake` line with:
+KoraCut embeds a fuzzing engine that can detect crashes and auto-generate tests. It requires to have clang installed (generally in `/usr/bin/clang++`). This can be activated in `cmake` line with:
 `-DBUILD_FUZZING=ON -DCMAKE_CXX_COMPILER=/usr/bin/clang++`
 
-To learn more fuzzing especially in the context of Kdenlive read this [blog post][fuzzer-blog].
+To learn more about fuzzing a complex GUI application, read this [blog post][fuzzer-blog].
 
 ### Help file for QtCreator, KDevelop, etc.
 
 You can automatically build and install a `*.qch` file with the doxygen docs about the source code to use it with your IDE like Qt Assistant, Qt Creator or KDevelop. This can be activated in `cmake` line with:
 `-DBUILD_QCH=ON`
 
-You can find the `kdenlive.qch` at `build/src` and after `make install` at `${CMAKE_INSTALL_PREFIX}/lib/cmake/kdenlive`
+You can find the generated `.qch` at `build/src` and, after `make install`, under `${CMAKE_INSTALL_PREFIX}/lib/cmake`
 
-To add the `kdenlive.qch` file to Qt Creator, select **Tools** > **Options** > **Help** > **Documentation** > **Add**.
+To add the `.qch` file to Qt Creator, select **Tools** > **Options** > **Help** > **Documentation** > **Add**.
 
 ### Speeding up compilations
 
@@ -272,14 +282,14 @@ If you don't need tests, disabling them will also save build time (and disk spac
 
 ### Analyzers
 
-You can configure Kdenlive to embed tooling for runtime analysis, for example appending to cmake line:
+You can configure KoraCut to embed tooling for runtime analysis, for example appending to cmake line:
 `-DCMAKE_CXX_COMPILER=/usr/bin/clang++ -DECM_ENABLE_SANITIZERS='address'`
 
 This one will report in terminal all memory handling errors found during execution.
 
 ### Building OpenCV tracking module
 
-MLT/Kdenlive tracking effect relies on a "contrib" a OpenCV module that is not shipped by distributions.
+The MLT tracking effect relies on a "contrib" OpenCV module that is not shipped by distributions.
 We build it in our AppImage but you may want it on your system (note OpenCV deserves its reputation of being difficult to build!).
 
 ```bash
@@ -318,7 +328,7 @@ cmake .. -GNinja -DWITHOUT_OPENCV=true -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX
 ### Building in Docker
 
 It is possible to run the above commands inside a container, with a fresh Ubuntu for example.
-Note that Kdenlive cannot be easily run from inside the Docker container as it is a GUI application.
+Note that KoraCut cannot be easily run from inside the Docker container as it is a GUI application.
 
 ```bash
 # Spin up a Docker container
@@ -333,9 +343,11 @@ apt install …
 exit
 ```
 
-## Translating Kdenlive
+## Translating KoraCut
 
-Kdenlive uses KDE's internationalization (i18n) system for translations. For submitting or updating translations, please use the official KDE translation platform at [l10n.kde.org](https://l10n.kde.org/).
+KoraCut uses KDE's internationalization (i18n) system for translations. The translation domain is `koracut`, so the catalogs are `po/<lang>/koracut.po` and the template is `po/koracut.pot`.
+
+French is the reference language and the one we maintain.
 
 The local translation workflow described below is for debugging purposes only. It can be useful when debugging translation issues or verifying translations work correctly in your local build in case you added or updated strings in the codebase.
 
@@ -356,9 +368,14 @@ sudo apt install gettext kde-dev-utils
 #### Translation Workflow
 
 1. **Extract strings (creates `.pot` file with all translatable strings from the source code)**: `bash extract_i18n_strings.sh`
-2. **Update existing translation (updates `.po` file)**: `msgmerge --update po/fi/kdenlive.po po/kdenlive.pot`
+2. **Update existing translation (updates `.po` file)**: `msgmerge --update po/fr/koracut.po po/koracut.pot`
 3. **Edit translations**: Modify the `msgstr` entries in the `.po` file
-4. **Compile translations (creates .mo file)**: `msgfmt -o po/fi/kdenlive.mo po/fi/kdenlive.po`
-5. **Test**: Run Kdenlive (Switch to the target language via Settings | Configure Language)
+4. **Compile translations (creates .mo file)**: `msgfmt -o po/fr/koracut.mo po/fr/koracut.po`
+5. **Test**: Run KoraCut (switch to the target language via Settings | Configure Language)
+
+**Careful**: some `.po` files contain a U+2029 character. Python treats it as a line
+break, so a script using `splitlines()` corrupts the file and `msgfmt` then refuses
+to compile it. Always split on `\n`.
 
 [fuzzer-blog]: https://kdenlive.org/en/2019/03/inside-kdenlive-how-to-fuzz-a-complex-gui-application/
+

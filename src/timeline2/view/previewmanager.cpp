@@ -11,17 +11,58 @@
 #include "doc/docundostack.hpp"
 #include "doc/kdenlivedoc.h"
 #include "kdenlivesettings.h"
+#include "koracut/koracutrender.h"
 #include "mainwindow.h"
+#include "monitor/monitor.h"
+#include "monitor/monitormanager.h"
 #include "timeline2/model/timelineitemmodel.hpp"
 #include "xml/xml.hpp"
 
+#include <KConfig>
+#include <KConfigGroup>
 #include <KLocalizedString>
 #include <KMessageBox>
 #include <QCollator>
 #include <QCryptographicHash>
+#include <QDirIterator>
+#include <QGuiApplication>
 #include <QMutexLocker>
 #include <QSaveFile>
+#include <QThread>
 #include <QStandardPaths>
+
+#if defined(Q_OS_UNIX)
+#include <csignal>
+#include <sys/resource.h>
+#elif defined(Q_OS_WIN)
+#include <windows.h>
+#endif
+
+#if defined(Q_OS_WIN)
+namespace {
+/** KoraCut : suspendre et reprendre un processus sous Windows, comme SIGSTOP et SIGCONT ailleurs.
+ *  NtSuspendProcess et NtResumeProcess (ntdll) sont ce qu'utilisent le Gestionnaire des tâches et
+ *  Process Explorer ; on les cherche à l'exécution, et sans eux on retombe sur l'arrêt du rendu. */
+bool koraCutSuspendProcess(qint64 pid, bool suspend)
+{
+    using NtProcessFn = LONG(NTAPI *)(HANDLE);
+    static const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    static const auto suspendFn = ntdll ? reinterpret_cast<NtProcessFn>(reinterpret_cast<void *>(GetProcAddress(ntdll, "NtSuspendProcess"))) : nullptr;
+    static const auto resumeFn = ntdll ? reinterpret_cast<NtProcessFn>(reinterpret_cast<void *>(GetProcAddress(ntdll, "NtResumeProcess"))) : nullptr;
+    const NtProcessFn fn = suspend ? suspendFn : resumeFn;
+    if (!fn || pid <= 0) {
+        return false;
+    }
+    HANDLE process = OpenProcess(PROCESS_SUSPEND_RESUME, FALSE, DWORD(pid));
+    if (!process) {
+        return false;
+    }
+    const LONG status = fn(process);
+    CloseHandle(process);
+    return status >= 0;
+}
+} // namespace
+#endif
 
 PreviewManager::PreviewManager(Mlt::Tractor *tractor, QUuid uuid, QObject *parent)
     : QObject(parent)
@@ -38,12 +79,12 @@ PreviewManager::PreviewManager(Mlt::Tractor *tractor, QUuid uuid, QObject *paren
     m_previewGatherTimer.setInterval(200);
     QObject::connect(&m_previewProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, &PreviewManager::processEnded);
 
-    if (KdenliveSettings::kdenliverendererpath().isEmpty() || !QFileInfo::exists(KdenliveSettings::kdenliverendererpath())) {
-        KdenliveSettings::setKdenliverendererpath(QString());
+    if (KdenliveSettings::koracutrendererpath().isEmpty() || !QFileInfo::exists(KdenliveSettings::koracutrendererpath())) {
+        KdenliveSettings::setKoracutrendererpath(QString());
         Wizard::fixKdenliveRenderPath();
-        if (KdenliveSettings::kdenliverendererpath().isEmpty()) {
+        if (KdenliveSettings::koracutrendererpath().isEmpty()) {
             KMessageBox::error(QApplication::activeWindow(),
-                               i18n("Could not find the kdenlive_render application, something is wrong with your installation. Rendering will not work"));
+                               i18n("Could not find the koracut_render application, something is wrong with your installation. Rendering will not work"));
         }
     }
 
@@ -115,8 +156,47 @@ bool PreviewManager::initialize()
     connect(this, &PreviewManager::cleanupOldPreviews, this, &PreviewManager::doCleanupOldPreviews);
     connect(doc, &KdenliveDoc::removeInvalidUndo, this, &PreviewManager::slotRemoveInvalidUndo, Qt::DirectConnection);
     m_previewTimer.setSingleShot(true);
-    m_previewTimer.setInterval(3000);
-    connect(&m_previewTimer, &QTimer::timeout, this, &PreviewManager::startPreviewRender);
+    // KoraCut : 1 s d'inactivité après un geste (3 s chez Kdenlive), le rendu attend que la souris soit relâchée.
+    m_previewTimer.setInterval(1000);
+    connect(&m_previewTimer, &QTimer::timeout, this, &PreviewManager::slotAutoStart);
+    // KoraCut : pendant la lecture et pendant un geste, le rendu se met en pause (le processus est
+    // suspendu, rien n'est perdu), puis reprend. Sous Windows aussi depuis le 30 septembre 2026
+    // (NtSuspendProcess) ; il ne s'arrête et repart après que si la suspension est refusée.
+    m_playbackWatch.setInterval(250);
+    connect(&m_playbackWatch, &QTimer::timeout, this, [this]() {
+        if (m_previewProcess.state() == QProcess::NotRunning) {
+            m_playbackWatch.stop();
+            return;
+        }
+        const bool busy = userIsBusy();
+#if defined(Q_OS_UNIX)
+        if (busy != m_suspended) {
+            ::kill(pid_t(m_previewProcess.processId()), busy ? SIGSTOP : SIGCONT);
+            m_suspended = busy;
+        }
+#elif defined(Q_OS_WIN)
+        if (busy != m_suspended) {
+            if (koraCutSuspendProcess(m_previewProcess.processId(), busy)) {
+                m_suspended = busy;
+            } else if (busy) {
+                abortRendering();
+                m_previewTimer.start();
+            }
+        }
+#else
+        if (busy) {
+            abortRendering();
+            m_previewTimer.start();
+        }
+#endif
+    });
+    {
+        bool rootOk = false;
+        const QDir previewRoot = doc->getCacheDir(CachePreview, &rootOk);
+        if (rootOk) {
+            KoraCutRender::touchOpenedMarker(previewRoot.absolutePath());
+        }
+    }
     connect(this, &PreviewManager::previewRender, this, &PreviewManager::gotPreviewRender, Qt::DirectConnection);
     connect(&m_previewGatherTimer, &QTimer::timeout, this, &PreviewManager::slotProcessDirtyChunks);
     m_initialized = true;
@@ -286,7 +366,11 @@ bool PreviewManager::loadParams()
     m_consumerParams = doc->getDocumentProperty(QStringLiteral("previewparameters")).split(QLatin1Char(' '), Qt::SkipEmptyParts);
 
     if (m_consumerParams.isEmpty() || m_extension.isEmpty()) {
-        doc->selectPreviewProfile();
+        // KoraCut : H.264 tout-intra d'abord (mesuré le 24 septembre 2026 : plus rapide à écrire et à relire
+        // que DNxHD, 2,4 fois plus léger, même qualité), le choix de Kdenlive sinon.
+        if (!selectKoraCutPreviewProfile()) {
+            doc->selectPreviewProfile();
+        }
         m_consumerParams = doc->getDocumentProperty(QStringLiteral("previewparameters")).split(QLatin1Char(' '), Qt::SkipEmptyParts);
         m_extension = doc->getDocumentProperty(QStringLiteral("previewextension"));
     }
@@ -304,7 +388,22 @@ bool PreviewManager::loadParams()
     }*/
     if (doc->getDocumentProperty(QStringLiteral("resizepreview")).toInt() != 0) {
         int resizeWidth = doc->getDocumentProperty(QStringLiteral("previewheight")).toInt();
-        m_consumerParams << QStringLiteral("s=%1x%2").arg(int(resizeWidth * pCore->getCurrentDar())).arg(resizeWidth);
+        // KoraCut : largeur et hauteur paires, sinon libx264 refuse l'image.
+        resizeWidth -= resizeWidth % 2;
+        int width = int(resizeWidth * pCore->getCurrentDar());
+        width -= width % 2;
+        m_consumerParams << QStringLiteral("s=%1x%2").arg(width).arg(resizeWidth);
+    }
+    // KoraCut : deux fils au plus pour les effets (un seul sur machine modeste) : le rendu ne doit pas charger la machine.
+    bool hasThreads = false;
+    for (const QString &param : std::as_const(m_consumerParams)) {
+        if (param.startsWith(QLatin1String("real_time="))) {
+            hasThreads = true;
+        }
+    }
+    if (!hasThreads) {
+        const int threads = KoraCutRender::isModestMachine() ? 1 : std::clamp(QThread::idealThreadCount() / 4, 1, 2);
+        m_consumerParams << QStringLiteral("real_time=-%1").arg(threads);
     }
     m_consumerParams << QStringLiteral("an=1");
     m_consumerParams << QStringLiteral("audio_off=1");
@@ -332,7 +431,7 @@ void PreviewManager::invalidatePreviews()
         bool foundPreviews = false;
         for (const auto &i : m_dirtyChunks) {
             QString current = QStringLiteral("%1.%2").arg(i.toInt()).arg(m_extension);
-            if (m_cacheDir.rename(current, QStringLiteral("undo/%1/%2").arg(ix).arg(current))) {
+            if (archiveChunkFile(current, ix)) {
                 foundPreviews = true;
             }
         }
@@ -361,7 +460,7 @@ void PreviewManager::invalidatePreviews()
                 m_undoDir.mkdir(QString::number(stackMax));
                 for (const auto &i : m_dirtyChunks) {
                     QString current = QStringLiteral("%1.%2").arg(i.toInt()).arg(m_extension);
-                    if (m_cacheDir.rename(current, QStringLiteral("undo/%1/%2").arg(stackMax).arg(current))) {
+                    if (archiveChunkFile(current, stackMax)) {
                         foundPreviews = true;
                     }
                 }
@@ -427,7 +526,8 @@ void PreviewManager::doCleanupOldPreviews()
     collator.setNumericMode(true);
     std::sort(dirs.begin(), dirs.end(), [&collator](const QString &file1, const QString &file2) { return collator.compare(file1, file2) < 0; });
     bool ok;
-    while (dirs.count() > 5) {
+    // KoraCut : on ne garde que les étapes demandées (0 par défaut, le disque d'abord).
+    while (dirs.count() > KoraCutRender::undoStepsKept()) {
         QDir tmp = m_undoDir;
         QString dirName = dirs.takeFirst();
         dirName.toInt(&ok);
@@ -500,6 +600,14 @@ void PreviewManager::clearPreviewRange(bool resetZones)
     m_previewGatherTimer.stop();
     abortRendering();
     redo();
+    if (resetZones) {
+        // KoraCut : les zones parties, leurs fichiers partent aussi. koracut_render saute un fichier
+        // déjà présent : un vieux morceau resté sur le disque serait relu comme s'il était à jour.
+        QDirIterator it(m_cacheDir.absolutePath(), {QStringLiteral("*.%1").arg(m_extension)}, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            QFile::remove(it.next());
+        }
+    }
     pCore->pushUndo(undo, redo, i18n("Remove All Preview Zones"));
 }
 
@@ -513,6 +621,9 @@ void PreviewManager::addPreviewRange(const QPoint zone, bool add)
     for (int i = startChunk; i <= endChunk; i++) {
         int frame = i * chunkSize;
         if (add) {
+            // KoraCut : demandée à la main, la zone reste rendue même sans effet.
+            m_evictedChunks.remove(frame);
+            m_autoChunks.remove(frame);
             if (!m_renderedChunks.contains(frame) && !m_dirtyChunks.contains(frame)) {
                 m_dirtyChunks << frame;
             }
@@ -585,6 +696,17 @@ void PreviewManager::abortRendering()
     }
     // Don't display error message on voluntary abort
     m_warnOnCrash = false;
+#if defined(Q_OS_UNIX)
+    if (m_suspended) {
+        ::kill(pid_t(m_previewProcess.processId()), SIGCONT);
+        m_suspended = false;
+    }
+#elif defined(Q_OS_WIN)
+    if (m_suspended) {
+        koraCutSuspendProcess(m_previewProcess.processId(), false);
+        m_suspended = false;
+    }
+#endif
     Q_EMIT abortPreview();
     m_previewProcess.waitForFinished();
     if (m_previewProcess.state() != QProcess::NotRunning) {
@@ -656,10 +778,18 @@ void PreviewManager::doPreviewRender(const QString &scene)
     QMutexLocker lock(&m_dirtyMutex);
     Q_ASSERT(m_previewProcess.state() == QProcess::NotRunning);
     std::sort(m_dirtyChunks.begin(), m_dirtyChunks.end(), chunkSort);
-    const QStringList dirtyChunks = getCompressedList(m_dirtyChunks);
+    // KoraCut : de la tête de lecture vers la fin, puis en remontant vers le début.
+    const QStringList dirtyChunks = orderedChunkList();
     m_chunksToRender = m_dirtyChunks.count();
     m_processedChunks = 0;
+    m_lastRequested.clear();
+    for (const QVariant &c : std::as_const(m_dirtyChunks)) {
+        m_lastRequested.insert(c.toInt());
+    }
     int chunkSize = KdenliveSettings::timelinechunks();
+    lock.unlock();
+    makeRoomFor(m_chunksToRender);
+    lock.relock();
     QStringList args{QStringLiteral("preview-chunks"),
                      scene,
                      m_cacheDir.absolutePath(),
@@ -674,10 +804,18 @@ void PreviewManager::doPreviewRender(const QString &scene)
         env.insert(QLatin1String("MLT_AVFORMAT_HWACCEL"), KdenliveSettings::hwDecoding());
         m_previewProcess.setProcessEnvironment(env);
     }
-    m_previewProcess.start(KdenliveSettings::kdenliverendererpath(), args);
+    // KoraCut : le rendu tourne en priorité basse, l'interface et la lecture passent devant.
+#if defined(Q_OS_UNIX)
+    m_previewProcess.setChildProcessModifier([]() { ::setpriority(PRIO_PROCESS, 0, 10); });
+#elif defined(Q_OS_WIN)
+    m_previewProcess.setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments *a) { a->flags |= BELOW_NORMAL_PRIORITY_CLASS; });
+#endif
+    m_previewProcess.start(KdenliveSettings::koracutrendererpath(), args);
     if (m_previewProcess.waitForStarted()) {
         qDebug() << " -  - -STARTING PREVIEW JOBS . . . STARTED: " << args;
     }
+    m_suspended = false;
+    m_playbackWatch.start();
 }
 
 void PreviewManager::processEnded(int exitCode, QProcess::ExitStatus status)
@@ -698,7 +836,23 @@ void PreviewManager::processEnded(int exitCode, QProcess::ExitStatus status)
     }
     workingPreview = -1;
     m_warnOnCrash = true;
+    m_playbackWatch.stop();
+    m_suspended = false;
     Q_EMIT workingPreviewChanged();
+    // KoraCut : des morceaux arrivés pendant le rendu (un autre geste) partent à leur tour.
+    if (status == QProcess::NormalExit && exitCode == 0 && KdenliveSettings::autopreview()) {
+        QMutexLocker lock(&m_dirtyMutex);
+        bool newWork = false;
+        for (const QVariant &c : std::as_const(m_dirtyChunks)) {
+            if (!m_lastRequested.contains(c.toInt())) {
+                newWork = true;
+                break;
+            }
+        }
+        if (newWork) {
+            m_previewTimer.start();
+        }
+    }
 }
 
 void PreviewManager::slotProcessDirtyChunks()
@@ -739,6 +893,10 @@ void PreviewManager::invalidatePreview(int startFrame, int endFrame)
     int chunkSize = KdenliveSettings::timelinechunks();
     int start = startFrame - startFrame % chunkSize;
     int end = endFrame - endFrame % chunkSize;
+    // KoraCut : une zone écartée (cache plein, rendus effacés) qui change redevient candidate au rendu automatique.
+    for (int i = start; i <= end; i += chunkSize) {
+        m_evictedChunks.remove(i);
+    }
     bool timerWasRunning = m_previewGatherTimer.isActive();
     m_previewGatherTimer.stop();
     bool previewWasRunning = m_previewProcess.state() == QProcess::Running;
@@ -860,6 +1018,26 @@ void PreviewManager::gotPreviewRender(int frame, const QString &file, int progre
             m_tractor->unlock();
             pCore->currentDoc()->previewProgress(progress);
             pCore->currentDoc()->setModified(true);
+            // KoraCut : au plafond du cache, le rendu s'arrête ; ce qui reste est écarté jusqu'au prochain changement.
+            m_cacheEstimate += QFileInfo(file).size();
+            if (m_cacheEstimate > cacheCapBytes()) {
+                m_warnOnCrash = false;
+                Q_EMIT abortPreview();
+                QMutexLocker lock(&m_dirtyMutex);
+                for (const QVariant &c : std::as_const(m_dirtyChunks)) {
+                    m_evictedChunks.insert(c.toInt());
+                    m_autoChunks.remove(c.toInt());
+                }
+                m_dirtyChunks.clear();
+                lock.unlock();
+                Q_EMIT dirtyChunksChanged();
+                if (!m_capWarned) {
+                    m_capWarned = true;
+                    pCore->displayMessage(i18nc("@info:status", "The render cache is full (%1 MB): the rest is not rendered. Clear renders, or raise the limit.",
+                                                cacheCapBytes() / 1048576),
+                                          InformationMessage, 8000);
+                }
+            }
         } else {
             qCDebug(KDENLIVE_LOG) << "* * * INVALID PROD: " << file;
             corruptedChunk(frame, file);
@@ -974,4 +1152,283 @@ int PreviewManager::addedTracks() const
 bool PreviewManager::isRunning() const
 {
     return workingPreview >= 0 || m_previewProcess.state() != QProcess::NotRunning;
+}
+
+// ---- KoraCut, rendu d'aperçu (24 septembre 2026, chantier 10) ---------------------------------
+
+QVariantList PreviewManager::renderedList() const
+{
+    QMutexLocker lock(&m_dirtyMutex);
+    return m_renderedChunks;
+}
+
+QVariantList PreviewManager::dirtyList() const
+{
+    QMutexLocker lock(&m_dirtyMutex);
+    return m_dirtyChunks;
+}
+
+int PreviewManager::progressPermille() const
+{
+    return m_chunksToRender > 0 ? std::clamp(1000 * m_processedChunks / m_chunksToRender, 0, 1000) : 0;
+}
+
+bool PreviewManager::isPending() const
+{
+    return isRunning() || m_previewTimer.isActive() || m_previewGatherTimer.isActive();
+}
+
+qint64 PreviewManager::cacheBytes() const
+{
+    return KoraCutRender::folderSize(m_cacheDir.absolutePath());
+}
+
+qint64 PreviewManager::cacheCapBytes() const
+{
+    bool ok = false;
+    const QDir root = pCore->currentDoc() ? pCore->currentDoc()->getCacheDir(CachePreview, &ok) : m_cacheDir;
+    return KoraCutRender::cacheCapBytes(ok ? root.absolutePath() : m_cacheDir.absolutePath(), m_cacheEstimate);
+}
+
+QString PreviewManager::consumerParameters() const
+{
+    return m_consumerParams.join(QLatin1Char(' ')) + QStringLiteral(";") + m_extension;
+}
+
+bool PreviewManager::archiveChunkFile(const QString &fileName, int undoIndex)
+{
+    if (!m_cacheDir.exists(fileName)) {
+        return false;
+    }
+    if (KoraCutRender::undoStepsKept() > 0) {
+        return m_cacheDir.rename(fileName, QStringLiteral("undo/%1/%2").arg(undoIndex).arg(fileName));
+    }
+    // Par défaut, un morceau invalidé part tout de suite : on ne garde pas d'historique sur le disque.
+    m_cacheDir.remove(fileName);
+    return false;
+}
+
+void PreviewManager::slotAutoStart()
+{
+    // Un geste en cours (clic maintenu, glisser) ou la lecture : on attend.
+    if (userIsBusy()) {
+        m_previewTimer.start();
+        return;
+    }
+    startPreviewRender();
+}
+
+void PreviewManager::setAutoChunks(const QList<int> &heavyChunks)
+{
+    if (!m_initialized || m_previewTrack == nullptr) {
+        return;
+    }
+    const QSet<int> heavy(heavyChunks.cbegin(), heavyChunks.cend());
+    bool changed = false;
+    QMutexLocker lock(&m_dirtyMutex);
+    // Ce qui ne porte plus d'effet redevient de la lecture directe : on ne le rend pas.
+    const QSet<int> previous = m_autoChunks;
+    for (int chunk : previous) {
+        if (heavy.contains(chunk)) {
+            continue;
+        }
+        m_autoChunks.remove(chunk);
+        if (m_dirtyChunks.contains(QVariant(chunk)) && chunk != workingPreview) {
+            m_dirtyChunks.removeAll(QVariant(chunk));
+            m_cacheDir.remove(QStringLiteral("%1.%2").arg(chunk).arg(m_extension));
+            changed = true;
+        }
+    }
+    for (int chunk : heavy) {
+        const QVariant v(chunk);
+        if (m_evictedChunks.contains(chunk) || m_renderedChunks.contains(v) || m_dirtyChunks.contains(v)) {
+            continue;
+        }
+        m_dirtyChunks << v;
+        m_autoChunks.insert(chunk);
+        changed = true;
+    }
+    const bool hasWork = !m_dirtyChunks.isEmpty();
+    lock.unlock();
+    if (changed) {
+        Q_EMIT dirtyChunksChanged();
+    }
+    if (!KdenliveSettings::autopreview() || !hasWork) {
+        return;
+    }
+    if (m_previewProcess.state() == QProcess::NotRunning && !m_previewTimer.isActive() && !m_previewGatherTimer.isActive()) {
+        // Le contrôleur a déjà attendu la seconde d'inactivité : on part tout de suite.
+        slotAutoStart();
+    } else if (changed && m_previewProcess.state() != QProcess::NotRunning) {
+        // Des morceaux nouveaux pendant un rendu : processEnded les reprendra.
+    }
+}
+
+void PreviewManager::clearRenderFiles(int duration)
+{
+    const int chunkSize = KdenliveSettings::timelinechunks();
+    clearPreviewRange(true);
+    {
+        QMutexLocker lock(&m_dirtyMutex);
+        m_autoChunks.clear();
+        for (int frame = 0; frame <= duration; frame += chunkSize) {
+            m_evictedChunks.insert(frame);
+        }
+    }
+    if (m_undoDir.dirName() == QLatin1String("undo")) {
+        const QStringList dirs = m_undoDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+        for (const QString &dir : dirs) {
+            QDir tmp = m_undoDir;
+            if (tmp.cd(dir)) {
+                tmp.removeRecursively();
+            }
+        }
+    }
+    m_cacheEstimate = 0;
+    m_capWarned = false;
+}
+
+QStringList PreviewManager::orderedChunkList()
+{
+    const int chunkSize = KdenliveSettings::timelinechunks();
+    int playhead = pCore->getMonitorPosition(Kdenlive::ProjectMonitor);
+    playhead -= playhead % chunkSize;
+    QVariantList after;
+    QList<int> before;
+    for (const QVariant &c : std::as_const(m_dirtyChunks)) {
+        if (c.toInt() >= playhead) {
+            after << c;
+        } else {
+            before << c.toInt();
+        }
+    }
+    QStringList ordered = getCompressedList(after);
+    // Avant la tête de lecture : du plus proche au plus loin, un morceau à la fois.
+    std::sort(before.begin(), before.end(), std::greater<int>());
+    for (int c : std::as_const(before)) {
+        ordered << QString::number(c);
+    }
+    return ordered;
+}
+
+void PreviewManager::makeRoomFor(int chunkCount)
+{
+    KdenliveDoc *doc = pCore->currentDoc();
+    if (!doc) {
+        return;
+    }
+    bool ok = false;
+    const QDir root = doc->getCacheDir(CachePreview, &ok);
+    if (!ok || root.dirName() != QLatin1String("preview")) {
+        return;
+    }
+    struct Entry
+    {
+        QString path;
+        qint64 size;
+        QDateTime time;
+        int rank;
+    };
+    std::vector<Entry> files;
+    qint64 total = 0;
+    qint64 ownBytes = 0;
+    int ownCount = 0;
+    const QString ownDir = m_cacheDir.absolutePath();
+    QDirIterator it(root.absolutePath(), QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        it.next();
+        const QFileInfo info = it.fileInfo();
+        if (info.fileName().startsWith(QLatin1Char('.')) || info.suffix() == QLatin1String("mlt")) {
+            continue;
+        }
+        total += info.size();
+        // Ordre de départ : l'historique d'annulation, puis les autres séquences, puis les nôtres.
+        int rank = 2;
+        if (info.absolutePath().contains(QLatin1String("/undo"))) {
+            rank = 0;
+        } else if (info.absolutePath() != ownDir) {
+            rank = 1;
+        } else {
+            ownBytes += info.size();
+            ++ownCount;
+        }
+        files.push_back({info.absoluteFilePath(), info.size(), info.lastModified(), rank});
+    }
+    const qint64 perChunk = ownCount > 0 ? ownBytes / ownCount : 2LL * 1024 * 1024;
+    const qint64 needed = perChunk * chunkCount;
+    const qint64 cap = KoraCutRender::cacheCapBytes(root.absolutePath(), total);
+    m_cacheEstimate = total;
+    if (total + needed <= cap) {
+        return;
+    }
+    std::sort(files.begin(), files.end(), [](const Entry &a, const Entry &b) { return a.rank != b.rank ? a.rank < b.rank : a.time < b.time; });
+    bool trackChanged = false;
+    m_tractor->lock();
+    for (const Entry &e : files) {
+        if (total + needed <= cap) {
+            break;
+        }
+        const QFileInfo info(e.path);
+        if (e.rank == 2) {
+            bool isNumber = false;
+            const int chunk = info.completeBaseName().toInt(&isNumber);
+            if (!isNumber || m_dirtyChunks.contains(QVariant(chunk))) {
+                continue;
+            }
+            if (m_renderedChunks.contains(QVariant(chunk)) && m_previewTrack) {
+                const int ix = m_previewTrack->get_clip_index_at(chunk);
+                if (!m_previewTrack->is_blank(ix)) {
+                    delete m_previewTrack->replace_with_blank(ix);
+                }
+                m_renderedChunks.removeAll(QVariant(chunk));
+                trackChanged = true;
+            }
+            m_evictedChunks.insert(chunk);
+            m_autoChunks.remove(chunk);
+        }
+        if (QFile::remove(e.path)) {
+            total -= e.size;
+        }
+    }
+    if (trackChanged && m_previewTrack) {
+        m_previewTrack->consolidate_blanks();
+    }
+    m_tractor->unlock();
+    m_cacheEstimate = total;
+    if (trackChanged) {
+        Q_EMIT renderedChunksChanged();
+    }
+}
+
+bool PreviewManager::selectKoraCutPreviewProfile()
+{
+    if (!KdenliveSettings::previewparams().isEmpty()) {
+        // Un profil choisi à la main dans les préférences reste le choix de la personne.
+        return false;
+    }
+    KConfig conf(QStringLiteral("encodingprofiles.rc"), KConfig::CascadeConfig, QStandardPaths::AppDataLocation);
+    const KConfigGroup group(&conf, QStringLiteral("timelinepreview"));
+    const QString profile = group.readEntry("KoraCut H.264 intra", QString());
+    if (profile.isEmpty()) {
+        return false;
+    }
+    KdenliveDoc *doc = pCore->currentDoc();
+    doc->setDocumentProperty(QStringLiteral("previewparameters"), profile.section(QLatin1Char(';'), 0, 0));
+    doc->setDocumentProperty(QStringLiteral("previewextension"), profile.section(QLatin1Char(';'), 1, 1));
+    // Machine modeste : rendu à la moitié de la hauteur du projet (540 pour du 1080p), plus vite rendu et relu.
+    if (KoraCutRender::isModestMachine() && doc->getDocumentProperty(QStringLiteral("resizepreview")).isEmpty()) {
+        const int height = pCore->getCurrentFrameDisplaySize().height() / 2;
+        doc->setDocumentProperty(QStringLiteral("resizepreview"), QStringLiteral("1"));
+        doc->setDocumentProperty(QStringLiteral("previewheight"), QString::number(height - height % 2));
+    }
+    return true;
+}
+
+bool PreviewManager::userIsBusy()
+{
+    if (QGuiApplication::mouseButtons() != Qt::NoButton) {
+        return true;
+    }
+    Monitor *monitor = (pCore && pCore->monitorManager()) ? pCore->monitorManager()->projectMonitor() : nullptr;
+    return monitor && monitor->isPlaying();
 }

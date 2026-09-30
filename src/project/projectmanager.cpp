@@ -4,10 +4,17 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 */
 
 #include "projectmanager.h"
+#include "timeline2/view/timelinetabs.hpp"
 #include "bin/bin.h"
 #include "bin/projectclip.h"
 #include "bin/projectitemmodel.h"
 #include "core.h"
+#include <numeric>
+#include <QRegularExpression>
+#include "koracut/koracutnewprojectdialog.h"
+#include "profiles/profilerepository.hpp"
+#include "timeline2/view/timelinecontroller.h"
+#include "timeline2/view/timelinewidget.h"
 #include "doc/docundostack.hpp"
 #include "doc/kdenlivedoc.h"
 #include "jobs/cliploadtask.h"
@@ -65,9 +72,11 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include <QTimeZone>
 #include <QUndoGroup>
 
-static QString getProjectNameFilters(bool ark = true)
+// Les nouveaux projets s'enregistrent en .koracut. Les anciens .kdenlive restent ouvrables :
+// à l'ouverture on accepte les deux extensions, à l'enregistrement on ne propose que la nouvelle.
+static QString getProjectNameFilters(bool ark = true, bool saving = false)
 {
-    QString filter = i18n("Kdenlive Project") + QStringLiteral(" (*.kdenlive)");
+    QString filter = i18n("KoraCut Project") + (saving ? QStringLiteral(" (*.koracut)") : QStringLiteral(" (*.koracut *.kdenlive)"));
     if (ark) {
         filter.append(";;" + i18n("Archived Project") + QStringLiteral(" (*.tar.gz *.zip)"));
     }
@@ -134,7 +143,8 @@ void ProjectManager::init(const QUrl &projectUrl, const QStringList &clipList)
     a->setIcon(QIcon::fromTheme(QStringLiteral("document-open")));
     a = KStandardAction::saveAs(this, SLOT(saveFileAs()), pCore->window()->actionCollection());
     a->setIcon(QIcon::fromTheme(QStringLiteral("document-save-as")));
-    a = KStandardAction::openNew(this, SLOT(newFile()), pCore->window()->actionCollection());
+    // KoraCut : ⌘N ouvre l'assistant par type de vidéo, pas la fenêtre de réglages.
+    a = KStandardAction::openNew(this, SLOT(newProjectWizard()), pCore->window()->actionCollection());
     a->setIcon(QIcon::fromTheme(QStringLiteral("document-new")));
     m_recentFilesAction = KStandardAction::openRecent(this, SLOT(openFile(QUrl)), pCore->window()->actionCollection());
 
@@ -167,7 +177,7 @@ void ProjectManager::newFile(bool showProjectSettings)
 
 void ProjectManager::newFile(QString profileName, bool showProjectSettings)
 {
-    QUrl startFile = QUrl::fromLocalFile(KdenliveSettings::defaultprojectfolder() + QStringLiteral("/_untitled.kdenlive"));
+    QUrl startFile = QUrl::fromLocalFile(KdenliveSettings::defaultprojectfolder() + QStringLiteral("/_untitled.koracut"));
     Q_EMIT pCore->GUISetupDone();
     if (checkForBackupFile(startFile, true)) {
         return;
@@ -292,6 +302,100 @@ void ProjectManager::newFile(QString profileName, bool showProjectSettings)
         pCore->monitorManager()->projectMonitor()->adjustRulerSize(m_activeTimelineModel->duration() - 1, m_project->getFilteredGuideModel(uuid));
     }
     clearLockFile();
+}
+
+void ProjectManager::newProjectWizard()
+{
+    KoraCutNewProjectDialog dialog(pCore->window());
+    if (dialog.exec() != QDialog::Accepted) {
+        if (m_project == nullptr) {
+            slotLoadOnOpen();
+        }
+        return;
+    }
+    if (dialog.wantsAdvanced()) {
+        newFile(true);
+        return;
+    }
+    newFileFromPlan(dialog.plan());
+}
+
+void ProjectManager::newFileFromPlan(const KoraCutProjectPlan &plan)
+{
+    // Le profil : un existant qui correspond, sinon un profil KoraCut écrit dans les profils de
+    // l'utilisateur (1080 × 1920 à 25 i/s, par exemple, n'existe pas d'office).
+    const int g = std::gcd(plan.frame.width(), plan.frame.height());
+    ProfileParam wanted(plan.frame.width(), plan.frame.height(), plan.fps, 1, plan.frame.width() / g, plan.frame.height() / g, 1, 1, 709, false);
+    QString profileName = ProfileRepository::get()->findMatchingProfile(&wanted);
+    if (profileName.isEmpty()) {
+        wanted.m_description = QStringLiteral("KoraCut %1×%2 %3 i/s").arg(plan.frame.width()).arg(plan.frame.height()).arg(plan.fps);
+        profileName = ProfileRepository::get()->saveProfile(&wanted);
+    }
+    if (profileName.isEmpty()) {
+        profileName = KdenliveSettings::default_profile();
+    }
+    // newFile lit le nombre de pistes dans les réglages : on les pose le temps de la création.
+    const int videoBefore = KdenliveSettings::videotracks();
+    const int audioBefore = KdenliveSettings::audiotracks();
+    KdenliveSettings::setVideotracks(qMax(1, int(plan.videoTracks.size())));
+    KdenliveSettings::setAudiotracks(qMax(1, int(plan.audioTracks.size())));
+    newFile(profileName, false);
+    KdenliveSettings::setVideotracks(videoBefore);
+    KdenliveSettings::setAudiotracks(audioBefore);
+    if (!m_project || !m_activeTimelineModel) {
+        return;
+    }
+    // Les noms des pistes : V1 est la piste vidéo la plus basse, A1 la piste audio la plus haute.
+    auto timeline = m_activeTimelineModel;
+    QList<int> video = timeline->getTracksIds(false);
+    std::sort(video.begin(), video.end(), [&timeline](int a, int b) { return timeline->getTrackPosition(a) < timeline->getTrackPosition(b); });
+    QList<int> audio = timeline->getTracksIds(true);
+    std::sort(audio.begin(), audio.end(), [&timeline](int a, int b) { return timeline->getTrackPosition(a) > timeline->getTrackPosition(b); });
+    for (int i = 0; i < video.size() && i < plan.videoTracks.size(); ++i) {
+        if (!plan.videoTracks.at(i).isEmpty()) {
+            timeline->setTrackProperty(video.at(i), QStringLiteral("kdenlive:track_name"), plan.videoTracks.at(i));
+        }
+    }
+    for (int i = 0; i < audio.size() && i < plan.audioTracks.size(); ++i) {
+        if (!plan.audioTracks.at(i).isEmpty()) {
+            timeline->setTrackProperty(audio.at(i), QStringLiteral("kdenlive:track_name"), plan.audioTracks.at(i));
+        }
+    }
+    // Le type de vidéo et la cible d'export, gardés dans le projet pour la suite (export préparé).
+    if (!plan.typeId.isEmpty()) {
+        m_project->setDocumentProperty(QStringLiteral("koracut:videotype"), plan.typeId);
+        m_project->setDocumentProperty(QStringLiteral("koracut:export_lufs"), QString::number(plan.exportLufs));
+        m_project->setDocumentProperty(QStringLiteral("koracut:export_codec"), plan.exportCodec);
+    }
+    // Le nom du projet : le fichier proposé à la première sauvegarde, dans le dossier des projets.
+    if (!plan.name.isEmpty()) {
+        QString safe = plan.name;
+        safe.replace(QRegularExpression(QStringLiteral("[/\\\\:*?\"<>|]")), QStringLiteral("-"));
+        // Un fichier de ce nom existe déjà : « Recette de cuisine 2 », plutôt qu'un projet sans nom.
+        // KoraCut, 27 septembre 2026 : un dossier par projet, dans ~/Movies/KoraCut/Projets (ou le
+        // dossier choisi dans les Préférences), avec son fichier, ses éléments Motion, ses sous-titres
+        // et ses Exports. L'ancien réglage par défaut (~/Movies tout court) compte comme non choisi.
+        const QString movies = QStandardPaths::writableLocation(QStandardPaths::MoviesLocation);
+        QString base = KdenliveSettings::defaultprojectfolder();
+        if (base.isEmpty() || QDir(base) == QDir(movies)) {
+            base = QDir(movies).filePath(QStringLiteral("KoraCut/Projets"));
+        }
+        QString folderName = safe;
+        for (int n = 2; QFileInfo::exists(QDir(base).filePath(folderName)) && n < 1000; ++n) {
+            folderName = QStringLiteral("%1 %2").arg(safe).arg(n);
+        }
+        const QDir folder(QDir(base).filePath(folderName));
+        folder.mkpath(QStringLiteral("."));
+        const QString path = folder.filePath(folderName + QStringLiteral(".koracut"));
+        if (!QFile::exists(path)) {
+            m_project->setUrl(QUrl::fromLocalFile(path));
+            m_project->setModified(true);
+            pCore->window()->setWindowTitle(m_project->description());
+        }
+    }
+    if (pCore->window() && pCore->window()->getCurrentTimeline()) {
+        pCore->window()->getCurrentTimeline()->controller()->refreshTrackColors();
+    }
 }
 
 void ProjectManager::setActiveTimeline(const QUuid &uuid)
@@ -642,10 +746,10 @@ bool ProjectManager::saveFileAs(bool saveACopy)
     } else {
         fd.setDirectory(KdenliveSettings::defaultprojectfolder());
     }
-    fd.setNameFilter(getProjectNameFilters(false));
+    fd.setNameFilter(getProjectNameFilters(false, true));
     fd.setAcceptMode(QFileDialog::AcceptSave);
     fd.setFileMode(QFileDialog::AnyFile);
-    fd.setDefaultSuffix(QStringLiteral("kdenlive"));
+    fd.setDefaultSuffix(QStringLiteral("koracut"));
     if (fd.exec() != QDialog::Accepted || fd.selectedFiles().isEmpty()) {
         return false;
     }
@@ -807,7 +911,7 @@ void ProjectManager::openFile(const QUrl &url)
         return;
     }
 
-    if (!url.fileName().endsWith(".kdenlive")) {
+    if (!url.fileName().endsWith(QLatin1String(".koracut")) && !url.fileName().endsWith(QLatin1String(".kdenlive"))) {
         if (!isKdenliveProjectFile(url)) {
             // Not a project file, open as clip
             m_loadClipsOnOpen = {url.toLocalFile()};
@@ -841,7 +945,7 @@ bool ProjectManager::isKdenliveProjectFile(const QUrl url)
 {
     QMimeDatabase db;
     QMimeType type = db.mimeTypeForUrl(url);
-    if (type.name().contains(QLatin1String("kdenlive"))) {
+    if (type.name().contains(QLatin1String("koracut")) || type.name().contains(QLatin1String("kdenlive"))) {
         return true;
     }
     return false;
@@ -941,7 +1045,7 @@ void ProjectManager::doOpenFile(const QUrl &url, KAutoSaveFile *stale, bool isBa
         stale->setParent(doc);
         // if loading from an autosave of unnamed file, or restore failed then keep unnamed
         bool loadingFailed = doc->url().isEmpty();
-        if (url.fileName().contains(QStringLiteral("_untitled.kdenlive"))) {
+        if (url.fileName().contains(QStringLiteral("_untitled.koracut"))) {
             doc->setUrl(QUrl());
             doc->setModified(true);
         } else if (!loadingFailed) {
@@ -1054,6 +1158,13 @@ void ProjectManager::doOpenFile(const QUrl &url, KAutoSaveFile *stale, bool isBa
         }
         Q_EMIT pCore->loadingMessageIncrease();
         qApp->processEvents();
+    }
+    // KoraCut : repose les séquences côte à côte enregistrées ; sans la propriété, des onglets.
+    const QString vues = m_project->getDocumentProperty(QStringLiteral("koracut:vues_timeline"));
+    if (!vues.isEmpty()) {
+        if (auto *tabs = pCore->window() ? pCore->window()->findChild<TimelineTabs *>() : nullptr) {
+            tabs->restoreLayoutState(vues);
+        }
     }
     Q_EMIT pCore->GUISetupDone();
 
@@ -1434,6 +1545,10 @@ void ProjectManager::prepareSave()
     pCore->projectItemModel()->saveProperty(QStringLiteral("kdenlive:documentnotesversion"), QStringLiteral("2"));
     pCore->projectItemModel()->saveProperty(QStringLiteral("kdenlive:docproperties.opensequences"), pCore->window()->openedSequences().join(QLatin1Char(';')));
     pCore->projectItemModel()->saveProperty(QStringLiteral("kdenlive:docproperties.activetimeline"), m_activeTimelineModel->uuid().toString());
+    // KoraCut : la découpe des séquences côte à côte (document 13, § 5) ; vide en simples onglets.
+    if (auto *tabs = pCore->window() ? pCore->window()->findChild<TimelineTabs *>() : nullptr) {
+        pCore->projectItemModel()->saveProperty(QStringLiteral("kdenlive:docproperties.koracut:vues_timeline"), tabs->layoutState());
+    }
     KDDockWidgets::LayoutSaver dockLayout(KDDockWidgets::RestoreOption_AbsoluteFloatingDockWindows);
     pCore->projectItemModel()->saveProperty(QStringLiteral("kdenlive:docproperties.layout"), QString(dockLayout.serializeLayout()));
 }
@@ -1865,8 +1980,8 @@ void ProjectManager::saveWithUpdatedProfile(const QString &updatedProfile)
     QString convertedFile = QStringUtils::appendToFilename(currentFile, QStringLiteral("-%1").arg(int(newProfile->fps() * 100)));
     QString saveFolder =
         m_project->url().isEmpty() ? QDir::tempPath() : m_project->url().adjusted(QUrl::RemoveFilename | QUrl::StripTrailingSlash).toLocalFile();
-    QTemporaryFile tmpFile(saveFolder + "/kdenlive-XXXXXX.kdenlive");
-    QTemporaryFile tmpFile2(saveFolder + "/kdenlive-XXXXXX.kdenlive");
+    QTemporaryFile tmpFile(saveFolder + "/koracut-XXXXXX.koracut");
+    QTemporaryFile tmpFile2(saveFolder + "/koracut-XXXXXX.koracut");
     if (saveInTempFile && m_project->url().isEmpty()) {
         if (!tmpFile2.open()) {
             // Something went wrong
@@ -2565,7 +2680,7 @@ void ProjectManager::updateSequenceOffset(const QUuid &uuid)
 
 void ProjectManager::clearLockFile()
 {
-    QFile lockFile(QDir::temp().absoluteFilePath(QStringLiteral("kdenlivelock")));
+    QFile lockFile(Core::lockFilePath());
     if (lockFile.exists()) {
         lockFile.remove();
     }

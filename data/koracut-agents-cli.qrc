@@ -1,0 +1,19 @@
+<!DOCTYPE RCC>
+<!-- KoraCut, document 18 (25 septembre 2026) : le catalogue des agents en ligne de commande et leurs logos. -->
+<RCC version="1.0">
+    <qresource prefix="/koracut/agents-cli">
+        <file alias="koracut-agents-cli.json">koracut-agents-cli.json</file>
+        <file alias="icons/amp.svg">icons/agents-cli/amp.svg</file>
+        <file alias="icons/claude-code.svg">icons/agents-cli/claude-code.svg</file>
+        <file alias="icons/codex.svg">icons/agents-cli/codex.svg</file>
+        <file alias="icons/copilot-cli.svg">icons/agents-cli/copilot-cli.svg</file>
+        <file alias="icons/cursor-cli.svg">icons/agents-cli/cursor-cli.svg</file>
+        <file alias="icons/gemini-cli.svg">icons/agents-cli/gemini-cli.svg</file>
+        <file alias="icons/goose.svg">icons/agents-cli/goose.svg</file>
+        <file alias="icons/kilo-code.svg">icons/agents-cli/kilo-code.svg</file>
+        <file alias="icons/kimi-code.svg">icons/agents-cli/kimi-code.svg</file>
+        <file alias="icons/mistral-vibe.svg">icons/agents-cli/mistral-vibe.svg</file>
+        <file alias="icons/opencode.svg">icons/agents-cli/opencode.svg</file>
+        <file alias="icons/qwen-code.svg">icons/agents-cli/qwen-code.svg</file>
+    </qresource>
+</RCC>

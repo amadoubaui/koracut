@@ -87,7 +87,7 @@ void GlaxnimateLauncher::openClip(int clipId)
     m_parent->m_clipId = clipId;
     m_server.reset(new QLocalServer);
     connect(m_server.get(), &QLocalServer::newConnection, this, &GlaxnimateLauncher::onConnect);
-    QString name = QStringLiteral("kdenlive-%1").arg(QCoreApplication::applicationPid());
+    QString name = QStringLiteral("koracut-%1").arg(QCoreApplication::applicationPid());
     QStringList args = {"--ipc", name, filename};
     /*QProcess childProcess;
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();

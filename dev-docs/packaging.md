@@ -1,75 +1,46 @@
-# Package Kdenlive
+# Package KoraCut
+
+KoraCut is not published on any store yet. This page lists the four paths that
+exist in the repository, and what is still missing on each.
 
 ## Overview
 
-Package Type     | OS      | Script Location
----------------- | ------- | ----------------------------------------
-Appimage         | Linux   | [Craft Blueprints Repository][craft]
-Flatpak          | Linux   | [Flathub Repository][flatpak]
-Nightly Flatpak  | Linux   | [../packaging/flatpak][nightly-flatpak]
-Snap             | Linux   | [KDE Snapcraft Repository][snap]
-exe              | Windows | [Craft Blueprints Repository][craft]
-dmg              | macOS   | [Craft Blueprints Repository][craft]
+| Package | OS | Where it is defined | State |
+| --- | --- | --- | --- |
+| `.dmg` | macOS | KDE Craft, `craft --package` | needs a Craft blueprint of our own, see below |
+| `.exe` | Windows | KDE Craft, or `packaging/koracut-msys2.sh` | untested |
+| AppImage | Linux | KDE Craft, or `packaging/koracut-lnx-withalldeps.sh` | untested |
+| Flatpak | Linux | [`.flatpak-manifest.json`](../.flatpak-manifest.json), notes in [packaging/flatpak](../packaging/flatpak) | builds locally, not published |
+| Snap | Linux | [`snapcraft.yaml`](../snapcraft.yaml) | not published |
 
-## How to package
+## Craft
 
-* For **Flatpak** you can find instructions in the README.md file of the [nightly script folder][nightly-flatpak].
+Craft builds the application and every third-party dependency, then packages
+the result for the platform it runs on. Set it up as described on
+https://community.kde.org/Craft, then package with `--package`.
 
-* For **Snap** there is a [KDE guide][snap-kde-guide] with instructions.
+One thing is still in the way on macOS: the Craft blueprint we currently reuse
+looks for an entitlements file named after the project it was written for,
+while ours is `koracut.entitlements`. Do not patch that blueprint in place,
+`craft --update` overwrites it. Write our own blueprint in a folder of ours
+under `CraftRoot/etc/blueprints/locations/` instead. The task is written down
+in `TACHES.md`.
 
-* For **Craft** based packing the command is `craft --package kdenlive`. For further instructions see https://community.kde.org/Craft.
+## Flatpak
 
-### PPA
+The manifest declares `pro.pixework.koracut` and pulls its dependencies from
+`packaging/flatpak/pro.pixework.koracut-dependencies.json`. Build and install
+instructions are in [packaging/flatpak/README.md](../packaging/flatpak/README.md).
 
-⚠️ With the switch to Qt6 it has become almost impossible for us to maintain the PPA with the latest version of Kdenlive, hence we do not officially support it anymore.
+## Snap
 
-#### Permissions
+`snapcraft.yaml` at the root is a symbolic link to `packaging/snap/snapcraft.yaml`.
+The snap is named `koracut`, runs `usr/bin/koracut` and reads its metadata from
+`pro.pixework.koracut.appdata.xml`. The general guide is
+https://community.kde.org/Guidelines_and_HOWTOs/Snap.
 
-You need to be in the kdenlive team on launchpad so you can push into git clones hosted there, to update the code
+## Before the first public build
 
-#### Repositories
-
-The source code repositories of Kdenlive and MLT are mirrors of the original repositories and get updated automatically. You can not push to these repositories manually.
-
-For translations and packaging data there are `*-packaging` repositories:
-
-
-| Software | Command to clone repositories                                                   |
-| -------- | ------------------------------------------------------------------------------- |
-| MLT      | `git clone git+ssh://$USER@git.launchpad.net/~kdenlive/+git/mlt-packaging`      |
-| Kdenlive | `git clone git+ssh://$USER@git.launchpad.net/~kdenlive/+git/kdenlive-packaging` |
-
-Replace `$USER` by your Launchpad username.
-
-#### Packaging data
-
-The `*-packaging` repositores on Launchpad host a `debian` branch with the packaging data (from debian/ubuntu + few adjustments from Vincent)
-
-* package metadata (like build or runtime dependencies) are in `debian/control` file
-* build instructions are in `debian/rules` (highly automated)
-* install instructions into sub-packages are in `debian/*.install`
-
-##### Modify packaging data
-
-It is recommended to test your packaging before pushing to builders with a command like `debuild -us -uc`
-
-#### Trigger build
-
-"master" builds are automatic every night; "stable" builds are triggered manually:
-
-| Software | Url                                                          |
-| -------- | ------------------------------------------------------------ |
-| MLT      | https://code.launchpad.net/~kdenlive/+recipe/mlt-release     |
-| Kdenlive | https://code.launchpad.net/~kdenlive/+recipe/kdenlive-stable |
-
-1. Scroll down to "Recipe content"
-2. Update the deb-version number
-3. Update the branch or tag you want to load on the 2nd line
-4. That's it for the base operation!
-
-[flatpak]: https://github.com/flathub/org.kde.kdenlive
-[nightly-flatpak]: ../packaging/flatpak
-[snap]: https://invent.kde.org/packaging/snapcraft-kde-applications/-/tree/Neon/release/kdenlive
-[snap-kde-guide]: https://community.kde.org/Guidelines_and_HOWTOs/Snap
-[craft]: https://invent.kde.org/packaging/craft-blueprints-kde/-/blob/master/kde/kdemultimedia/kdenlive
-[kde-release-tars]: https://download.kde.org/stable/release-service
+- Sign the macOS bundle, which needs an Apple developer certificate.
+- Decide the domain and the public repository, both are still open in `TACHES.md`.
+- Check the version number in `CMakeLists.txt` against the one shown in the About window.

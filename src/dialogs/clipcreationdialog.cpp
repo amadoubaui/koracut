@@ -446,14 +446,14 @@ void ClipCreationDialog::createClipsCommand(KdenliveDoc *doc, const QString &par
     QCheckBox *b = new QCheckBox(i18n("Import image sequence"));
     b->setToolTip(i18n("Try to import an image sequence"));
     b->setWhatsThis(
-        xi18nc("@info:whatsthis", "When enabled, Kdenlive will look for other images with the same name pattern and import them as an image sequence."));
+        xi18nc("@info:whatsthis", "When enabled, KoraCut will look for other images with the same name pattern and import them as an image sequence."));
     b->setChecked(KdenliveSettings::autoimagesequence());
     QCheckBox *bf = new QCheckBox(i18n("Ignore subfolder structure"));
     bf->setChecked(KdenliveSettings::ignoresubdirstructure());
     bf->setToolTip(i18n("Do not create subfolders in Project Bin"));
     bf->setWhatsThis(
         xi18nc("@info:whatsthis",
-               "When enabled, Kdenlive will import all clips contained in the folder and its subfolders without creating the subfolders in Project Bin."));
+               "When enabled, KoraCut will import all clips contained in the folder and its subfolders without creating the subfolders in Project Bin."));
     QFrame *f = new QFrame();
     f->setFrameShape(QFrame::NoFrame);
     auto *l = new QHBoxLayout;

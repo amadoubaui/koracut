@@ -491,7 +491,12 @@ template <typename AssetType> QStringList AbstractAssetsRepository<AssetType>::q
     auto separator = u':';
 #endif
     for (const auto dir : qTokenize(qtDataDirsEnv, separator)) {
-        dirs.push_back(QDir::cleanPath(dir.toString() + "/kdenlive/" + assetLocation));
+        // Deux dispositions selon le système, parce que DATA_INSTALL_PREFIX est vide sur macOS :
+        // les données y sont posées à plat dans <données>/, alors que sous Linux et Windows
+        // elles vont dans <données>/koracut/. Le sous-dossier portait encore l'ancien nom en dur,
+        // ce qui rendait ce chemin inutile partout ailleurs que sur macOS (21 septembre 2026).
+        dirs.push_back(QDir::cleanPath(dir.toString() + QStringLiteral("/koracut/") + assetLocation));
+        dirs.push_back(QDir::cleanPath(dir.toString() + QLatin1Char('/') + assetLocation));
     }
     return dirs;
 }

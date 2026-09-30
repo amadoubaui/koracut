@@ -20,6 +20,7 @@
 #include "effects/effectstack/model/effectstackmodel.hpp"
 #include "groupsmodel.hpp"
 #include "kdenlivesettings.h"
+#include "koracut/koracutperformance.h"
 #include "profiles/profilemodel.hpp"
 #include "snapmodel.hpp"
 #include "timeline2/view/previewmanager.h"
@@ -113,6 +114,20 @@ RTTR_REGISTRATION
 #endif
 
 int TimelineModel::seekDuration = 30000;
+
+namespace {
+/** Décodeurs FFmpeg gardés ouverts par MLT. Kdenlive : cœurs + (pistes + 1) × 2. KoraCut, machine
+    modeste (chantier 10) : un par piste plus trois, pour ne pas garder en mémoire des décodeurs 4K
+    dont la lecture n'a pas besoin, sans descendre sous ce qu'il faut pour lire toutes les pistes. */
+int koraCutProducerCache(int tracks)
+{
+    const int kdenlive = qMax(4, int(QThread::idealThreadCount()) + (tracks + 1) * 2);
+    if (KoraCutPerformance::producerCacheMax() > 0) {
+        return qMin(kdenlive, qMax(4, tracks + 3));
+    }
+    return kdenlive;
+}
+} // namespace
 
 TimelineModel::TimelineModel(const QUuid &uuid, std::weak_ptr<DocUndoStack> undo_stack)
     : QAbstractItemModel_shared_from_this()
@@ -386,7 +401,12 @@ double TimelineModel::getClipSpeed(int clipId) const
 int TimelineModel::getClipSplitPartner(int clipId) const
 {
     READ_LOCK();
-    Q_ASSERT(m_allClips.count(clipId) > 0);
+    // KoraCut : appelable depuis QML, donc parfois avec l'identifiant d'un clip qui vient d'être
+    // supprimé (le délégué QML survit un instant au modèle). On répond -1 au lieu de laisser
+    // l'assertion passer et le conteneur lever une exception.
+    if (m_allClips.count(clipId) == 0) {
+        return -1;
+    }
     return m_groups->getSplitPartner(clipId);
 }
 
@@ -5671,8 +5691,7 @@ void TimelineModel::registerTrack(std::shared_ptr<TrackModel> track, int pos, bo
     Q_ASSERT(m_iteratorTable.count(id) == 0); // check that id is not used (shouldn't happen)
     m_iteratorTable[id] = it;
     endInsertRows();
-    int cache = int(QThread::idealThreadCount()) + int(m_allTracks.size() + 1) * 2;
-    mlt_service_cache_set_size(nullptr, "producer_avformat", qMax(4, cache));
+    mlt_service_cache_set_size(nullptr, "producer_avformat", koraCutProducerCache(int(m_allTracks.size())));
 }
 
 void TimelineModel::registerClip(const std::shared_ptr<ClipModel> &clip, bool registerProducer)
@@ -5712,8 +5731,7 @@ Fun TimelineModel::deregisterTrack_lambda(int id)
         if (!m_closing) {
             // Finish operation
             endRemoveRows();
-            int cache = int(QThread::idealThreadCount()) + int(m_allTracks.size() + 1) * 2;
-            mlt_service_cache_set_size(nullptr, "producer_avformat", qMax(4, cache));
+            mlt_service_cache_set_size(nullptr, "producer_avformat", koraCutProducerCache(int(m_allTracks.size())));
         }
         return true;
     };
@@ -6934,6 +6952,8 @@ std::shared_ptr<Mlt::Producer> TimelineModel::producer()
 
 const QString TimelineModel::sceneList(const QString &root, const QString &fullPath, const QString &filterData)
 {
+    // KoraCut (chantier 10) : un effet lourd mis en pause pendant la lecture est remis le temps de l'écriture.
+    KoraCutPerformance::HeavyEffects::SaveGuard koraCutHeavyGuard;
     QWriteLocker lock(&pCore->xmlMutex);
     LocaleHandling::resetLocale();
     QString playlist;

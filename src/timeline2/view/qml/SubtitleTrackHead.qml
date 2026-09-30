@@ -49,6 +49,9 @@ Rectangle {
         width: trackHeader.collapsedHeight
         height: trackHeader.collapsedHeight
         icon.name: trackHeader.collapsed ? "go-next" : "go-down"
+        // KoraCut : taille de la charte, sinon le style prend PM_SmallIconSize et les icônes grossissent
+        icon.width: 14
+        icon.height: 14
         onClicked: {
             if (subtitleTrack.height > trackHeader.collapsedHeight) {
                 subtitleTrack.height = trackHeader.collapsedHeight
@@ -64,10 +67,18 @@ Rectangle {
         onSubIndexChanged: {
             subLabel.currentIndex = subIndex
         }
-        anchors.right: parent.right
-        anchors.top: expandSubButton.bottom
+        // KoraCut, 25 septembre 2026 : le nom de la piste sur la première ligne, comme les autres
+        // pistes. Il était sur la deuxième, et seulement piste dépliée : repliée, la piste de
+        // sous-titres n'avait aucun nom, dépliée elle avait une ligne de boutons sans nom.
+        anchors.right: subButtonsRow.left
+        anchors.rightMargin: 4
+        anchors.top: parent.top
+        height: trackHeader.collapsedHeight
         anchors.left: subtitleLayerIndicator.right
-        visible: (subtitleTrack.visible && subtitleTrack.height !== trackHeader.collapsedHeight)
+        // Même cran que le nom des autres pistes, et moins de marge : « Sous-titres » tient.
+        font: K.UiUtils.smallestReadableFont
+        leftPadding: 4
+        visible: subtitleTrack.visible
         flat: true
         onActivated: index => {
             trackHeader.timeline.subtitlesMenuActivatedAsync(index)
@@ -84,6 +95,9 @@ Rectangle {
             visible: subtitlesWarning
             focusPolicy: Qt.NoFocus
             icon.name: "data-warning"
+            // KoraCut : taille de la charte, sinon le style prend PM_SmallIconSize et les icônes grossissent
+            icon.width: 14
+            icon.height: 14
             width: trackHeader.collapsedHeight
             height: trackHeader.collapsedHeight
             onClicked: trackHeader.timeline.subtitlesWarningDetails()
@@ -104,8 +118,14 @@ Rectangle {
         }
         ToolButton {
             id: analyseButton
+            // KoraCut, 25 septembre 2026 : en-tête étroit, le nom de la piste passe avant ce
+            // raccourci (la reconnaissance vocale reste dans le menu Séquence).
+            visible: trackHeader.width >= 9 * trackHeader.collapsedHeight
             focusPolicy: Qt.NoFocus
             icon.name: "text-speak"
+            // KoraCut : taille de la charte, sinon le style prend PM_SmallIconSize et les icônes grossissent
+            icon.width: 14
+            icon.height: 14
             width: trackHeader.collapsedHeight
             height: trackHeader.collapsedHeight
             onClicked: K.Core.triggerAction('audio_recognition')
@@ -118,6 +138,9 @@ Rectangle {
             id: muteButton
             focusPolicy: Qt.NoFocus
             icon.name: trackHeader.isDisabled ? "view-hidden" : "view-visible"
+            // KoraCut : taille de la charte, sinon le style prend PM_SmallIconSize et les icônes grossissent
+            icon.width: 14
+            icon.height: 14
             width: trackHeader.collapsedHeight
             height: trackHeader.collapsedHeight
             onClicked: K.Core.triggerAction('disable_subtitle')
@@ -133,6 +156,9 @@ Rectangle {
             height: trackHeader.collapsedHeight
             focusPolicy: Qt.NoFocus
             icon.name: trackHeader.isLocked ? "lock" : "unlock"
+            // KoraCut : taille de la charte, sinon le style prend PM_SmallIconSize et les icônes grossissent
+            icon.width: 14
+            icon.height: 14
             onClicked: K.Core.triggerAction('lock_subtitle')
             ToolTip.visible: hovered
             ToolTip.delay: 1500

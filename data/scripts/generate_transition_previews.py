@@ -4,7 +4,7 @@
 SPDX-FileCopyrightText: 2025 KDE Community
 SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 
-Script to generate animated GIF previews for Kdenlive transitions.
+Script to generate animated GIF previews for KoraCut transitions.
 This script queries available MLT transitions and creates preview GIFs
 showing the transition effect between two colored clips.
 """
@@ -274,7 +274,7 @@ class TransitionPreviewGenerator:
         logger.info("Preview generation completed!")
 
 def main():
-    parser = argparse.ArgumentParser(description='Generate transition previews for Kdenlive')
+    parser = argparse.ArgumentParser(description='Generate transition previews for KoraCut')
     
     parser.add_argument(
         '--output-dir',

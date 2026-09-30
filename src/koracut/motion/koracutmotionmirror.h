@@ -1,0 +1,255 @@
+/*
+SPDX-FileCopyrightText: 2026 KoraCut contributors / PIXEWORK
+SPDX-License-Identifier: GPL-3.0-or-later
+*/
+
+#pragma once
+
+#include "koracutmotionsync.h"
+
+#include <QList>
+#include <QMap>
+#include <QObject>
+#include <QSet>
+#include <QString>
+#include <QStringList>
+#include <functional>
+#include <memory>
+
+class KdenliveDoc;
+class KoraCutMotionRenderer;
+class QTimer;
+class TimelineItemModel;
+
+/** @brief Le miroir entre les compositions HyperFrames d'un projet et les clips de sa timeline.
+ *
+ * Document 19, § 2 : une composition Motion existe trois fois (le HTML, les clips, l'image rendue) et
+ * un geste sur l'une se propage aux deux autres.
+ * - HTML → timeline : quand l'index.html change (agent, Studio, panneau Code), on compare l'ancienne
+ *   et la nouvelle liste d'éléments par id : ajout, retrait, retime des clips, et un nouveau rendu
+ *   seulement pour ce dont l'empreinte a changé. L'ancien rendu reste affiché jusqu'au nouveau.
+ * - timeline → HTML : quand un clip Motion bouge ou se rogne, on réécrit `data-start`,
+ *   `data-duration` (et `data-media-start` pour un son) dans le fichier, sans nouveau rendu.
+ * Chaque geste est une seule étape d'annulation. Les écritures de KoraCut ne repassent pas par la
+ * surveillance du fichier (le synchroniseur retient ce qu'il vient d'écrire).
+ *
+ * Les pistes Motion sont des pistes ordinaires marquées `kdenlive:koracut_motion=<nom>` (et
+ * `kdenlive:koracut_motion_track=<data-track-index>`), les clips des clips ordinaires dont le clip du
+ * chutier porte `kdenlive:koracut_motion_project`, `_element`, `_hash` et `_in` (propriétés reprises au
+ * rechargement du média, liste de ClipController::getPassPropertiesList).
+ */
+class KoraCutMotionMirror : public QObject
+{
+    Q_OBJECT
+public:
+    explicit KoraCutMotionMirror(QObject *parent = nullptr);
+    ~KoraCutMotionMirror() override;
+
+    /** Ce que le panneau montre d'un élément. */
+    struct ElementState
+    {
+        QString id;
+        QString kind;
+        QString name;
+        double start = 0.;
+        double duration = 0.;
+        int trackIndex = 0;
+        QString hash;
+        int clipId = -1;
+        QString binId;
+        QString renderPath;
+        bool pending = false;
+        bool failed = false;
+        QString text;
+        QString src;
+    };
+    struct ProjectState
+    {
+        QString name;
+        QString dir;
+        QString indexPath;
+        int elements = 0;
+        int rendered = 0;
+        int pending = 0;
+        int failed = 0;
+        QStringList errors;
+        // Lot 5 : une composition d'un seul élément (data-koracut-element) et son clip.
+        QString element;   ///< titre, bandeau, compteur, logo, legende, transition… vide pour une composition ordinaire
+        QString style;
+        QString display;   ///< le nom montré : « Titre · Big Buck Bunny », ou le nom du projet
+        int clipId = -1;   ///< le clip de l'élément (composition d'un seul élément), -1 s'il n'est pas posé
+        QString binId;
+        bool retired = false;
+        double cut = -1.;  ///< transition : la coupe suivie, en secondes
+    };
+
+    /** @brief Le projet KoraCut courant et sa timeline. Relit les projets Motion du dossier. */
+    void setDocument(KdenliveDoc *doc, const std::shared_ptr<TimelineItemModel> &timeline);
+    /** @brief La séquence active a changé : le miroir la suit. Chaque composition vit dans une séquence
+     * (data-koracut-sequence ; sans : la séquence principale du projet) ; seules celles de la séquence active
+     * sont posées et réconciliées (montage Tek Tech, 24 septembre 2026 : deux séquences, 16:9 et 9:16). */
+    void setTimeline(const std::shared_ptr<TimelineItemModel> &timeline);
+    void clear();
+    /** @brief Relit le dossier motion/ du projet : nouvelles compositions enregistrées, disparues retirées.
+     * Le dossier dépend de l'emplacement du fichier projet, qui peut changer après l'ouverture. */
+    void rescan();
+    KdenliveDoc *document() const { return m_doc; }
+    QString motionRoot() const;
+
+    QStringList projects() const;
+    ProjectState projectState(const QString &name) const;
+    QList<ElementState> elements(const QString &name) const;
+    KoraCutMotionSync *sync(const QString &name) const;
+    KoraCutMotionRenderer *renderer() const { return m_renderer; }
+
+    /** @brief Crée un projet depuis le gabarit, aux dimensions et i/s du projet KoraCut (ou celles données,
+     * quand elles sont > 0), avec @p html à la place du gabarit s'il n'est pas vide. @return son nom. */
+    QString createProject(const QString &name, QString *error = nullptr, int width = 0, int height = 0, double fps = 0., const QString &html = QString());
+    /** @brief Importe un dossier ou un .html. @return le nom du projet Motion. */
+    QString importProject(const QString &source, const QString &name = QString(), QString *error = nullptr);
+    /** @brief Relance les rendus manquants (ou tous avec @p force) d'un projet, ou de tous. */
+    void renderAll(const QString &name = QString(), bool force = false);
+    /** @brief Relance le rendu de ces éléments seulement (ou de tous ceux du projet si @p ids est vide).
+     * @return le nombre de rendus demandés (ceux déjà en cache comptent, ils reviennent tout de suite). */
+    int renderElements(const QString &name, const QStringList &ids, bool force = false);
+
+    /** @brief Change le texte d'un bloc : écrit le fichier, relance le rendu de cet élément seul. Une étape d'annulation. */
+    bool setElementText(const QString &project, const QString &id, const QString &text);
+    /** @brief Change un attribut d'un élément (le fichier d'un média, par exemple). Une étape d'annulation. */
+    bool setElementAttribute(const QString &project, const QString &id, const QString &attribute, const QString &value);
+    /** @brief Déplace l'élément à cette seconde : c'est le clip de la timeline qui bouge, le fichier suit. */
+    bool moveElement(const QString &project, const QString &id, double seconds);
+
+    // Les outils d'agents (lot 3 du document 19) : un appel = une étape d'annulation, qui remet aussi le fichier.
+    /** @brief Remplace tout l'index.html : clips ajoutés, retirés, retimés, rendus relancés. Une étape. */
+    bool replaceHtml(const QString &project, const QString &html, const QString &undoText = QString());
+    /** @brief Change des attributs et, si @p text n'est pas nul, le texte d'un élément. Une étape. */
+    bool setElement(const QString &project, const QString &id, const QMap<QString, QString> &attributes, const QString *text = nullptr,
+                    const QString &undoText = QString());
+    /** @brief Pose (ou repose) les clips du projet Motion : ceux dont le rendu est prêt et qui manquent dans
+     * la timeline. @p trackId >= 0 : cette piste vidéo devient la première piste Motion du projet (si elle
+     * n'en est pas déjà une). @p atSeconds >= 0 : le premier élément (début absolu) est amené à cette
+     * seconde, les autres suivent d'autant. Une étape. @return vrai si quelque chose a bougé. */
+    bool place(const QString &project, int trackId = -1, double atSeconds = -1., QString *error = nullptr);
+
+    // Lot 5 du document 19 : un élément = une composition, posée comme un seul clip.
+    /** @brief Où poser une composition d'un seul élément qui vient d'être créée : la piste voulue (-1 : la
+     * piste partagée « Animations » ou « Transitions ») et, pour une transition, les deux plans de la coupe. */
+    void setElementPlacement(const QString &project, int trackId, int clipBefore = -1, int clipAfter = -1);
+    /** @brief Attend (la boucle d'événements tourne) que l'élément ait son clip. @return son id, -1 sinon. */
+    int waitForClip(const QString &project, const QString &elementId, int ms);
+    /** @brief La piste partagée où poser un élément qui doit s'accorder à une transition : celle des
+     * animations, sous les transitions (-1 si elle n'existe pas encore). */
+    int animationsTrack() const;
+    /** @brief La transition sous laquelle est posé cet élément seul (son clip croise la sienne, sur une piste
+     * plus basse) : quand la coupe bouge, il la suit. Vide sinon. */
+    QString followedTransition(const QString &name) const;
+    /** @brief Dit au panneau et aux essais qu'un élément vient d'être ouvert (double-clic, motion_ouvrir). */
+    void announceOpened(const QString &project, const QString &elementId);
+    QString lastOpenedProject() const { return m_lastOpened; }
+    /** @brief La composition que le panneau Motion montre (il la déclare à chaque changement). */
+    void setPanelProject(const QString &project) { m_panelProject = project; }
+    QString panelProject() const { return m_panelProject; }
+
+    /** @brief Vrai si ce clip de timeline vient d'un projet Motion. */
+    bool isMotionClip(int clipId) const;
+    struct ClipInfo
+    {
+        QString project;
+        QString elementId;
+    };
+    ClipInfo clipInfo(int clipId) const;
+    /** @brief Le projet Motion qui contient cet élément (le premier trouvé), vide si aucun. */
+    QString projectOfElement(const QString &elementId) const;
+    /** @brief Le clip de timeline d'un élément, -1 s'il n'y en a pas. */
+    int clipFor(const QString &project, const QString &elementId) const;
+
+    /** @brief Pour les essais : une ligne KORACUT-MOTION par élément. */
+    QString stateDump() const;
+
+Q_SIGNALS:
+    void projectsChanged();
+    void elementsChanged(const QString &project);
+    void message(const QString &text);
+    /** @brief Un élément a été ouvert : le panneau montre sa composition, et elle seule. */
+    void elementOpened(const QString &project, const QString &elementId);
+
+private:
+    /** Un élément retiré du HTML parce que son clip a été supprimé : de quoi le remettre si le clip revient. */
+    struct RemovedElement
+    {
+        QString fragment;
+        int offset = 0;
+    };
+    struct Entry
+    {
+        QString name;
+        QString dir;
+        QString indexPath;
+        KoraCutMotionSync *sync = nullptr;
+        QSet<QString> failed;
+        QMap<QString, int> progress;
+        QSet<QString> placed;                  ///< les éléments qui ont eu un clip dans la timeline
+        QMap<QString, RemovedElement> removed; ///< retirés du HTML après la suppression de leur clip
+        int homeTrack = -1;                    ///< composition d'un seul élément : la piste où poser son clip
+        int cutBefore = -1;                    ///< transition : le plan qui finit à la coupe
+        int cutAfter = -1;                     ///< transition : le plan qui commence à la coupe
+    };
+    using Fun = std::function<bool(void)>;
+
+    void registerProject(const QString &name, const QString &dir, const QString &indexPath);
+    /** @brief Met la timeline en accord avec le fichier. Avec @p outUndo et @p outRedo, rien n'est inscrit
+     * dans l'historique : l'appelant reçoit les fonctions et inscrit lui-même. @return vrai si un clip ou
+     * une piste a changé. */
+    bool applyFromFile(const QString &name, bool logUndo, const QString &undoText = QString(), Fun *outUndo = nullptr, Fun *outRedo = nullptr);
+    /** @brief Les clips Motion supprimés à la main : leur élément quitte le HTML ; ceux qui reviennent (Annuler)
+     * ramènent leur élément. @return les projets réécrits. */
+    QStringList reconcileRemovals(const std::shared_ptr<TimelineItemModel> &tl);
+    static int entryPoint(const KoraCutMotion::Element &element, double fps);
+    void requestRender(Entry &entry, const KoraCutMotion::Element &element);
+    void onRendered(const QString &project, const QString &elementId, const QString &hash, const QString &path);
+    void onRenderFailed(const QString &project, const QString &elementId, const QString &error);
+    void scheduleReconcile();
+    void reconcileTimeline();
+    std::shared_ptr<TimelineItemModel> timeline() const;
+    double fps() const;
+    int ensureTrack(const Entry &entry, int trackIndex, bool audio, Fun &undo, Fun &redo);
+    QString ensureFolder(Fun &undo, Fun &redo);
+    QString findBinClip(const QString &project, const QString &elementId) const;
+    /** @brief La vignette du clip du chutier au milieu du rendu (un rendu transparent est vide à sa première image). */
+    void scheduleThumbnail(const QString &binId, int attempt = 0);
+    QString renderOutput(const Entry &entry, const KoraCutMotion::Element &element) const;
+    QString envelopeFor(const Entry &entry, const KoraCutMotion::Element &element) const;
+    bool insertClip(const Entry &entry, const KoraCutMotion::Element &element, const QString &binId, int in, int length, Fun &undo, Fun &redo);
+    /** @brief La piste d'une composition d'un seul élément, libre de @p position sur @p length images : sa
+     * piste à elle si elle est libre, sinon une piste partagée « Animations » (ou « Transitions », tout en
+     * haut), créée au besoin dans undo/redo. */
+    int elementTrack(const QString &project, int position, int length, Fun &undo, Fun &redo);
+    /** @brief Les transitions suivent leur coupe : une coupe déplacée les recentre, une transition déplacée à la
+     * main s'accroche à la coupe la plus proche de son milieu (ou se détache). @return les projets réécrits. */
+    QStringList retimeTransitions(const std::shared_ptr<TimelineItemModel> &tl);
+    /** @brief Les clips des éléments seuls posés sous la transition @p transitionClip. */
+    QList<int> followersOf(const std::shared_ptr<TimelineItemModel> &tl, const QString &transition, int transitionClip) const;
+    /** @brief Une coupe (un plan qui finit où le suivant commence, sur une piste vidéo sous @p aboveTrack) à
+     * moins de @p radius images de @p center. */
+    bool findCutNear(const std::shared_ptr<TimelineItemModel> &tl, int aboveTrack, int center, int radius, int &before, int &after, int &cut) const;
+    QString trackName(const Entry &entry, int trackIndex, bool audio) const;
+    static int frames(double seconds, double fps);
+    static void merge(Fun &undo, Fun &redo, const Fun &localUndo, const Fun &localRedo);
+
+    KdenliveDoc *m_doc{nullptr};
+    std::weak_ptr<TimelineItemModel> m_timeline;
+    QMap<QString, Entry> m_entries;
+    KoraCutMotionRenderer *m_renderer;
+    QTimer *m_reconcile;
+    QTimer *m_rescan;
+    bool m_applying{false};
+    QString m_lastOpened;
+    QString m_panelProject;
+    QList<QMetaObject::Connection> m_timelineConnections;
+    QList<QMetaObject::Connection> m_modelConnections; ///< celles de la timeline suivie, refaites à chaque changement de séquence
+    QString m_sequence;     ///< uuid (sans accolades) de la séquence suivie
+    QString m_mainSequence; ///< la séquence des compositions sans data-koracut-sequence
+    void connectModel(const std::shared_ptr<TimelineItemModel> &timeline);
+    bool belongs(const QString &sequence) const;
+};

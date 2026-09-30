@@ -4,6 +4,7 @@
 */
 
 #include "timelinecontroller.h"
+#include "koracut/motion/koracutmotionmirror.h"
 #include "assets/keyframes/model/keyframemodellist.hpp"
 #include "audiomixer/mixermanager.hpp"
 #include "bin/bin.h"
@@ -21,8 +22,10 @@
 #include "dialogs/timeremap.h"
 #include "doc/kdenlivedoc.h"
 #include "effects/effectsrepository.hpp"
+#include "effects/effectstack/model/effectitemmodel.hpp"
 #include "effects/effectstack/model/effectstackmodel.hpp"
 #include "glaxnimatelauncher.h"
+#include "koracut/koracutrender.h"
 #include "jobs/cachetask.h"
 #include "kdenlivesettings.h"
 #include "lib/audio/audioEnvelope.h"
@@ -44,6 +47,7 @@
 #include "transitions/transitionsrepository.hpp"
 #include "utils/thumbnailcache.hpp"
 
+#include "koracut/koracutthemes.h"
 #include <KColorScheme>
 #include <KGuiItem>
 #include <KMessageBox>
@@ -83,6 +87,10 @@ TimelineController::TimelineController(QObject *parent)
         Q_EMIT autotrackHeightChanged();
     });
     connect(KdenliveSettings::self(), &KdenliveSettings::waveformScalerChanged, this, &TimelineController::audioZoomTextChanged);
+    // KoraCut : rendu automatique, une seconde après le dernier changement.
+    m_autoRenderTimer.setSingleShot(true);
+    m_autoRenderTimer.setInterval(1000);
+    connect(&m_autoRenderTimer, &QTimer::timeout, this, &TimelineController::autoRenderTick);
 }
 
 TimelineController::~TimelineController() {}
@@ -99,6 +107,7 @@ void TimelineController::prepareClose()
     disconnect(m_model.get(), &TimelineModel::selectedMixChanged, this, &TimelineController::selectedMixChanged);
     m_ready = false;
     m_root = nullptr;
+    m_autoRenderTimer.stop();
     //  Delete timeline preview before resetting model so that removing clips from timeline doesn't invalidate
     m_model->resetPreviewManager();
     m_model.reset();
@@ -131,6 +140,8 @@ void TimelineController::setModel(std::shared_ptr<TimelineItemModel> model)
         connectPreviewManager();
     }
     connect(m_model.get(), &TimelineModel::connectPreviewManager, this, &TimelineController::connectPreviewManager);
+    // KoraCut : chaque changement de la séquence relance l'attente du rendu automatique.
+    connect(m_model.get(), &TimelineModel::invalidateZone, this, [this]() { scheduleAutoRender(); });
     connect(m_model.get(), &TimelineModel::selectionModeChanged, this, &TimelineController::colorsChanged);
     connect(this, &TimelineController::selectionChanged, this, &TimelineController::updateClipActions);
     connect(this, &TimelineController::selectionChanged, this, &TimelineController::updateTrimmingMode);
@@ -262,6 +273,8 @@ void TimelineController::setRoot(QQuickItem *root)
 {
     m_root = root;
     m_ready = true;
+    // KoraCut : à l'ouverture, les zones lourdes d'un projet se remettent en file si le rendu automatique est actif.
+    QTimer::singleShot(2500, this, [this]() { scheduleAutoRender(); });
 }
 
 Mlt::Tractor *TimelineController::tractor()
@@ -520,6 +533,16 @@ int TimelineController::insertClip(int tid, int position, const QString &data_st
     }
     if (!m_model->requestClipInsertion(data_str, tid, position, id, logUndo, refreshView, useTargets)) {
         id = -1;
+    }
+    return id;
+}
+
+int TimelineController::insertClipOnNewTrack(int position, const QString &data)
+{
+    int newTrack = -1;
+    const int id = TimelineFunctions::requestClipOnNewTrack(m_model, data, position, newTrack);
+    if (newTrack > -1) {
+        setActiveTrack(newTrack);
     }
     return id;
 }
@@ -1335,7 +1358,11 @@ void TimelineController::setInPoint(bool ripple)
             }
         }
         if (!selectionFound) {
-            pCore->displayMessage(i18n("No clip selected"), ErrorMessage, 500);
+            // KoraCut, 22 septembre 2026 : dire quoi faire, pas seulement que rien n'a eu lieu.
+            // « No clip selected » passait en une demi-seconde et laissait croire à une panne.
+            pCore->displayMessage(i18nc("@info:status Q, W, ⇧Q ou ⇧W sans clip visé",
+                                        "Nothing to trim: select a clip, or click its track, then put the playhead inside the clip."),
+                                  ErrorMessage, 4000);
         }
     }
 }
@@ -1415,7 +1442,11 @@ void TimelineController::setOutPoint(bool ripple)
             }
         }
         if (!selectionFound) {
-            pCore->displayMessage(i18n("No clip selected"), ErrorMessage, 500);
+            // KoraCut, 22 septembre 2026 : dire quoi faire, pas seulement que rien n'a eu lieu.
+            // « No clip selected » passait en une demi-seconde et laissait croire à une panne.
+            pCore->displayMessage(i18nc("@info:status Q, W, ⇧Q ou ⇧W sans clip visé",
+                                        "Nothing to trim: select a clip, or click its track, then put the playhead inside the clip."),
+                                  ErrorMessage, 4000);
         }
     }
 }
@@ -1921,7 +1952,7 @@ void TimelineController::adjustAllTrackHeight(int trackId, int height)
     Q_EMIT m_model->dataChanged(modelStart, modelEnd, {TimelineModel::HeightRole});
 }
 
-void TimelineController::collapseAllTracks()
+void TimelineController::collapseAllTracks(bool allTypes)
 {
     int tid = m_activeTrack;
     if (!m_model->isTrack(tid)) {
@@ -1933,21 +1964,45 @@ void TimelineController::collapseAllTracks()
             return;
         }
     }
-    bool collapsed = m_model->getTrackById_const(tid)->getProperty("kdenlive:collapsed").toInt() > 0;
+    bool collapsed;
+    if (allTypes) {
+        // KoraCut : la bascule se décide sur l'ensemble. S'il reste une piste dépliée, on plie
+        // tout ; c'est seulement quand tout est plié qu'on déplie tout. Sinon, selon la piste
+        // active, le même clic pliait les unes et dépliait les autres.
+        collapsed = true;
+        for (auto it = m_model->m_allTracks.cbegin(); it != m_model->m_allTracks.cend(); ++it) {
+            if ((*it)->getProperty("kdenlive:collapsed").toInt() <= 0) {
+                collapsed = false;
+                break;
+            }
+        }
+    } else {
+        collapsed = m_model->getTrackById_const(tid)->getProperty("kdenlive:collapsed").toInt() > 0;
+    }
     int collapsedHeight = m_root->property("collapsedHeight").toInt();
-    collapseAllTrackHeight(tid, !collapsed, collapsedHeight);
+    collapseAllTrackHeight(tid, !collapsed, collapsedHeight, allTypes);
 }
 
-void TimelineController::collapseAllTrackHeight(int trackId, bool collapse, int collapsedHeight)
+void TimelineController::collapseAllTrackHeight(int trackId, bool collapse, int collapsedHeight, bool allTypes)
 {
+    // KoraCut, 22 septembre 2026 : `allTypes` à vrai plie ou déplie **toutes** les pistes.
+    // Sans lui, cette fonction ne touche que les pistes du même type que la piste passée, ce
+    // qui est le comportement hérité (« plier toutes les pistes de ce type »). Notre bouton de
+    // la barre de timeline, lui, promet « tout » : avec une piste audio active, les dix pistes
+    // vidéo ne bougeaient pas. Voir « 13 - Deuxième passe montage », § 10.2.
     bool isAudio = m_model->getTrackById_const(trackId)->isAudioTrack();
     auto it = m_model->m_allTracks.cbegin();
     while (it != m_model->m_allTracks.cend()) {
         int target_track = (*it)->getId();
-        if (m_model->getTrackById_const(target_track)->isAudioTrack() == isAudio) {
+        if (allTypes || m_model->getTrackById_const(target_track)->isAudioTrack() == isAudio) {
             if (collapse) {
                 m_model->setTrackProperty(target_track, "kdenlive:collapsed", QString::number(collapsedHeight));
             } else {
+                // KoraCut : on redonne aussi une hauteur à la piste avant de la déplier, comme le
+                // fait le chevron d'une tête de piste. Effacer seulement `kdenlive:collapsed`
+                // laissait certaines pistes à leur hauteur repliée, qui n'a jamais été remise.
+                const int hauteur = m_model->getTrackProperty(target_track, QStringLiteral("kdenlive:trackheight")).toInt();
+                m_model->setTrackProperty(target_track, "kdenlive:trackheight", QString::number(qMax(int(collapsedHeight * 1.5), hauteur)));
                 m_model->setTrackProperty(target_track, "kdenlive:collapsed", QStringLiteral("0"));
             }
         }
@@ -5302,7 +5357,8 @@ bool TimelineController::hasKeyframeAt(int cid, int frame)
 QColor TimelineController::videoColor() const
 {
     if (KdenliveSettings::videoColor().alpha() > 0) {
-        return KdenliveSettings::videoColor();
+        // KoraCut : un thème qui choisit ses couleurs de clips (Matrix, Punk…) passe devant.
+        return KoraCutThemes::trackColor(QStringLiteral("piste_video"), KdenliveSettings::videoColor());
     }
     KColorScheme scheme(QApplication::palette().currentColorGroup());
     return scheme.foreground(KColorScheme::LinkText).color();
@@ -5310,25 +5366,71 @@ QColor TimelineController::videoColor() const
 
 QColor TimelineController::targetColor() const
 {
-    KColorScheme scheme(QApplication::palette().currentColorGroup());
-    QColor base = scheme.foreground(KColorScheme::PositiveText).color();
-    QColor high = QApplication::palette().highlightedText().color();
-    double factor = 0.3;
-    QColor res = QColor(qBound(0, base.red() + int(factor * (high.red() - 128)), 255), qBound(0, base.green() + int(factor * (high.green() - 128)), 255),
-                        qBound(0, base.blue() + int(factor * (high.blue() - 128)), 255), 255);
-    return res;
+    // KoraCut : la piste cible porte l'accent, plus le vert dérivé de PositiveText.
+    // Mesuré avant la refonte : ce vert (#70FFA6) était à 11,0:1 sur la surface, contre 4,67:1
+    // pour l'accent. L'élément le moins important de la tête de piste écrasait la tête de lecture.
+    return QApplication::palette().highlight().color();
 }
 
 QColor TimelineController::targetTextColor() const
 {
+    // Texte principal : le tag se lit sur la surface de la tête, plus sur un aplat coloré.
     KColorScheme scheme(QApplication::palette().currentColorGroup());
-    return scheme.background(KColorScheme::PositiveBackground).color();
+    return scheme.foreground(KColorScheme::NormalText).color();
+}
+
+QColor TimelineController::audioColorForTrack(int trackId, const QColor &voiceColor) const
+{
+    if (!m_model || !m_model->isTrack(trackId)) {
+        return voiceColor;
+    }
+    QString role = m_model->getTrackProperty(trackId, QStringLiteral("kdenlive:koracut_role")).toString();
+    if (role.isEmpty()) {
+        // Sans rôle posé, le nom de la piste seulement : pas de « A2 = musique » deviné, qui
+        // colorerait en orange une deuxième piste de voix.
+        const QString name = m_model->getTrackProperty(trackId, QStringLiteral("kdenlive:track_name")).toString().toLower();
+        for (const char *k : {"musique", "music", "zik", "beat", "bgm"}) {
+            if (name.contains(QLatin1String(k))) {
+                role = QStringLiteral("music");
+                break;
+            }
+        }
+    }
+    return role == QLatin1String("music") ? KoraCutThemes::trackColor(QStringLiteral("piste_musique"), QColor(0xE0, 0x7B, 0x39)) : voiceColor;
+}
+
+QColor TimelineController::videoColorForTrack(int trackId, const QColor &videoColor) const
+{
+    if (!m_model || !m_model->isTrack(trackId)) {
+        return videoColor;
+    }
+    if (!m_model->getTrackProperty(trackId, QStringLiteral("kdenlive:koracut_motion")).toString().isEmpty()) {
+        return KoraCutThemes::trackColor(QStringLiteral("piste_titre"), QColor(0x7C, 0x5C, 0xFF));
+    }
+    return videoColor;
+}
+
+bool TimelineController::isMotionClip(int clipId) const
+{
+    return pCore->window() && pCore->window()->koraCutMotionMirror() && pCore->window()->koraCutMotionMirror()->isMotionClip(clipId);
+}
+
+void TimelineController::editMotionClip(int clipId)
+{
+    if (pCore->window()) {
+        pCore->window()->koraCutEditMotionClip(clipId);
+    }
+}
+
+void TimelineController::refreshTrackColors()
+{
+    Q_EMIT colorsChanged();
 }
 
 QColor TimelineController::audioColor() const
 {
     if (KdenliveSettings::audioColor().alpha() > 0) {
-        return KdenliveSettings::audioColor();
+        return KoraCutThemes::trackColor(QStringLiteral("piste_voix"), KdenliveSettings::audioColor());
     }
     return KdenliveSettings::thumbColor1().darker(150);
 }
@@ -5336,7 +5438,7 @@ QColor TimelineController::audioColor() const
 QColor TimelineController::titleColor() const
 {
     if (KdenliveSettings::titleColor().alpha() > 0) {
-        return KdenliveSettings::titleColor();
+        return KoraCutThemes::trackColor(QStringLiteral("piste_titre"), KdenliveSettings::titleColor());
     }
     KColorScheme scheme(QApplication::palette().currentColorGroup());
     QColor base = scheme.foreground(KColorScheme::LinkText).color();
@@ -5449,13 +5551,24 @@ QColor TimelineController::getTimelineClipColor(ClipType::ProducerType type) con
     return getDefaultClipColor(type);
 }
 
+QColor TimelineController::missingColor() const
+{
+    // KoraCut : #FF7262, le rouge de la charte, et non le rouge pur.
+    KColorScheme scheme(QApplication::palette().currentColorGroup());
+    return scheme.foreground(KColorScheme::NegativeText).color();
+}
+
 QColor TimelineController::selectionColor() const
 {
-    KColorScheme scheme(QApplication::palette().currentColorGroup(), KColorScheme::Complementary);
+    // KoraCut, 21 septembre 2026 : la sélection porte l'accent. Elle était en rouge vif, hérité
+    // de `NeutralText` du schéma complémentaire : une couleur d'alerte pour dire « ce clip est
+    // choisi ». Le rouge ne sert plus qu'à ce qui ne va pas.
     if (m_model && m_model->singleSelectionMode()) {
-        return Qt::red;
+        // Le mode « sélection unique » reste distinct, mais au rouge de la charte, pas au rouge pur.
+        KColorScheme scheme(QApplication::palette().currentColorGroup(), KColorScheme::Complementary);
+        return scheme.foreground(KColorScheme::NegativeText).color();
     }
-    return scheme.foreground(KColorScheme::NeutralText).color();
+    return QApplication::palette().highlight().color();
 }
 
 void TimelineController::switchRecording(int trackId, bool record)
@@ -5499,6 +5612,47 @@ void TimelineController::switchRecording(int trackId, bool record)
         Q_EMIT stopAudioRecord();
         pCore->monitorManager()->slotPause();
     }
+}
+
+int TimelineController::koraCutVoiceOverTrack()
+{
+    if (!m_model) {
+        return -1;
+    }
+    const int position = pCore->getMonitorPosition();
+    const int assez = qMax(8, int(10 * pCore->getCurrentFps()));
+    auto libre = [this, position, assez](int tid) {
+        auto track = m_model->getTrackById_const(tid);
+        if (!track || track->isLocked() || !track->isBlankAt(position)) {
+            return false;
+        }
+        const int fin = track->getBlankEnd(position);
+        return fin == INT_MAX || fin - position >= assez;
+    };
+    const QList<int> audio = m_model->getTracksIds(true);
+    int choisie = -1;
+    for (int tid : audio) {
+        const QString nom = m_model->getTrackProperty(tid, QStringLiteral("kdenlive:track_name")).toString();
+        if (nom.contains(QLatin1String("voix"), Qt::CaseInsensitive) || nom.contains(QLatin1String("voice"), Qt::CaseInsensitive)) {
+            if (libre(tid)) {
+                return tid;
+            }
+        }
+    }
+    for (int tid : audio) {
+        if (libre(tid)) {
+            choisie = tid;
+            break;
+        }
+    }
+    if (choisie > -1) {
+        return choisie;
+    }
+    int nouvelle = -1;
+    if (m_model->requestTrackInsertion(0, nouvelle, i18nc("@item track name", "Voice-over"), true)) {
+        return nouvelle;
+    }
+    return -1;
 }
 
 void TimelineController::urlDropped(QStringList droppedFile, int frame, int tid)
@@ -6439,4 +6593,220 @@ bool TimelineController::createRangeMarkerFromZone(const QString &comment, int t
     }
 
     return success;
+}
+
+// ---- KoraCut, rendu d'aperçu (24 septembre 2026, chantier 10) ---------------------------------
+
+namespace {
+// Un effet vidéo actif, qui coûte à la lecture. Les fondus au noir et les effets intégrés
+// désactivés ne comptent pas, ni l'audio.
+bool hasVideoEffect(const std::shared_ptr<EffectStackModel> &stack)
+{
+    if (!stack || !stack->isStackEnabled()) {
+        return false;
+    }
+    for (int row = 0; row < stack->rowCount(); ++row) {
+        auto effect = std::dynamic_pointer_cast<EffectItemModel>(stack->getEffectStackRow(row));
+        if (!effect || effect->isAudio() || !effect->isAssetEnabled() || effect->isHiddenBuiltIn()) {
+            continue;
+        }
+        const QString id = effect->getAssetId();
+        if (id == QLatin1String("fadein") || id == QLatin1String("fadeout") || id == QLatin1String("fade_from_black") ||
+            id == QLatin1String("fade_to_black")) {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+} // namespace
+
+QList<int> TimelineController::heavyPreviewChunks() const
+{
+    QList<int> result;
+    if (!m_model) {
+        return result;
+    }
+    const int chunk = std::max(1, KdenliveSettings::timelinechunks());
+    const int duration = m_model->duration();
+    QSet<int> chunks;
+    auto addRange = [&](int start, int end) {
+        start = std::max(0, start);
+        end = std::min(end, duration);
+        for (int c = start - start % chunk; c < end; c += chunk) {
+            chunks.insert(c);
+        }
+    };
+    if (hasVideoEffect(m_model->m_masterStack)) {
+        // Un effet sur toute la séquence : tout est lourd.
+        addRange(0, duration);
+    } else {
+        // Les clips vidéo visibles, pour repérer les superpositions (incrustation, Motion).
+        std::vector<std::pair<int, int>> mediaSpans;
+        std::vector<std::pair<int, int>> baseSpans;
+        for (const auto &track : m_model->m_allTracks) {
+            if (track->isAudioTrack() || track->isHidden()) {
+                continue;
+            }
+            const bool trackEffect = hasVideoEffect(track->m_effectStack);
+            for (const auto &[cid, clip] : track->m_allClips) {
+                const int pos = clip->getPosition();
+                const int end = pos + clip->getPlaytime();
+                if (clip->clipState() == PlaylistState::AudioOnly || clip->clipState() == PlaylistState::Disabled) {
+                    continue;
+                }
+                const ClipType::ProducerType type = clip->clipType();
+                if (trackEffect || hasVideoEffect(m_model->getClipEffectStackModel(cid)) || type == ClipType::Timeline || type == ClipType::Playlist) {
+                    addRange(pos, end);
+                }
+                // Fondu enchaîné sur la même piste : la zone du mélange.
+                const int mix = m_model->getMixDuration(cid);
+                if (mix > 0) {
+                    addRange(pos - mix, pos + mix);
+                }
+                // Un titre ou une couleur se compose vite ; une vidéo ou une image par-dessus une autre, non.
+                if (type != ClipType::Text && type != ClipType::TextTemplate && type != ClipType::Color) {
+                    mediaSpans.emplace_back(pos, end);
+                }
+                baseSpans.emplace_back(pos, end);
+            }
+            for (const auto &[compoId, compo] : track->m_allCompositions) {
+                addRange(compo->getPosition(), compo->getPosition() + compo->getPlaytime());
+            }
+        }
+        // Superpositions : un média qui en recouvre un autre (deux clips visibles au même instant).
+        std::sort(baseSpans.begin(), baseSpans.end());
+        for (const auto &media : mediaSpans) {
+            int covered = 0;
+            for (const auto &base : baseSpans) {
+                if (base.first >= media.second) {
+                    break;
+                }
+                const int from = std::max(base.first, media.first);
+                const int to = std::min(base.second, media.second);
+                if (to > from) {
+                    ++covered;
+                    if (covered > 1) {
+                        break;
+                    }
+                }
+            }
+            if (covered > 1) {
+                // Le média lui-même compte une fois : au-delà, quelque chose est dessous ou dessus.
+                for (const auto &base : baseSpans) {
+                    if (base == media) {
+                        continue;
+                    }
+                    const int from = std::max(base.first, media.first);
+                    const int to = std::min(base.second, media.second);
+                    if (to > from) {
+                        addRange(from, to);
+                    }
+                }
+            }
+        }
+    }
+    result = QList<int>(chunks.cbegin(), chunks.cend());
+    std::sort(result.begin(), result.end());
+    return result;
+}
+
+void TimelineController::scheduleAutoRender()
+{
+    if (!KdenliveSettings::autopreview() || !m_ready) {
+        return;
+    }
+    m_autoRenderTimer.start();
+}
+
+void TimelineController::autoRenderTick()
+{
+    if (!KdenliveSettings::autopreview() || !m_model || !m_ready || !pCore->currentDoc()) {
+        return;
+    }
+    // Un geste en cours : on attend qu'il se termine.
+    if (QGuiApplication::mouseButtons() != Qt::NoButton) {
+        m_autoRenderTimer.start();
+        return;
+    }
+    // « Lire sans les rendus » est coché : la personne compare, on ne rend rien.
+    if (m_disablePreview && m_disablePreview->isChecked()) {
+        return;
+    }
+    const QList<int> heavy = heavyPreviewChunks();
+    if (heavy.isEmpty() && !m_model->hasTimelinePreview()) {
+        return;
+    }
+    if (!m_model->hasTimelinePreview()) {
+        initializePreview();
+    }
+    if (!m_model->hasTimelinePreview()) {
+        return;
+    }
+    if (!m_usePreview) {
+        m_model->buildPreviewTrack();
+        m_usePreview = true;
+    }
+    m_model->previewManager()->setAutoChunks(heavy);
+}
+
+bool TimelineController::renderRange(QPoint zone)
+{
+    if (!m_model || zone.y() < zone.x() || zone.x() < 0) {
+        return false;
+    }
+    if (!m_model->hasTimelinePreview()) {
+        initializePreview();
+    } else if (m_disablePreview->isChecked()) {
+        m_disablePreview->setChecked(false);
+        disablePreview(false);
+    }
+    if (!m_model->hasTimelinePreview()) {
+        return false;
+    }
+    if (!m_usePreview) {
+        m_model->buildPreviewTrack();
+        m_usePreview = true;
+    }
+    m_model->previewManager()->addPreviewRange(zone, true);
+    m_model->previewManager()->startPreviewRender();
+    return true;
+}
+
+bool TimelineController::renderMonitorZone()
+{
+    if (!m_model) {
+        return false;
+    }
+    QPoint zone = m_zone;
+    if (zone.x() < 0 || zone.y() <= zone.x()) {
+        zone = QPoint(0, std::max(0, m_model->duration() - 1));
+    }
+    return renderRange(zone);
+}
+
+QPoint TimelineController::selectionZone() const
+{
+    if (!m_model) {
+        return {-1, -1};
+    }
+    int start = -1;
+    int end = -1;
+    for (int id : m_model->getCurrentSelection()) {
+        if (!m_model->isClip(id) && !m_model->isComposition(id)) {
+            continue;
+        }
+        const int pos = m_model->getItemPosition(id);
+        const int last = pos + m_model->getItemPlaytime(id) - 1;
+        start = start < 0 ? pos : std::min(start, pos);
+        end = std::max(end, last);
+    }
+    return {start, end};
+}
+
+void TimelineController::clearRenders()
+{
+    if (m_model && m_model->hasTimelinePreview()) {
+        m_model->previewManager()->clearRenderFiles(m_model->duration());
+    }
 }

@@ -21,6 +21,27 @@ import 'TimelineLogic.js' as Logic
 
 Rectangle {
     id: clipRoot
+    // KoraCut, 25 septembre 2026 : le corps du clip est dessiné par koraBody, un pixel plus court
+    // que le clip pour laisser voir la coupe entre deux plans voisins sans trait noir. Le clip
+    // lui-même reste transparent et garde toute sa largeur pour la souris.
+    color: 'transparent'
+    // Rayon adaptatif (règle d'Adobe, « to avoid the timeline looking too bubbly ») : 4 px,
+    // 2 px sous 24 px de large, rien sous 12 px, où un clip n'est plus qu'un bloc de couleur.
+    readonly property int koraRadius: width < 12 ? 0 : (width < 24 ? 2 : 4)
+    // L'écart entre deux clips voisins. Sous 6 px, plus d'écart : une suite de clips minuscules
+    // se lit comme un bloc franc, pas comme un peigne.
+    readonly property int koraGap: width >= 6 ? 1 : 0
+    // Seuils en pixels, jamais en niveau de zoom : le nom à partir de 36 px, les vignettes à
+    // partir de 48 px. Entre les deux, le nom seul sur la couleur du clip.
+    readonly property int koraNameMinWidth: 36
+    readonly property int koraThumbMinWidth: 48
+    // Un élément Motion (rendu avec transparence) n'a pas de vignettes : ses images sont
+    // presque toutes vides ou noires. Un bloc de sa couleur avec son nom se lit mieux, comme
+    // les textes et effets de CapCut. Un rendu Motion vit dans le cache du document,
+    // <cache>/motion/<élément>/<élément>-<empreinte>.mov ; le miroir peut ne pas le connaître
+    // encore quand le clip naît, d'où le chemin regardé d'abord.
+    readonly property bool koraIsMotion: !isAudio && (/[\/\\]motion[\/\\][^\/\\]+[\/\\][^\/\\]+\.mov$/i.test(clipResource)
+                                                      || (clipId > -1 && timeline.isMotionClip(clipId)))
     SystemPalette { id: activePalette }
     FontMetrics {
         id: fontMetrics
@@ -86,7 +107,8 @@ Rectangle {
     property int draggedX: x
     property double xIntegerOffset: 0
     property bool isLocked: parentTrack && parentTrack.isLocked === true
-    property color borderColor: "#000000"
+    // KoraCut : plus de contour noir. Au repos, le bord a la couleur du corps (liseré).
+    property color borderColor: "transparent"
     property bool isComposition: false
     property int slipOffset: boundValue(outPoint - maxDuration + 1, root.trimmingOffset, inPoint)
     visible: fakeTid > -1 || (scrollView.lastVisibleFrame > clipRoot.modelStart && scrollView.firstVisibleFrame <= (clipRoot.modelStart + clipRoot.clipDuration))
@@ -272,7 +294,42 @@ Rectangle {
             }
             return '#' + color.substring(color.length - 8, color.length - 2)
         }
-        return isAudio? clipRoot.timeline.audioColor : clipRoot.timeline.videoColor
+        // KoraCut : musique en orange, voix dans la couleur audio (rôle de la piste). Passer
+        // audioColor en argument rend la liaison sensible à colorsChanged, émis quand les rôles changent.
+        // Piste Motion (document 19) : violet des titres.
+        return isAudio? clipRoot.timeline.audioColorForTrack(clipRoot.trackId, clipRoot.timeline.audioColor) : clipRoot.timeline.videoColorForTrack(clipRoot.trackId, clipRoot.timeline.videoColor)
+    }
+
+    // KoraCut : vrai quand ce clip est la moitié audio d'un média découpé en deux (groupe AVSplit).
+    // Le nom n'est alors écrit qu'une fois, sur la partie vidéo. Avant, il l'était deux fois de
+    // suite, aussi gros, ce qui doublait le bruit pour rien.
+    property bool nameHiddenForGroup: false
+    /** Le nom n'est écrit qu'une fois : sur la partie vidéo quand les deux moitiés d'un même
+     *  média sont groupées. On ne peut pas l'écrire en liaison simple : au moment où le clip
+     *  QML naît, le groupe existe déjà mais son type n'est pas encore « AVSplit », et une
+     *  liaison ne se réévalue jamais ensuite. On repasse donc une fois, juste après. Le délai
+     *  n'est armé que pour un clip audio groupé, il ne coûte rien aux autres. */
+    function koracutRefreshNameVisibility() {
+        clipRoot.nameHiddenForGroup = clipRoot.isAudio && clipRoot.grouped
+                                      && clipRoot.controller.getClipSplitPartner(clipRoot.clipId) > -1
+    }
+    Timer {
+        id: koracutNameTimer
+        interval: 80
+        repeat: false
+        onTriggered: clipRoot.koracutRefreshNameVisibility()
+    }
+    onGroupedChanged: {
+        if (clipRoot.isAudio) {
+            koracutNameTimer.restart()
+        } else {
+            clipRoot.nameHiddenForGroup = false
+        }
+    }
+    Component.onCompleted: {
+        if (clipRoot.isAudio && clipRoot.grouped) {
+            koracutNameTimer.restart()
+        }
     }
 
     property bool noThumbs: (isAudio || itemType === K.ClipType.Color || mltService === '')
@@ -397,6 +454,15 @@ Rectangle {
         }
         onWheel: wheel => zoomByWheel(wheel)
 
+        // KoraCut : le corps du clip (couleur posée par les états plus bas). Un simple Rectangle
+        // arrondi, sans calque ni ombre : rien de coûteux, même avec des centaines de clips.
+        Rectangle {
+            id: koraBody
+            anchors.fill: parent
+            anchors.rightMargin: clipRoot.koraGap
+            radius: clipRoot.koraRadius
+        }
+
         Component {
             id: videoThumb
             ClipThumbs {
@@ -410,7 +476,7 @@ Rectangle {
             ClipAudioThumbs {
                 timeScale: clipRoot.timeScale
                 parentClip: clipRoot
-                audioColor: clipRoot.timeline.audioColor
+                audioColor: clipRoot.timeline.audioColorForTrack(clipRoot.trackId, clipRoot.timeline.audioColor)
             }
         }
 
@@ -419,7 +485,7 @@ Rectangle {
             id: thumbsLoader
             anchors.fill: parent
             anchors.leftMargin: clipRoot.parentTrack.isAudio ? clipRoot.xIntegerOffset : itemBorder.border.width + mixContainer.width
-            anchors.rightMargin: clipRoot.parentTrack.isAudio ? clipRoot.width - Math.floor(clipRoot.width) : itemBorder.border.width + clipRoot.mixEndDuration * clipRoot.timeScale
+            anchors.rightMargin: clipRoot.koraGap + (clipRoot.parentTrack.isAudio ? clipRoot.width - Math.floor(clipRoot.width) : itemBorder.border.width + clipRoot.mixEndDuration * clipRoot.timeScale)
             anchors.topMargin: itemBorder.border.width
             anchors.bottomMargin: itemBorder.border.width
 
@@ -430,6 +496,12 @@ Rectangle {
                     && !(clipRoot.hideClipViews
                          || clipRoot.itemType == K.ClipType.Unknown
                          || clipRoot.itemType === K.ClipType.Color
+                         // KoraCut : pas de vignettes sur un clip trop étroit, juste sa couleur
+                         || !clipRoot.parentTrack.isAudio && clipRoot.width < clipRoot.koraThumbMinWidth
+                         || clipRoot.koraIsMotion
+                         // Un titre non plus : son image est un texte sur fond transparent,
+                         // qui sort en noir. Le bloc violet et son nom disent tout.
+                         || clipRoot.itemType === K.ClipType.Text || clipRoot.itemType === K.ClipType.TextTemplate
                          // not if it is a audio clip, but audio thumbs are disabled
                          || clipRoot.parentTrack.isAudio && !K.KdenliveSettings.audiothumbnails
                          // not if it is a video clip, but video thumbs are disabled
@@ -442,14 +514,18 @@ Rectangle {
             // Border rectangle
             color: 'transparent'
             id: itemBorder
+            // Le contour suit le rayon du clip, sinon l'anneau de sélection dépasse aux angles.
+            radius: clipRoot.koraRadius
             property int handleWidth: Math.max(2, Math.ceil(K.UiUtils.baseSizeMedium / 4))
             anchors.fill: parent
+            anchors.rightMargin: clipRoot.koraGap
             border.color: {
+                // KoraCut : un clip en cours de chargement n'est pas un clip perdu, il ne porte
+                // plus le cadre d'alerte. Et le rouge est celui de la charte, plus le rouge pur.
                 let placeholder = (clipRoot.clipStatus === K.FileStatus.StatusMissing
-                                   || clipRoot.clipStatus === K.FileStatus.StatusWaiting
                                    || clipRoot.clipStatus === K.FileStatus.StatusDeleting)
                 if (placeholder) {
-                    return "#ff0000"
+                    return clipRoot.timeline.missingColor
                 }
 
                 if (clipRoot.selected) {
@@ -462,7 +538,7 @@ Rectangle {
 
                 return clipRoot.borderColor
             }
-            border.width: clipRoot.isGrabbed ? 8 : 2
+            border.width: clipRoot.isGrabbed ? 3 : 2
             Rectangle {
                 id: trimOut
                 anchors.right: itemBorder.right
@@ -498,6 +574,7 @@ Rectangle {
             id: container
             anchors.fill: parent
             anchors.margins: itemBorder.border.width
+            anchors.rightMargin: itemBorder.border.width + clipRoot.koraGap
             //clip: true
             property bool showDetails: (!clipRoot.selected || !effectRow.visible) && container.height > 2.2 * labelRect.height
             property bool handleMini: width < 2 * K.UiUtils.baseSizeMedium
@@ -1345,30 +1422,62 @@ Rectangle {
                         color: 'white'
                     }
                 }
+                // KoraCut : le bandeau de nom. Le nom s'écrivait en grand en travers du haut du
+                // clip, sur un fond rouge sombre quand le clip était sélectionné, sans limite de
+                // largeur : il occupait presque un tiers de la hauteur et il débordait. C'est
+                // maintenant une bande de 16 px, le fond du clip assombri de 12 %, le nom au cran
+                // Étiquette, tronqué en fin. Resolve, Premiere et CapCut font tous ça.
+                // 25 septembre 2026 : sur les vignettes, le nom est posé sur une pastille de la
+                // couleur du clip assombrie (opaque à 80 %), à la mesure du nom : on lit le nom sans
+                // cacher le haut de toutes les images. Sans vignettes, le nom est sur la couleur
+                // du clip, rien derrière.
+                Rectangle {
+                    id: nameBanner
+                    readonly property color base: Qt.darker(clipRoot.getColor(), 2.2)
+                    anchors.left: labelRect.left
+                    anchors.top: parent.top
+                    width: Math.min(labelRect.width + 4, nameContainer.width)
+                    height: Math.min(16, Math.max(0, container.height))
+                    radius: 3
+                    color: Qt.rgba(base.r, base.g, base.b, 0.8)
+                    visible: labelRect.visible && thumbsLoader.visible && !clipRoot.isAudio
+                }
                 Rectangle {
                     // Clip name background
                     id: labelRect
-                    color: clipRoot.selected ? (root.mainItemId == clipRoot.clipId ? '#FFCC0000' : '#FF800000') : '#66000000'
+                    color: 'transparent'
                     width: label.width + (2 * itemBorder.border.width)
-                    height: label.height
-                    visible: clipRoot.width > K.UiUtils.baseSizeMedium
+                    height: nameBanner.height
+                    // Le nom n'est écrit qu'une fois : sur la partie vidéo quand les deux moitiés
+                    // d'un même média sont groupées, jamais deux fois de suite.
+                    visible: clipRoot.width >= Math.max(clipRoot.koraNameMinWidth, K.UiUtils.baseSizeMedium) && container.height >= 12 && !clipRoot.nameHiddenForGroup
                     anchors.left: debugCidRect.visible ? debugCidRect.right : parent.left
                     anchors.leftMargin: clipRoot.timeremap ? labelRect.height : 0
                     Text {
                         // Clip name text
                         id: label
                         property string clipNameString: (clipRoot.isAudio && clipRoot.multiStream) ? ((clipRoot.audioStream > 10000 ? 'Merged' : clipRoot.aStreamIndex) + '|' + clipRoot.clipName ) : clipRoot.clipName
-                        text: (clipRoot.speed != 1.0 ? ('[' + Math.round(clipRoot.speed*100) + '%] ') : '') + clipNameString
-                        font: K.UiUtils.smallestReadableFont
-                        topPadding: -2
-                        bottomPadding: -1
+                        property string fullText: (clipRoot.speed != 1.0 ? ('[' + Math.round(clipRoot.speed*100) + '%] ') : '') + clipNameString
+                        text: fullText
+                        font: K.UiUtils.labelFont
+                        elide: Text.ElideRight
+                        width: Math.max(0, Math.min(implicitWidth, nameContainer.width - 4 * itemBorder.border.width))
+                        verticalAlignment: Text.AlignVCenter
                         anchors {
                             left: labelRect.left
-                            leftMargin: itemBorder.border.width
+                            leftMargin: 2 * itemBorder.border.width
+                            verticalCenter: labelRect.verticalCenter
                         }
-                        color: "#FFFFFF"
-                        //style: Text.Outline
-                        //styleColor: 'black'
+                        // KoraCut, 25 septembre 2026 : sur une couleur de clip claire (jaune acide du thème
+                        // Punk, vert Matrix), le nom passe en sombre pour rester lisible.
+                        // (Le bandeau assombri sous le nom n'est posé que sur les vignettes.)
+                        property color koraFond: clipRoot.getColor()
+                        color: (!thumbsLoader.visible || clipRoot.isAudio) && (0.2126 * koraFond.r + 0.7152 * koraFond.g + 0.0722 * koraFond.b) > 0.6 ? "#141414" : "#FFFFFF"
+                        // L'infobulle rend le nom entier, puisqu'il est tronqué.
+                        ToolTip.visible: nameHover.hovered && label.truncated
+                        ToolTip.delay: 400
+                        ToolTip.text: label.fullText
+                        HoverHandler { id: nameHover }
                     }
                 }
 
@@ -1587,6 +1696,18 @@ Rectangle {
                 target: effectRow.item
                 function onSeek(position) { proxy.position = position }
             }
+
+            // KoraCut : le voile de sélection. Un contour d'accent de 2 px plus un voile blanc à
+            // 6 % sur tout le clip : c'est ce qui remplace la bordure rouge vif de 3 px d'avant.
+            // Dernier enfant du conteneur, donc posé par-dessus les vignettes et la forme d'onde,
+            // sinon il disparaît sous elles.
+            Rectangle {
+                id: voileSelection
+                anchors.fill: parent
+                color: Qt.rgba(1, 1, 1, 0.06)
+                visible: clipRoot.selected
+                z: 20
+            }
         }
 
         states: [
@@ -1594,7 +1715,7 @@ Rectangle {
                 name: 'locked'
                 when: clipRoot.isLocked === true
                 PropertyChanges {
-                    clipRoot.color: clipRoot.timeline.lockedColor
+                    koraBody.color: clipRoot.timeline.lockedColor
                     clipRoot.opacity: 0.8
                     clipRoot.z: 0
                 }
@@ -1603,7 +1724,7 @@ Rectangle {
                 name: 'normal'
                 when: clipRoot.selected === false
                 PropertyChanges {
-                    clipRoot.color: Qt.darker(getColor(), 1.5)
+                    koraBody.color: Qt.darker(getColor(), 1.5)
                     clipRoot.z: 0
                 }
             },
@@ -1611,7 +1732,7 @@ Rectangle {
                 name: 'selectedClip'
                 when: clipRoot.selected === true
                 PropertyChanges {
-                    clipRoot.color: getColor()
+                    koraBody.color: getColor()
                     clipRoot.z: 3
                 }
             }
@@ -1651,9 +1772,9 @@ Rectangle {
                 height: width
                 radius: width / 2
                 visible: clipRoot.width > 4 * parent.width && mouseArea.containsMouse && !dragProxyArea.pressed
-                color: Qt.darker('mediumpurple')
+                color: Qt.darker('#7C5CFF')
                 border.width: 3
-                border.color: 'mediumpurple'
+                border.color: '#7C5CFF'
                 Behavior on width { NumberAnimation { duration: 100 } }
             }
         }
@@ -1692,9 +1813,9 @@ Rectangle {
                 height: width
                 radius: width / 2
                 visible: clipRoot.width > 4 * parent.width && mouseArea.containsMouse && !dragProxyArea.pressed
-                color: Qt.darker('mediumpurple')
+                color: Qt.darker('#7C5CFF')
                 border.width: 3
-                border.color: 'mediumpurple'
+                border.color: '#7C5CFF'
                 Behavior on width { NumberAnimation { duration: 100 } }
             }
         }

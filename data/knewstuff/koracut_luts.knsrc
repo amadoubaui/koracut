@@ -1,0 +1,6 @@
+[KNewStuff3]
+Name=LUT KoraCut
+ProvidersUrl=https://autoconfig.kde.org/ocs/providers.xml
+Categories=Kdenlive Color Look-Up Tables
+TargetDir=koracut/luts
+Uncompress=archive

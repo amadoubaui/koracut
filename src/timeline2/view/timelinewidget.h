@@ -15,6 +15,8 @@ class MonitorProxy;
 class MediaCapture;
 class QMenu;
 class QActionGroup;
+class KoraCutAnimateMenu;
+class KoraCutColorMenu;
 
 class TimelineWidget : public QQuickWidget
 {
@@ -42,6 +44,13 @@ public:
     void setTimelineMenu(QMenu *clipMenu, QMenu *compositionMenu, QMenu *timelineMenu, QMenu *guideMenu, QMenu *timelineRulerMenu, QAction *editGuideAction,
                          QMenu *headerMenu, QMenu *thumbsMenu, QMenu *subtitleClipMenu, QMenu *addClipMenu);
     void updateAddClipMenuStatus();
+    /** @brief KoraCut : ouvre le menu du clip @p cid à @p globalPos (captures, essais). @return le menu. */
+    QMenu *koraCutShowClipMenu(int cid, const QPoint &globalPos);
+    KoraCutAnimateMenu *koraCutAnimateMenu() const { return m_koraCutAnimate; }
+    /** @brief KoraCut : les sous-menus Couleur du clip et Couleur de la piste (document 13). */
+    KoraCutColorMenu *koraCutColorMenu() const { return m_koraCutColors; }
+    /** @brief KoraCut : ouvre le menu de la tête de piste @p tid à @p globalPos (captures). @return le menu. */
+    QMenu *koraCutShowHeaderMenu(int tid, const QPoint &globalPos);
     bool loading;
     void connectSubtitleModel(bool firstConnect);
     const QUuid &getUuid() const;
@@ -50,6 +59,8 @@ public:
 protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
+    /** @brief KoraCut : attrape le pincement du trackpad pour zoomer la timeline. */
+    bool event(QEvent *event) override;
 
 public Q_SLOTS:
     void slotChangeZoom(int value, bool zoomOnMouse);
@@ -101,6 +112,10 @@ private:
     QMenu *m_favCompositions;
     QAction *m_editGuideAcion;
     QMenu *m_timelineSubtitleClipMenu;
+    /** @brief KoraCut : les sous-menus Animer et Transition vers le plan suivant du menu d'un clip. */
+    KoraCutAnimateMenu *m_koraCutAnimate{nullptr};
+    KoraCutColorMenu *m_koraCutColors{nullptr};
+    QAction *m_koraCutColorsSeparator{nullptr};
     static const int comboScale[];
     std::unique_ptr<QSortFilterProxyModel> m_sortModel;
     /** @brief Keep last scale before fit to restore it on second click */
@@ -112,6 +127,8 @@ private:
     QPoint m_clickPos;
     QMetaObject::Connection m_addMenuConnection;
     QUuid m_uuid;
+    /** @brief KoraCut : agrandissement cumulé du pincement en cours, un cran par 0,12. */
+    double m_pinchAccumulated{0.};
 
 Q_SIGNALS:
     void focusProjectMonitor();

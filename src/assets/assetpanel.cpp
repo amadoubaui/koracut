@@ -19,6 +19,8 @@
 #include "transitions/view/transitionstackview.hpp"
 
 #include "view/assetparameterview.hpp"
+#include "koracut/koracutemptystate.h"
+#include "koracut/koracutmetrics.h"
 
 #include <KColorScheme>
 #include <KColorUtils>
@@ -32,11 +34,64 @@
 #include <QFontDatabase>
 #include <QFormLayout>
 #include <QMenu>
+#include <QPainter>
+#include <QPaintEvent>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
+
+namespace {
+/** KoraCut, 25 septembre 2026 : l'état vide de l'inspecteur. Rien de sélectionné, le panneau
+ *  montrait une bande grise et un grand vide, sans dire quoi faire. Peint dans le conteneur
+ *  quand aucune pile (effets, composition, mélange, masque) ni section ajoutée n'est visible. */
+class KoraCutInspectorEmpty : public QObject
+{
+public:
+    KoraCutInspectorEmpty(QWidget *container, QVBoxLayout *outer, QObject *parent)
+        : QObject(parent)
+        , m_container(container)
+        , m_outer(outer)
+    {
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (watched != m_container || event->type() != QEvent::Paint || !estVide()) {
+            return false;
+        }
+        QPainter painter(m_container);
+        painter.setRenderHint(QPainter::Antialiasing);
+        const KoraCutEmptyState::Modele modele{QStringLiteral("edit-select"), i18nc("@info inspecteur vide", "Nothing selected"),
+                                              i18nc("@info inspecteur vide", "Select a clip in the timeline to adjust it here."), QString()};
+        KoraCutEmptyState::paint(painter, m_container->rect(), m_container->palette(), modele);
+        return false;
+    }
+
+private:
+    bool estVide() const
+    {
+        const auto enfants = m_container->findChildren<QWidget *>(Qt::FindDirectChildrenOnly);
+        for (QWidget *w : enfants) {
+            if (w->isVisibleTo(m_container)) {
+                return false;
+            }
+        }
+        // Une section posée au-dessus (l'inspecteur Motion) remplit aussi le panneau.
+        for (int i = 1; i < m_outer->count(); ++i) {
+            QWidget *w = m_outer->itemAt(i)->widget();
+            if (w && !qobject_cast<QScrollArea *>(w) && !qobject_cast<KMessageWidget *>(w) && w->isVisibleTo(m_outer->parentWidget())) {
+                return false;
+            }
+        }
+        return true;
+    }
+    QWidget *m_container;
+    QVBoxLayout *m_outer;
+};
+} // namespace
 
 AssetPanel::AssetPanel(QWidget *parent)
     : QWidget(parent)
@@ -50,8 +105,7 @@ AssetPanel::AssetPanel(QWidget *parent)
 {
     auto *buttonToolbar = new QToolBar(this);
     m_titleAction = buttonToolbar->addWidget(m_assetTitle);
-    int size = style()->pixelMetric(QStyle::PM_SmallIconSize);
-    QSize iconSize(size, size);
+    const QSize iconSize = KoraCutMetrics::iconInspector();
     buttonToolbar->setIconSize(iconSize);
     // Edit composition button
     m_switchCompoButton = new QComboBox(this);
@@ -173,6 +227,7 @@ AssetPanel::AssetPanel(QWidget *parent)
     m_lay->addWidget(m_infoMessage);
     m_infoMessage->hide();
     m_sc->setWidget(m_container);
+    m_container->installEventFilter(new KoraCutInspectorEmpty(m_container, m_lay, this));
     m_transitionWidget->setVisible(false);
     m_mixWidget->setVisible(false);
     m_effectStackWidget->setVisible(false);
@@ -370,6 +425,7 @@ void AssetPanel::clear()
     m_effectStackWidget->unsetModel();
     m_maskManager->setOwner(ObjectId(KdenliveObjectType::NoItem, {}));
     m_assetTitle->clear();
+    m_container->update();
 }
 
 void AssetPanel::processSplitEffect(bool enable)
@@ -590,4 +646,18 @@ bool AssetPanel::hasRunningTask() const
 bool AssetPanel::launchObjectMask()
 {
     return m_maskManager->launchSimpleSam();
+}
+
+void AssetPanel::koraCutInsertTopWidget(QWidget *widget)
+{
+    // Après la barre d'outils du titre, avant la pile d'effets.
+    m_lay->insertWidget(1, widget);
+}
+
+void AssetPanel::koraCutInsertToolsWidget(QWidget *widget)
+{
+    // Dans la zone qui défile, au-dessus de la pile : la section suit la pile quand on descend.
+    if (auto *lay = qobject_cast<QVBoxLayout *>(m_container->layout())) {
+        lay->insertWidget(0, widget);
+    }
 }

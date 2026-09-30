@@ -18,9 +18,11 @@ static void initFilterDb() {
     // clang-format off
     FileFilterDb supported_mime_types = {
         {Other, {
+            qsl("application/x-koracuttitle"), 
             qsl("application/x-kdenlivetitle"), 
             qsl("video/mlt-playlist"), 
             qsl("text/plain"), 
+            qsl("application/x-koracut"), 
             qsl("application/x-kdenlive")
         }},
         {Video, {

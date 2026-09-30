@@ -16,6 +16,7 @@
 #include "bin/model/markersortmodel.h"
 #include "core.h"
 #include "kdenlivesettings.h"
+#include "koracut/koracutperformance.h"
 #include "monitor/monitor.h"
 #include "monitor/view/qmliconprovider.hpp"
 #include "monitorproxy.h"
@@ -24,6 +25,8 @@
 
 #include <QApplication>
 #include <QFontDatabase>
+#include <QNativeGestureEvent>
+#include <QWheelEvent>
 #include <QOpenGLContext>
 #if QT_CONFIG(opengles2)
 #include <QOpenGLFunctions_ES2>
@@ -35,6 +38,7 @@
 #include <QQuickItem>
 #include <QStyle>
 #include <QtGlobal>
+#include <cmath>
 #include <memory>
 
 #include <KLocalizedQmlContext>
@@ -258,6 +262,85 @@ void VideoWidget::resizeVideo(int width, int height)
     }
 }
 
+bool VideoWidget::event(QEvent *event)
+{
+    // KoraCut, document 20 : le zoom de l'image au trackpad et à la souris, avant que le QML ne
+    // voie l'évènement. Pincement à deux doigts (macOS, Wayland) : zoom continu autour des doigts.
+    // Ctrl + molette (⌘ sur Mac) : zoom par crans autour du pointeur. Image plus grande que le
+    // panneau : le glisser à deux doigts la déplace, la molette de souris garde la tête de lecture.
+    if (event->type() == QEvent::NativeGesture) {
+        auto *gesture = static_cast<QNativeGestureEvent *>(event);
+        if (gesture->gestureType() == Qt::ZoomNativeGesture) {
+            Q_EMIT zoomRequested(m_zoom * (1. + gesture->value()), gesture->position());
+            event->accept();
+            return true;
+        }
+    } else if (event->type() == QEvent::Wheel) {
+        auto *wheel = static_cast<QWheelEvent *>(event);
+        // Sous Windows et X11, pas de pixelDelta : un pavé tactile se reconnaît à ses crans fractionnés
+        // (moins de 120 unités), convertis en pixels comme dans la timeline (Timeline.qml, wheelPixels).
+        QPointF pixels = wheel->pixelDelta();
+#ifndef Q_OS_MACOS
+        if (pixels.isNull() && (wheel->angleDelta().x() % QWheelEvent::DefaultDeltasPerStep != 0 || wheel->angleDelta().y() % QWheelEvent::DefaultDeltasPerStep != 0)) {
+            pixels = QPointF(wheel->angleDelta()) / 2.4;
+        }
+#endif
+        const bool trackpad = !pixels.isNull();
+        if ((wheel->modifiers() & Qt::ControlModifier) != 0u) {
+            if (trackpad) {
+                // Continu : 200 px de défilement doublent l'image.
+                const double factor = std::exp(pixels.y() * 0.0035);
+                Q_EMIT zoomRequested(m_zoom * factor, wheel->position());
+            } else {
+                // Souris : un cran par 120 unités, comme la molette de Qt.
+                m_zoomWheelAccumulated += wheel->angleDelta().y();
+                while (m_zoomWheelAccumulated >= QWheelEvent::DefaultDeltasPerStep) {
+                    m_zoomWheelAccumulated -= QWheelEvent::DefaultDeltasPerStep;
+                    Q_EMIT zoomRequested(m_zoom * 1.2, wheel->position());
+                }
+                while (m_zoomWheelAccumulated <= -QWheelEvent::DefaultDeltasPerStep) {
+                    m_zoomWheelAccumulated += QWheelEvent::DefaultDeltasPerStep;
+                    Q_EMIT zoomRequested(m_zoom / 1.2, wheel->position());
+                }
+            }
+            event->accept();
+            return true;
+        }
+        if (trackpad && m_zoom > 1.0f && (wheel->modifiers() & (Qt::ShiftModifier | Qt::AltModifier)) == 0u) {
+            Q_EMIT panView(-pixels.toPoint());
+            event->accept();
+            return true;
+        }
+    } else if (event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease) {
+        // L'outil main : espace maintenu au-dessus d'une image agrandie. Sans glisser, le relâcher
+        // lance ou arrête la lecture comme d'habitude, l'espace n'est pas volé.
+        auto *key = static_cast<QKeyEvent *>(event);
+        if (key->key() == Qt::Key_Space && !key->isAutoRepeat()) {
+            if (event->type() == QEvent::KeyRelease) {
+                if (m_spaceHeld) {
+                    m_spaceHeld = false;
+                    setCursor(Qt::ArrowCursor);
+                    if (!m_spaceDragged) {
+                        Q_EMIT monitorPlay();
+                    }
+                    m_spaceDragged = false;
+                    event->accept();
+                    return true;
+                }
+            } else if (m_zoom > 1.0f && underMouse() && key->modifiers() == Qt::NoModifier) {
+                if (event->type() == QEvent::KeyPress) {
+                    m_spaceHeld = true;
+                    m_spaceDragged = false;
+                    setCursor(Qt::OpenHandCursor);
+                }
+                event->accept();
+                return true;
+            }
+        }
+    }
+    return QQuickWidget::event(event);
+}
+
 void VideoWidget::resizeEvent(QResizeEvent *event)
 {
     QQuickWidget::resizeEvent(event);
@@ -457,9 +540,10 @@ void VideoWidget::mousePressEvent(QMouseEvent *event)
         m_swallowDrop = false;
     }
     if ((event->button() & Qt::LeftButton) != 0u) {
-        if ((event->modifiers() & Qt::ControlModifier) != 0u) {
-            // Pan view
+        if ((event->modifiers() & Qt::ControlModifier) != 0u || m_spaceHeld) {
+            // Pan view (KoraCut : aussi l'outil main, espace maintenu, document 20)
             m_panStart = event->pos();
+            m_spaceDragged = m_spaceHeld;
             setCursor(Qt::ClosedHandCursor);
         } else if (getControllerProxy()->dragType() != QLatin1String("-")) {
             m_dragStart = event->pos();
@@ -530,7 +614,7 @@ void VideoWidget::mouseMoveEvent(QMouseEvent *event)
         m_mouseTimer.start();
     }
     if ((rootObject() != nullptr) && rootObject()->property("viewType") != SceneType::MonitorSceneDefault && !(event->modifiers() & Qt::ControlModifier) &&
-        !(event->buttons() & Qt::MiddleButton)) {
+        !(event->buttons() & Qt::MiddleButton) && m_panStart.isNull()) {
         event->ignore();
         QQuickWidget::mouseMoveEvent(event);
         return;
@@ -884,7 +968,9 @@ int VideoWidget::reconfigure()
         int fps = qRound(pCore->getCurrentFps());
         m_consumer->set("buffer", qMax(25, fps));
         m_consumer->set("prefill", 6);
-        m_consumer->set("drop_max", fps / 4);
+        // KoraCut (chantier 10) : sur machine modeste, jusqu'à la moitié des images peut sauter pour que le son
+        // ne décroche jamais (dropDiviseur 2) ; ailleurs le quart, comme Kdenlive.
+        m_consumer->set("drop_max", std::max(1, fps / KoraCutPerformance::dropDivisor()));
         m_consumer->set("scrub_audio", KdenliveSettings::audio_scrub());
         switch (pCore->getProjectProfile().colorspace()) {
         case 601:
@@ -1337,7 +1423,7 @@ void VideoWidget::startConsumer()
         // ARGH CONSUMER BROKEN!!!!
         KMessageBox::error(
             qApp->activeWindow(),
-            i18n("Could not create the video preview window.\nThere is something wrong with your Kdenlive install or your driver settings, please fix it."));
+            i18n("Could not create the video preview window.\nThere is something wrong with your KoraCut install or your driver settings, please fix it."));
         m_displayEvent.reset();
         m_consumer.reset();
         return;

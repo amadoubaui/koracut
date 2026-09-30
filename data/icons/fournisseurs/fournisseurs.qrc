@@ -1,0 +1,34 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+  <qresource prefix="/koracut/fournisseurs">
+    <file alias="koracut-fournisseurs-ia.json">../../koracut-fournisseurs-ia.json</file>
+    <file>anthropic.svg</file>
+    <file>azure-color.svg</file>
+    <file>bedrock-color.svg</file>
+    <file>cerebras-color.svg</file>
+    <file>cloudflare-color.svg</file>
+    <file>cohere-color.svg</file>
+    <file>deepinfra-color.svg</file>
+    <file>deepseek-color.svg</file>
+    <file>fireworks-color.svg</file>
+    <file>gemini-color.svg</file>
+    <file>groq.svg</file>
+    <file>huggingface-color.svg</file>
+    <file>kimi-color.svg</file>
+    <file>lmstudio.svg</file>
+    <file>minimax-color.svg</file>
+    <file>mistral-color.svg</file>
+    <file>nebius.svg</file>
+    <file>novita-color.svg</file>
+    <file>nvidia-color.svg</file>
+    <file>ollama.svg</file>
+    <file>openai.svg</file>
+    <file>openrouter.svg</file>
+    <file>qwen-color.svg</file>
+    <file>sambanova-color.svg</file>
+    <file>together-color.svg</file>
+    <file>vercel.svg</file>
+    <file>xai.svg</file>
+    <file>zai.svg</file>
+  </qresource>
+</RCC>

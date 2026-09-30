@@ -1,4 +1,4 @@
-<gui name="kdenlive" version="1">
+<gui name="koracut" version="1">
   <ActionProperties>
     <Action name="file_open" shortcut="Ctrl+O"/>
     <Action name="file_save_as" shortcut="Ctrl+Shift+S"/>

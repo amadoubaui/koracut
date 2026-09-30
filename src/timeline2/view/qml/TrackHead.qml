@@ -34,6 +34,14 @@ Rectangle {
     required property string trackTag
     required property int thumbsFormat
     required property int collapsedHeight
+    /** KoraCut : la couleur choisie pour la piste (clic droit, « Couleur de la piste »), vide par défaut.
+     *  Elle se montre en filet de 3 px sur le bord droit de la tête, contre ses clips. */
+    property string trackColor: ""
+    /** KoraCut : deux lignes quand la piste est assez haute. Ligne 1, l'identité (chevron, tag,
+     *  nom) ; ligne 2, les commandes, centrées dans l'espace restant. Sur une piste repliée, ou
+     *  quand le vumètre d'enregistrement occupe la ligne 2, tout revient sur une seule ligne. */
+    readonly property bool deuxLignes: trackHeadRoot.height >= 2 * trackHeadRoot.collapsedHeight
+                                       && !trackHeadRoot.showAudioRecord
     border.width: 1
 
     SystemPalette { id: activePalette }
@@ -103,13 +111,32 @@ Rectangle {
             }
         }
     }
+    Rectangle {
+        id: koracutTrackColor
+        visible: trackHeadRoot.trackColor !== ""
+        width: 3
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        color: visible ? trackHeadRoot.trackColor : "transparent"
+        z: 2
+    }
     Label {
         id: trackTarget
-        property color bgColor: 'grey'
+        // KoraCut : la cible ne se peint plus en aplat sur toute la hauteur de la tête. Elle se
+        // marque par une barre de 3 px en accent sur le bord gauche. La zone reste large : c'est
+        // elle qui reçoit le clic et, en audio, le nom du flux et son bouton de choix.
+        property color bgColor: 'transparent'
         font: K.UiUtils.smallestReadableFont
         color: trackHeadRoot.timeline.targetTextColor
-        background: Rectangle {
-            color: trackTarget.bgColor
+        background: Item {
+            Rectangle {
+                width: 3
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                color: trackTarget.bgColor
+            }
         }
         width: 1.5 * K.UiUtils.baseSizeMedium
         height: trackHeadRoot.height
@@ -151,13 +178,19 @@ Rectangle {
                 focusPolicy: Qt.NoFocus
                 visible: trackHeadRoot.isAudio && trackHeadRoot.timeline.clipTargets > 1 && trackHeadRoot.height > (2 * expandButton.height)
                 background: Rectangle {
-                    color: Qt.darker(trackTarget.bgColor, 1.5)
+                    // KoraCut : le fond de la cible est devenu une barre de 3 px, ce bouton prend
+                    // donc la surface du thème et non plus une version assombrie de cette barre.
+                    color: activePalette.button
                     border.color: activePalette.light
+                    radius: 4
                 }
                 anchors.bottom: parent.bottom
                 width: parent.width
                 height: width
                 icon.name: "go-down"
+                // KoraCut : taille de la charte, sinon le style prend PM_SmallIconSize et les icônes grossissent
+                icon.width: 14
+                icon.height: 14
                 onClicked: {
                     root.showTargetMenu(trackHeadRoot.trackId)
                 }
@@ -198,7 +231,8 @@ Rectangle {
             name: 'noTarget'
             when: !trackHeadRoot.isLocked && !trackHeadRoot.isDisabled
             PropertyChanges {
-                trackTarget.bgColor: activePalette.base
+                // KoraCut : une piste qui n'est pas cible ne porte aucune barre.
+                trackTarget.bgColor: 'transparent'
                 trackTarget.text: ''
             }
         }
@@ -206,7 +240,7 @@ Rectangle {
     transitions: [
         Transition {
             to: '*'
-            ColorAnimation { target: trackTarget; duration: 300 }
+            ColorAnimation { target: trackTarget; duration: 120 }
         }
     ]
     }
@@ -221,6 +255,9 @@ Rectangle {
             focusPolicy: Qt.NoFocus
             property int modifier: 0
             icon.name: trackHeadRoot.collapsed ? "go-next" : "go-down"
+            // KoraCut : taille de la charte, sinon le style prend PM_SmallIconSize et les icônes grossissent
+            icon.width: 14
+            icon.height: 14
             onClicked: {
                 if (modifier & Qt.ShiftModifier) {
                     // Collapse / expand all tracks
@@ -260,18 +297,25 @@ Rectangle {
             ToolTip {
                 visible: expandButton.hovered
                 font: K.UiUtils.smallestReadableFont
-                text: trackLabel.visible? KI18n.i18n("Minimize") : KI18n.i18n("Expand")
+                text: trackHeadRoot.collapsed ? KI18n.i18n("Expand") : KI18n.i18n("Minimize")
             }
         }
         Label {
             id: trackLed
-            property color bgColor: Qt.darker(trackHeadRoot.color, 0.55)
+            // KoraCut : le tag (V1, A2) est du texte, plus une pastille peinte. Sans fond, il cesse
+            // d'être l'élément le plus lumineux de la fenêtre. L'état de la piste passe par le texte :
+            // plein quand la piste est active, 62 % sinon, rouge quand elle est verrouillée.
+            property color bgColor: 'transparent'
             anchors.left: expandButton.right
-            font: K.UiUtils.smallestReadableFont
+            // Monospace : un tag est une étiquette de repérage, pas du texte courant, et la
+            // chasse fixe aligne V1 sous V2 et A1 sous A2.
+            font.family: K.UiUtils.fixedFont.family
+            font.pixelSize: 11
             text: trackHeadRoot.trackTag
             color: activePalette.text
             background: Rectangle {
                 color: trackLed.bgColor
+                radius: 4
             }
             width: root.trackTagWidth
             height: trackHeadRoot.collapsedHeight - 2
@@ -298,29 +342,32 @@ Rectangle {
                     name: 'locked'
                     when: trackHeadRoot.isLocked
                     PropertyChanges {
-                        trackLed.bgColor: 'red'
+                        // Plus de littéral 'red' : la couleur vient du thème.
+                        trackLed.color: trackHeadRoot.timeline.lockedColor
+                        trackLed.opacity: 1
                     }
                 },
                 State {
                     name: 'active'
                     when: trackHeadRoot.isActive
                     PropertyChanges {
-                        trackLed.bgColor: timeline.targetColor
-                        trackLed.color: timeline.targetTextColor
+                        trackLed.color: activePalette.text
+                        trackLed.opacity: 1
                     }
                 },
                 State {
                     name: 'inactive'
                     when: !trackHeadRoot.isLocked && !trackHeadRoot.isActive
                     PropertyChanges {
-                        trackLed.bgColor: Qt.darker(trackHeadRoot.color, 0.55)
+                        trackLed.color: activePalette.text
+                        trackLed.opacity: 0.62
                     }
                 }
             ]
             transitions: [
                 Transition {
                     to: '*'
-                    ColorAnimation { target: trackLed; duration: 300 }
+                    ColorAnimation { target: trackLed; duration: 120 }
                 }
             ]
         }
@@ -354,18 +401,33 @@ Rectangle {
             color: activePalette.text
             verticalAlignment: Text.AlignVCenter
             horizontalAlignment: Text.AlignLeft
-            visible: !trackLabel.visible && trackHeadRoot.width > (trackTarget.width + expandButton.width + trackLed.width + (4 * muteButton.width) + 4)
+            // KoraCut : le nom vit maintenant sur la ligne 1, dans nameEditContainer, et il y est
+            // éditable. Ce doublon en lecture seule n'a plus de raison d'être.
+            visible: false
         }
         Row {
             id: buttonsRow
             width: childrenRect.width
-            x: Math.max(2 * trackHeadRoot.collapsedHeight + 2, parent.width - width - 4)
+            height: trackHeadRoot.collapsedHeight
+            // Deux lignes : les commandes descendent, alignées sur le tag, centrées verticalement
+            // dans la place qui reste. Une seule ligne : elles restent à droite, comme avant.
+            x: trackHeadRoot.deuxLignes ? expandButton.width
+                                        : Math.max(2 * trackHeadRoot.collapsedHeight + 2, parent.width - width - 4)
+            y: trackHeadRoot.deuxLignes
+               ? Math.max(trackHeadRoot.collapsedHeight,
+                          trackHeadRoot.collapsedHeight
+                          + (trackHeadRoot.height - resizer.height - trackHeadRoot.collapsedHeight - height) / 2)
+               : 0
             spacing: 0
             ToolButton {
                 id: effectButton
                 focusPolicy: Qt.NoFocus
                 icon.name: "tools-wizard"
+                // KoraCut : taille de la charte, sinon le style prend PM_SmallIconSize et les icônes grossissent
+                icon.width: 14
+                icon.height: 14
                 enabled: trackHeadRoot.effectNames != ''
+                visible: enabled
                 checkable: true
                 checked: enabled && trackHeadRoot.isStackEnabled
                 onClicked: {
@@ -387,6 +449,9 @@ Rectangle {
                 focusPolicy: Qt.NoFocus
                 icon.name: trackHeadRoot.isAudio ? (trackHeadRoot.isDisabled ? "audio-off" : "audio-volume-high")
                                    : (trackHeadRoot.isDisabled ? "kdenlive-hide-video" : "kdenlive-show-video")
+                // KoraCut : taille de la charte, sinon le style prend PM_SmallIconSize et les icônes grossissent
+                icon.width: 14
+                icon.height: 14
                 width: trackHeadRoot.collapsedHeight
                 height: trackHeadRoot.collapsedHeight
                 onClicked: trackHeadRoot.timeline.hideTrack(trackHeadRoot.trackId, trackHeadRoot.isDisabled, modifier & Qt.ShiftModifier)
@@ -420,6 +485,9 @@ Rectangle {
                 height: trackHeadRoot.collapsedHeight
                 focusPolicy: Qt.NoFocus
                 icon.name: trackHeadRoot.isLocked ? "lock" : "unlock"
+                // KoraCut : taille de la charte, sinon le style prend PM_SmallIconSize et les icônes grossissent
+                icon.width: 14
+                icon.height: 14
                 onClicked: trackHeadRoot.controller.setTrackLockedState(trackHeadRoot.trackId, !trackHeadRoot.isLocked)
                 ToolTip {
                     visible: lockButton.hovered
@@ -460,19 +528,22 @@ Rectangle {
         }
         Item {
             id: nameEditContainer
-            anchors.bottom: trackHeadColumn.bottom
-            anchors.left: trackHeadColumn.left
-            anchors.right: trackHeadColumn.right
-            anchors.margins: 2
-            anchors.rightMargin: 2
-            height: nameEdit.height
+            // Ligne 1, après le tag : l'identité de la piste tient sur une ligne, comme dans la
+            // maquette. Avant, le nom était collé en bas et n'apparaissait qu'au-delà d'une
+            // certaine hauteur, ce qui laissait les pistes anonymes la plupart du temps.
+            y: 1
+            height: trackHeadRoot.collapsedHeight - 2
+            anchors.left: trackLed.right
+            anchors.leftMargin: 4
+            anchors.right: trackHeadRoot.deuxLignes ? trackHeadColumn.right : buttonsRow.left
+            anchors.rightMargin: 4
             Rectangle {
                 id: trackLabel
                 color: 'transparent'
                 radius: 2
                 anchors.fill: parent
                 border.color: trackNameMouseArea.containsMouse ? activePalette.highlight : 'transparent'
-                visible: (trackHeadRoot.height >= trackLabel.height + muteButton.height + resizer.height + recLayout.height)
+                visible: width > 16
                 MouseArea {
                     id: trackNameMouseArea
                     anchors.fill: parent
@@ -491,6 +562,10 @@ Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.left: parent.left
                     anchors.leftMargin: 4
+                    // KoraCut, 23 septembre 2026 : sans bord droit, elide ne coupait rien et un nom
+                    // long (« Textes des étapes ») passait par-dessus les boutons de la piste.
+                    anchors.right: parent.right
+                    anchors.rightMargin: 4
                     elide: Qt.ElideRight
                     font: K.UiUtils.smallestReadableFont
                     color: activePalette.text
@@ -503,6 +578,8 @@ Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.left: parent.left
                     anchors.leftMargin: 4
+                    anchors.right: parent.right
+                    anchors.rightMargin: 4
                     elide: Qt.ElideRight
                     font: K.UiUtils.smallestReadableFont
                     color: activePalette.text

@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: CC0-1.0
+# SPDX-FileCopyrightText: None
+# Logos d'outils tiers, marques de leurs propriétaires. Détail dans LISEZ-MOI.md.
+
+version = 1
+
+[[annotations]]
+path = ["opencode.svg", "cursor-cli.svg"]
+precedence = "override"
+SPDX-FileCopyrightText = "Simple Icons contributors"
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+path = "copilot-cli.svg"
+precedence = "override"
+SPDX-FileCopyrightText = ["Simple Icons contributors", "GitHub Inc."]
+SPDX-License-Identifier = "CC0-1.0 AND MIT"
+
+[[annotations]]
+path = ["claude-code.svg", "codex.svg", "gemini-cli.svg", "qwen-code.svg", "amp.svg", "goose.svg", "kilo-code.svg", "mistral-vibe.svg", "kimi-code.svg"]
+precedence = "override"
+SPDX-FileCopyrightText = "LobeHub"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "LISEZ-MOI.md"
+precedence = "override"
+SPDX-FileCopyrightText = "KoraCut contributors / PIXEWORK"
+SPDX-License-Identifier = "CC0-1.0"

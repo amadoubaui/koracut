@@ -13,13 +13,13 @@ import selenium.common.exceptions
 from selenium.webdriver.support.ui import WebDriverWait
 
 
-class SimpleKdenliveTests(unittest.TestCase):
+class SimpleKoraCutTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(self):
         # The app capability may be a command line or a desktop file id.
         caps = {
-            "app" : "kdenlive --no-welcome"
+            "app" : "koracut --no-welcome"
         }
         options = AppiumOptions().load_capabilities(caps)
 

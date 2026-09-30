@@ -1,0 +1,868 @@
+{
+  "version": 1,
+  "verifie_le": "2026-09-25",
+  "agents": [
+    {
+      "id": "claude-code",
+      "nom": "Claude Code",
+      "editeur": "Anthropic",
+      "logo": "claude-code.svg",
+      "logo_mono": false,
+      "couleur": "#D97757",
+      "site": "https://claude.com/product/claude-code",
+      "doc": "https://code.claude.com/docs/en/overview",
+      "licence": "propriétaire",
+      "besoin": [
+        "abonnement",
+        "cle"
+      ],
+      "besoin_texte": "Un abonnement Claude (Pro, Max, Team ou Enterprise) ou une clé API Anthropic (Console). Le plan gratuit de claude.ai ne donne pas accès à Claude Code.",
+      "gratuit": false,
+      "executables": [
+        "claude"
+      ],
+      "installation": {
+        "macos": {
+          "commande": "curl -fsSL https://claude.ai/install.sh | bash",
+          "requiert": []
+        },
+        "linux": {
+          "commande": "curl -fsSL https://claude.ai/install.sh | bash",
+          "requiert": []
+        },
+        "windows": {
+          "commande": "irm https://claude.ai/install.ps1 | iex",
+          "shell": "powershell",
+          "requiert": []
+        }
+      },
+      "lancement": [
+        "claude"
+      ],
+      "premier_message": [
+        "claude",
+        "{message}"
+      ],
+      "premier_message_garde_session": true,
+      "instructions": [
+        "CLAUDE.md"
+      ],
+      "lit_agents_md": true,
+      "mcp": {
+        "format": "claude",
+        "fichier": ".claude/mcp-koracut.json",
+        "exemple": "{\n  \"mcpServers\": {\n    \"koracut\": {\n      \"command\": \"node\",\n      \"args\": [\n        \"/chemin/vers/koracut-mcp/main.js\"\n      ],\n      \"env\": {\n        \"KORACUT_PORTE\": \"/chemin/vers/porte-koracut.json\"\n      }\n    }\n  }\n}",
+        "ligne": [
+          "--mcp-config",
+          "{fichier}"
+        ],
+        "note_koracut": "KoraCut passe son serveur par --mcp-config : pas de question d'approbation à chaque lancement (un .mcp.json de projet en poserait une tant que le dossier n'est pas de confiance).",
+        "ligne_position": "fin"
+      },
+      "notes": "Au premier lancement, il demande d'approuver le serveur MCP du projet (.mcp.json). Il lit AGENTS.md seulement s'il n'y a aucun CLAUDE.md dans le dossier ou au-dessus (version 2.1.277 et plus). Sous Windows, Git for Windows est conseillé mais pas obligatoire."
+    },
+    {
+      "id": "codex",
+      "nom": "Codex CLI",
+      "editeur": "OpenAI",
+      "logo": "codex.svg",
+      "logo_mono": false,
+      "couleur": "#0F0F0F",
+      "site": "https://chatgpt.com/codex",
+      "doc": "https://learn.chatgpt.com/docs/codex/cli",
+      "licence": "Apache-2.0",
+      "besoin": [
+        "abonnement",
+        "cle"
+      ],
+      "besoin_texte": "Un abonnement ChatGPT Plus, Pro, Business, Edu ou Enterprise, ou une clé API OpenAI. Les plans Free et Go n'incluent pas le CLI.",
+      "gratuit": false,
+      "executables": [
+        "codex"
+      ],
+      "installation": {
+        "macos": {
+          "commande": "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
+          "requiert": []
+        },
+        "linux": {
+          "commande": "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
+          "requiert": []
+        },
+        "windows": {
+          "commande": "irm https://chatgpt.com/codex/install.ps1 | iex",
+          "shell": "powershell",
+          "requiert": []
+        }
+      },
+      "lancement": [
+        "codex"
+      ],
+      "premier_message": [
+        "codex",
+        "{message}"
+      ],
+      "premier_message_garde_session": true,
+      "instructions": [
+        "AGENTS.md"
+      ],
+      "lit_agents_md": true,
+      "mcp": {
+        "format": "codex-toml",
+        "fichier": null,
+        "ligne": [
+          "-c",
+          "mcp_servers.koracut.command=\"{command}\"",
+          "-c",
+          "mcp_servers.koracut.args={args_toml}",
+          "-c",
+          "mcp_servers.koracut.env.KORACUT_PORTE=\"{porte}\""
+        ],
+        "utilisateur": "~/.codex/config.toml",
+        "exemple": "[mcp_servers.koracut]\ncommand = \"node\"\nargs = [\"/chemin/vers/koracut-mcp/main.js\"]\n\n[mcp_servers.koracut.env]\nKORACUT_PORTE = \"/chemin/vers/porte-koracut.json\"\n",
+        "note_koracut": "KoraCut passe le serveur par -c à chaque lancement : le dossier n'a pas besoin d'être de confiance."
+      },
+      "notes": "Le fichier .codex/config.toml du projet n'est lu que si le dossier est marqué de confiance ; sinon passer le serveur par -c (valeurs en TOML, {args} est un tableau TOML). La commande officielle Windows est powershell -ExecutionPolicy ByPass -c \"irm https://chatgpt.com/codex/install.ps1 | iex\"."
+    },
+    {
+      "id": "gemini-cli",
+      "nom": "Gemini CLI",
+      "editeur": "Google",
+      "logo": "gemini-cli.svg",
+      "logo_mono": false,
+      "couleur": "#8E75B2",
+      "site": "https://www.geminicli.com",
+      "doc": "https://www.geminicli.com/docs/",
+      "licence": "Apache-2.0",
+      "besoin": [
+        "compte",
+        "cle"
+      ],
+      "besoin_texte": "Un compte Google suffit (offre gratuite : 60 requêtes par minute, 1 000 par jour). Une clé API Gemini ou Vertex AI pour aller plus loin.",
+      "gratuit": true,
+      "executables": [
+        "gemini"
+      ],
+      "installation": {
+        "macos": {
+          "commande": "npm install -g @google/gemini-cli",
+          "requiert": [
+            "node>=20"
+          ]
+        },
+        "linux": {
+          "commande": "npm install -g @google/gemini-cli",
+          "requiert": [
+            "node>=20"
+          ]
+        },
+        "windows": {
+          "commande": "npm install -g @google/gemini-cli",
+          "shell": "powershell",
+          "requiert": [
+            "node>=20"
+          ]
+        }
+      },
+      "lancement": [
+        "gemini"
+      ],
+      "premier_message": [
+        "gemini",
+        "-i",
+        "{message}"
+      ],
+      "premier_message_garde_session": true,
+      "instructions": [
+        "GEMINI.md"
+      ],
+      "lit_agents_md": false,
+      "mcp": {
+        "format": "gemini",
+        "fichier": ".gemini/settings.json",
+        "utilisateur": "~/.gemini/settings.json",
+        "exemple": "{\n  \"mcpServers\": {\n    \"koracut\": {\n      \"command\": \"node\",\n      \"args\": [\n        \"/chemin/vers/koracut-mcp/main.js\"\n      ],\n      \"env\": {\n        \"KORACUT_PORTE\": \"/chemin/vers/porte-koracut.json\"\n      }\n    }\n  }\n}"
+      },
+      "notes": "Les serveurs MCP stdio du projet ne démarrent que si le dossier est de confiance (gemini trust). Pour qu'il lise AGENTS.md, ajouter \"context\": {\"fileName\": [\"AGENTS.md\", \"GEMINI.md\"]} dans .gemini/settings.json. Aussi installable par Homebrew (brew install gemini-cli)."
+    },
+    {
+      "id": "opencode",
+      "nom": "OpenCode",
+      "editeur": "Anomaly (ex-SST)",
+      "logo": "opencode.svg",
+      "logo_mono": true,
+      "couleur": "#211E1E",
+      "site": "https://opencode.ai",
+      "doc": "https://opencode.ai/docs/",
+      "licence": "MIT",
+      "besoin": [
+        "compte",
+        "cle",
+        "abonnement",
+        "local"
+      ],
+      "besoin_texte": "Au choix : les modèles gratuits d'OpenCode Zen (compte OpenCode), une clé API d'un fournisseur (Anthropic, OpenAI, OpenRouter…), un abonnement existant, ou un modèle local.",
+      "gratuit": true,
+      "executables": [
+        "opencode"
+      ],
+      "installation": {
+        "macos": {
+          "commande": "curl -fsSL https://opencode.ai/install | bash",
+          "requiert": []
+        },
+        "linux": {
+          "commande": "curl -fsSL https://opencode.ai/install | bash",
+          "requiert": []
+        },
+        "windows": {
+          "commande": "npm install -g opencode-ai",
+          "shell": "powershell",
+          "requiert": [
+            "node>=20"
+          ]
+        }
+      },
+      "lancement": [
+        "opencode"
+      ],
+      "premier_message": [
+        "opencode",
+        "--prompt",
+        "{message}"
+      ],
+      "premier_message_garde_session": true,
+      "instructions": [
+        "AGENTS.md"
+      ],
+      "lit_agents_md": true,
+      "mcp": {
+        "format": "opencode",
+        "fichier": "opencode.json",
+        "utilisateur": "~/.config/opencode/opencode.json",
+        "exemple": "{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"mcp\": {\n    \"koracut\": {\n      \"type\": \"local\",\n      \"command\": [\n        \"node\",\n        \"/chemin/vers/koracut-mcp/main.js\"\n      ],\n      \"enabled\": true,\n      \"environment\": {\n        \"KORACUT_PORTE\": \"/chemin/vers/porte-koracut.json\"\n      }\n    }\n  }\n}"
+      },
+      "notes": "--prompt remplit la zone de saisie et l'envoie tout seul, la session reste ouverte (opencode run, lui, ne garde pas la session). Sans AGENTS.md, il lit CLAUDE.md. Sous Windows, aussi scoop install opencode ou choco install opencode."
+    },
+    {
+      "id": "qwen-code",
+      "nom": "Qwen Code",
+      "editeur": "Alibaba (équipe Qwen)",
+      "logo": "qwen-code.svg",
+      "logo_mono": false,
+      "couleur": "#6950EF",
+      "site": "https://qwenlm.github.io/qwen-code-docs/",
+      "doc": "https://qwenlm.github.io/qwen-code-docs/en/users/overview/",
+      "licence": "Apache-2.0",
+      "besoin": [
+        "abonnement",
+        "cle"
+      ],
+      "besoin_texte": "Un Alibaba Cloud Coding Plan (abonnement) ou une clé API d'un fournisseur compatible (OpenRouter, Fireworks, OpenAI, Anthropic…). L'offre gratuite Qwen OAuth a fermé le 15 avril 2026.",
+      "gratuit": false,
+      "executables": [
+        "qwen"
+      ],
+      "installation": {
+        "macos": {
+          "commande": "curl -fsSL https://qwen-code-assets.oss-cn-hangzhou.aliyuncs.com/installation/install-qwen-standalone.sh | bash",
+          "requiert": []
+        },
+        "linux": {
+          "commande": "curl -fsSL https://qwen-code-assets.oss-cn-hangzhou.aliyuncs.com/installation/install-qwen-standalone.sh | bash",
+          "requiert": []
+        },
+        "windows": {
+          "commande": "irm https://qwen-code-assets.oss-cn-hangzhou.aliyuncs.com/installation/install-qwen-standalone.ps1 | iex",
+          "shell": "powershell",
+          "requiert": []
+        }
+      },
+      "lancement": [
+        "qwen"
+      ],
+      "premier_message": [
+        "qwen",
+        "-i",
+        "{message}"
+      ],
+      "premier_message_garde_session": true,
+      "instructions": [
+        "QWEN.md"
+      ],
+      "lit_agents_md": true,
+      "mcp": {
+        "format": "gemini",
+        "fichier": ".qwen/settings.json",
+        "utilisateur": "~/.qwen/settings.json",
+        "exemple": "{\n  \"mcpServers\": {\n    \"koracut\": {\n      \"command\": \"node\",\n      \"args\": [\n        \"/chemin/vers/koracut-mcp/main.js\"\n      ],\n      \"env\": {\n        \"KORACUT_PORTE\": \"/chemin/vers/porte-koracut.json\"\n      }\n    }\n  }\n}"
+      },
+      "notes": "Rouvrir le terminal après l'installation par script. Dans la session, /auth règle le fournisseur. Certaines fonctions MCP sont coupées tant que le dossier n'est pas de confiance."
+    },
+    {
+      "id": "copilot-cli",
+      "nom": "GitHub Copilot CLI",
+      "editeur": "GitHub (Microsoft)",
+      "logo": "copilot-cli.svg",
+      "logo_mono": true,
+      "couleur": "#000000",
+      "site": "https://github.com/features/copilot/cli",
+      "doc": "https://docs.github.com/copilot/concepts/agents/about-copilot-cli",
+      "licence": "propriétaire",
+      "besoin": [
+        "compte",
+        "abonnement"
+      ],
+      "besoin_texte": "Un compte GitHub avec un plan Copilot. Le CLI est ouvert à tous les plans, y compris Copilot Free (quota limité de requêtes premium).",
+      "gratuit": true,
+      "executables": [
+        "copilot"
+      ],
+      "installation": {
+        "macos": {
+          "commande": "curl -fsSL https://gh.io/copilot-install | bash",
+          "requiert": []
+        },
+        "linux": {
+          "commande": "curl -fsSL https://gh.io/copilot-install | bash",
+          "requiert": []
+        },
+        "windows": {
+          "commande": "winget install GitHub.Copilot",
+          "shell": "powershell",
+          "requiert": []
+        }
+      },
+      "lancement": [
+        "copilot"
+      ],
+      "premier_message": [
+        "copilot",
+        "-i",
+        "{message}"
+      ],
+      "premier_message_garde_session": true,
+      "instructions": [
+        "AGENTS.md"
+      ],
+      "lit_agents_md": true,
+      "mcp": {
+        "format": "copilot",
+        "fichier": null,
+        "utilisateur": "~/.copilot/mcp-config.json",
+        "ligne": [
+          "--additional-mcp-config",
+          "{json}"
+        ],
+        "exemple": "{\n  \"mcpServers\": {\n    \"koracut\": {\n      \"type\": \"local\",\n      \"command\": \"node\",\n      \"args\": [\n        \"/chemin/vers/koracut-mcp/main.js\"\n      ],\n      \"env\": {\n        \"KORACUT_PORTE\": \"/chemin/vers/porte-koracut.json\"\n      },\n      \"tools\": [\n        \"*\"\n      ]\n    }\n  }\n}",
+        "type": "local",
+        "outils": [
+          "*"
+        ]
+      },
+      "notes": "Les serveurs MCP du projet (.mcp.json ou .github/mcp.json) ne sont chargés qu'après avoir confirmé la confiance du dossier au premier lancement. Il lit aussi CLAUDE.md et GEMINI.md. Sous Windows il faut PowerShell 6 ou plus. Chaque message consomme une requête premium."
+    },
+    {
+      "id": "cursor-cli",
+      "nom": "Cursor CLI",
+      "editeur": "Anysphere (Cursor)",
+      "logo": "cursor-cli.svg",
+      "logo_mono": true,
+      "couleur": "#000000",
+      "site": "https://cursor.com/cli",
+      "doc": "https://cursor.com/docs/cli/overview",
+      "licence": "propriétaire",
+      "besoin": [
+        "compte",
+        "abonnement"
+      ],
+      "besoin_texte": "Un compte Cursor. Le plan gratuit Hobby donne quelques requêtes d'agent ; au-delà, un abonnement (20 $ par mois et plus).",
+      "gratuit": true,
+      "executables": [
+        "agent",
+        "cursor-agent"
+      ],
+      "installation": {
+        "macos": {
+          "commande": "curl https://cursor.com/install -fsS | bash",
+          "requiert": []
+        },
+        "linux": {
+          "commande": "curl https://cursor.com/install -fsS | bash",
+          "requiert": []
+        },
+        "windows": {
+          "commande": "irm 'https://cursor.com/install?win32=true' | iex",
+          "shell": "powershell",
+          "requiert": []
+        }
+      },
+      "lancement": [
+        "agent"
+      ],
+      "premier_message": [
+        "agent",
+        "{message}"
+      ],
+      "premier_message_garde_session": true,
+      "instructions": [
+        "AGENTS.md"
+      ],
+      "lit_agents_md": true,
+      "mcp": {
+        "format": "cursor",
+        "fichier": ".cursor/mcp.json",
+        "utilisateur": "~/.cursor/mcp.json",
+        "exemple": "{\n  \"mcpServers\": {\n    \"koracut\": {\n      \"command\": \"node\",\n      \"args\": [\n        \"/chemin/vers/koracut-mcp/main.js\"\n      ],\n      \"env\": {\n        \"KORACUT_PORTE\": \"/chemin/vers/porte-koracut.json\"\n      }\n    }\n  }\n}"
+      },
+      "notes": "La commande s'appelle maintenant agent ; cursor-agent reste l'ancien nom. Il reprend le mcp.json de l'éditeur Cursor."
+    },
+    {
+      "id": "amp",
+      "nom": "Amp",
+      "editeur": "Amp (ex-Sourcegraph)",
+      "logo": "amp.svg",
+      "logo_mono": false,
+      "couleur": "#F34E3F",
+      "site": "https://ampcode.com",
+      "doc": "https://ampcode.com/docs",
+      "licence": "propriétaire",
+      "besoin": [
+        "compte",
+        "abonnement"
+      ],
+      "besoin_texte": "Un compte Amp. Le niveau Hobby est gratuit, mais l'usage des modèles se paie en crédits ou par un abonnement Individual (20 $ par mois) ; on peut aussi relier un abonnement ChatGPT.",
+      "gratuit": false,
+      "executables": [
+        "amp"
+      ],
+      "installation": {
+        "macos": {
+          "commande": "curl -fsSL https://ampcode.com/install.sh | bash",
+          "requiert": []
+        },
+        "linux": {
+          "commande": "curl -fsSL https://ampcode.com/install.sh | bash",
+          "requiert": []
+        },
+        "windows": {
+          "commande": "curl -fsSL https://ampcode.com/install.sh | bash",
+          "shell": "wsl",
+          "requiert": [
+            "wsl"
+          ]
+        }
+      },
+      "lancement": [
+        "amp"
+      ],
+      "premier_message": null,
+      "premier_message_garde_session": false,
+      "instructions": [
+        "AGENTS.md"
+      ],
+      "lit_agents_md": true,
+      "mcp": {
+        "format": "amp",
+        "fichier": null,
+        "utilisateur": "~/.config/amp/settings.json",
+        "ligne": [
+          "--mcp-config",
+          "{json_serveurs}"
+        ],
+        "exemple": "{\n  \"amp.mcpServers\": {\n    \"koracut\": {\n      \"command\": \"node\",\n      \"args\": [\n        \"/chemin/vers/koracut-mcp/main.js\"\n      ],\n      \"env\": {\n        \"KORACUT_PORTE\": \"/chemin/vers/porte-koracut.json\"\n      }\n    }\n  }\n}"
+      },
+      "notes": "Pas d'argument pour un premier message qui garde la session : il faut lui envoyer le texte sur l'entrée standard (echo \"…\" | amp), la session reste interactive. amp -x répond puis quitte. Les serveurs de .amp/settings.json attendent une approbation (amp mcp approve koracut) ; ceux passés par --mcp-config non. La doc annonce Windows par WSL, un script install.ps1 existe mais n'est pas documenté."
+    },
+    {
+      "id": "goose",
+      "nom": "goose",
+      "editeur": "Agentic AI Foundation (Linux Foundation), créé par Block",
+      "logo": "goose.svg",
+      "logo_mono": true,
+      "couleur": "#000000",
+      "site": "https://goose-docs.ai",
+      "doc": "https://goose-docs.ai/docs/category/getting-started",
+      "licence": "Apache-2.0",
+      "besoin": [
+        "cle",
+        "abonnement",
+        "local"
+      ],
+      "besoin_texte": "Une clé API d'un des 15 fournisseurs pris en charge, un abonnement Claude, ChatGPT ou Gemini branché par ACP, ou un modèle local (Ollama). Gratuit avec un modèle local.",
+      "gratuit": true,
+      "executables": [
+        "goose"
+      ],
+      "installation": {
+        "macos": {
+          "commande": "curl -fsSL https://github.com/aaif-goose/goose/releases/download/stable/download_cli.sh | CONFIGURE=false bash",
+          "requiert": []
+        },
+        "linux": {
+          "commande": "curl -fsSL https://github.com/aaif-goose/goose/releases/download/stable/download_cli.sh | CONFIGURE=false bash",
+          "requiert": []
+        },
+        "windows": {
+          "commande": "Invoke-WebRequest -Uri \"https://raw.githubusercontent.com/aaif-goose/goose/main/download_cli.ps1\" -OutFile \"download_cli.ps1\"; .\\download_cli.ps1",
+          "shell": "powershell",
+          "requiert": []
+        }
+      },
+      "lancement": [
+        "goose",
+        "session"
+      ],
+      "premier_message": [
+        "goose",
+        "run",
+        "-s",
+        "-t",
+        "{message}"
+      ],
+      "premier_message_garde_session": true,
+      "instructions": [
+        "AGENTS.md"
+      ],
+      "lit_agents_md": true,
+      "mcp": {
+        "format": "goose",
+        "fichier": null,
+        "utilisateur": "~/.config/goose/config.yaml",
+        "ligne": [
+          "--with-extension",
+          "koracut:KORACUT_PORTE={porte} {wrapper}"
+        ],
+        "exemple": "--with-extension \"koracut:KORACUT_PORTE=/chemin/vers/porte-koracut.json node /chemin/vers/koracut-mcp/main.js\""
+      },
+      "notes": "Pas de fichier MCP par projet : passer --with-extension à goose session ou à goose run. goose run -s -t traite le message puis reste en mode interactif. CONFIGURE=false saute l'assistant de configuration, à lancer ensuite par goose configure. Le dépôt a quitté block/goose pour aaif-goose/goose."
+    },
+    {
+      "id": "crush",
+      "nom": "Crush",
+      "editeur": "Charm",
+      "logo": null,
+      "logo_mono": false,
+      "couleur": "#6B50FF",
+      "site": "https://charm.land/crush",
+      "doc": "https://github.com/charmbracelet/crush#readme",
+      "licence": "FSL-1.1-MIT (source disponible, devient MIT après deux ans)",
+      "besoin": [
+        "cle",
+        "local"
+      ],
+      "besoin_texte": "Une clé API d'un fournisseur (Anthropic, OpenAI, Gemini, OpenRouter…) ou un modèle local (Ollama, LM Studio). Gratuit avec un modèle local.",
+      "gratuit": true,
+      "executables": [
+        "crush"
+      ],
+      "installation": {
+        "macos": {
+          "commande": "brew install charmbracelet/tap/crush",
+          "requiert": [
+            "brew"
+          ]
+        },
+        "linux": {
+          "commande": "npm install -g @charmland/crush",
+          "requiert": [
+            "node>=20"
+          ]
+        },
+        "windows": {
+          "commande": "winget install charmbracelet.crush",
+          "shell": "powershell",
+          "requiert": []
+        }
+      },
+      "lancement": [
+        "crush"
+      ],
+      "premier_message": null,
+      "premier_message_garde_session": false,
+      "instructions": [
+        "AGENTS.md"
+      ],
+      "lit_agents_md": true,
+      "mcp": {
+        "format": "crushrc",
+        "fichier": ".crushrc",
+        "utilisateur": "~/.config/crush/crushrc",
+        "exemple": "mcp add koracut --command node --args /chemin/vers/koracut-mcp/main.js --env KORACUT_PORTE /chemin/vers/porte-koracut.json\n"
+      },
+      "notes": "Pas de premier message en mode interactif (crush run répond puis quitte). La configuration est maintenant un crushrc (syntaxe Bash) ; l'ancien crush.json ou .crush.json (clé mcp, type stdio) marche encore mais est déprécié. Il lit aussi CLAUDE.md, GEMINI.md, .cursor/rules et .github/copilot-instructions.md."
+    },
+    {
+      "id": "kilo-code",
+      "nom": "Kilo Code CLI",
+      "editeur": "Kilo Code",
+      "logo": "kilo-code.svg",
+      "logo_mono": true,
+      "couleur": "#F8F675",
+      "site": "https://kilo.ai/cli",
+      "doc": "https://kilo.ai/docs/code-with-ai/platforms/cli",
+      "licence": "MIT",
+      "besoin": [
+        "compte",
+        "cle",
+        "local"
+      ],
+      "besoin_texte": "Un compte Kilo (500 modèles au prix du fournisseur, crédits prépayés) ou sa propre clé API, ou un modèle local.",
+      "gratuit": false,
+      "executables": [
+        "kilo"
+      ],
+      "installation": {
+        "macos": {
+          "commande": "curl -fsSL https://kilo.ai/cli/install | bash",
+          "requiert": []
+        },
+        "linux": {
+          "commande": "curl -fsSL https://kilo.ai/cli/install | bash",
+          "requiert": []
+        },
+        "windows": {
+          "commande": "npm install -g @kilocode/cli",
+          "shell": "powershell",
+          "requiert": [
+            "node>=20"
+          ]
+        }
+      },
+      "lancement": [
+        "kilo"
+      ],
+      "premier_message": [
+        "kilo",
+        "--prompt",
+        "{message}"
+      ],
+      "premier_message_garde_session": true,
+      "instructions": [
+        "AGENTS.md"
+      ],
+      "lit_agents_md": true,
+      "mcp": {
+        "format": "opencode",
+        "fichier": "kilo.json",
+        "utilisateur": "~/.config/kilo/kilo.json",
+        "exemple": "{\n  \"mcp\": {\n    \"koracut\": {\n      \"type\": \"local\",\n      \"command\": [\n        \"node\",\n        \"/chemin/vers/koracut-mcp/main.js\"\n      ],\n      \"enabled\": true,\n      \"environment\": {\n        \"KORACUT_PORTE\": \"/chemin/vers/porte-koracut.json\"\n      }\n    }\n  }\n}"
+      },
+      "notes": "Le CLI est un dérivé d'OpenCode : même forme de configuration. Attention, kilo \"texte\" prend le texte pour un chemin de projet ; il faut --prompt. L'ancien paquet kilocode et le dossier .kilocode/ ne servent plus pour le CLI."
+    },
+    {
+      "id": "aider",
+      "nom": "Aider",
+      "editeur": "Aider-AI (Paul Gauthier)",
+      "logo": null,
+      "logo_mono": false,
+      "couleur": "#14B014",
+      "site": "https://aider.chat",
+      "doc": "https://aider.chat/docs/",
+      "licence": "Apache-2.0",
+      "besoin": [
+        "cle",
+        "local"
+      ],
+      "besoin_texte": "Une clé API d'un fournisseur (Anthropic, OpenAI, Gemini, DeepSeek, OpenRouter…) ou un modèle local (Ollama). Gratuit avec un modèle local.",
+      "gratuit": true,
+      "executables": [
+        "aider"
+      ],
+      "installation": {
+        "macos": {
+          "commande": "curl -LsSf https://aider.chat/install.sh | sh",
+          "requiert": []
+        },
+        "linux": {
+          "commande": "curl -LsSf https://aider.chat/install.sh | sh",
+          "requiert": []
+        },
+        "windows": {
+          "commande": "powershell -ExecutionPolicy ByPass -c \"irm https://aider.chat/install.ps1 | iex\"",
+          "shell": "powershell",
+          "requiert": []
+        }
+      },
+      "lancement": [
+        "aider",
+        "--read",
+        "CONVENTIONS.md"
+      ],
+      "premier_message": null,
+      "premier_message_garde_session": false,
+      "instructions": [
+        "CONVENTIONS.md"
+      ],
+      "lit_agents_md": false,
+      "mcp": null,
+      "notes": "Pas de MCP. --message envoie le message puis quitte. Aider ne lit aucun fichier d'instructions tout seul : écrire .aider.conf.yml avec read: [AGENTS.md] (ou lancer aider --read AGENTS.md). Le script installe son propre Python 3.12 par uv. Dernière version publiée 0.86.2 : le projet avance lentement."
+    },
+    {
+      "id": "droid",
+      "nom": "Droid",
+      "editeur": "Factory",
+      "logo": null,
+      "logo_mono": false,
+      "couleur": "#EE6018",
+      "site": "https://factory.ai",
+      "doc": "https://docs.factory.ai/cli/getting-started/overview",
+      "licence": "propriétaire",
+      "besoin": [
+        "compte",
+        "abonnement",
+        "cle"
+      ],
+      "besoin_texte": "Un compte Factory avec un abonnement (Pro à 20 $ par mois et plus). Ses propres clés (BYOK) sont acceptées, avec une part gratuite.",
+      "gratuit": false,
+      "executables": [
+        "droid"
+      ],
+      "installation": {
+        "macos": {
+          "commande": "curl -fsSL https://app.factory.ai/cli | sh",
+          "requiert": []
+        },
+        "linux": {
+          "commande": "curl -fsSL https://app.factory.ai/cli | sh",
+          "requiert": []
+        },
+        "windows": {
+          "commande": "irm https://app.factory.ai/cli/windows | iex",
+          "shell": "powershell",
+          "requiert": []
+        }
+      },
+      "lancement": [
+        "droid"
+      ],
+      "premier_message": [
+        "droid",
+        "{message}"
+      ],
+      "premier_message_garde_session": true,
+      "instructions": [
+        "AGENTS.md"
+      ],
+      "lit_agents_md": true,
+      "mcp": {
+        "format": "claude",
+        "fichier": ".factory/mcp.json",
+        "utilisateur": "~/.factory/mcp.json",
+        "exemple": "{\n  \"mcpServers\": {\n    \"koracut\": {\n      \"type\": \"stdio\",\n      \"command\": \"node\",\n      \"args\": [\n        \"/chemin/vers/koracut-mcp/main.js\"\n      ],\n      \"env\": {\n        \"KORACUT_PORTE\": \"/chemin/vers/porte-koracut.json\"\n      }\n    }\n  }\n}",
+        "type": "stdio"
+      },
+      "notes": "droid exec répond puis quitte. Sous Linux, xdg-utils est demandé. Pas de logo sous licence libre trouvé."
+    },
+    {
+      "id": "mistral-vibe",
+      "nom": "Mistral Vibe",
+      "editeur": "Mistral AI",
+      "logo": "mistral-vibe.svg",
+      "logo_mono": false,
+      "couleur": "#FA520F",
+      "site": "https://mistral.ai/products/vibe",
+      "doc": "https://docs.mistral.ai/vibe/code/cli",
+      "licence": "Apache-2.0",
+      "besoin": [
+        "compte",
+        "cle",
+        "abonnement"
+      ],
+      "besoin_texte": "Un compte Mistral : clé API (l'offre Experiment de Mistral Studio est gratuite pour essayer) ou abonnement Le Chat / Vibe Pro.",
+      "gratuit": true,
+      "executables": [
+        "vibe"
+      ],
+      "installation": {
+        "macos": {
+          "commande": "curl -LsSf https://mistral.ai/vibe/install.sh | bash",
+          "requiert": []
+        },
+        "linux": {
+          "commande": "curl -LsSf https://mistral.ai/vibe/install.sh | bash",
+          "requiert": []
+        },
+        "windows": {
+          "commande": "powershell -ExecutionPolicy ByPass -c \"irm https://astral.sh/uv/install.ps1 | iex\"; uv tool install mistral-vibe",
+          "shell": "powershell",
+          "requiert": []
+        }
+      },
+      "lancement": [
+        "vibe"
+      ],
+      "premier_message": [
+        "vibe",
+        "{message}"
+      ],
+      "premier_message_garde_session": true,
+      "instructions": [
+        "AGENTS.md"
+      ],
+      "lit_agents_md": true,
+      "mcp": {
+        "format": "vibe-toml",
+        "fichier": null,
+        "utilisateur": "~/.vibe/config.toml",
+        "exemple": "[[mcp_servers]]\nname = \"koracut\"\ntransport = \"stdio\"\ncommand = \"node\"\nargs = [\"/chemin/vers/koracut-mcp/main.js\"]\nenv = { \"KORACUT_PORTE\" = \"/chemin/vers/porte-koracut.json\" }\n",
+        "note_koracut": "Pas de fichier écrit : le .vibe/config.toml d'un projet remplace toute la configuration de la personne. L'agent passe par koracut-ctl."
+      },
+      "notes": "Attention : un .vibe/config.toml dans le projet remplace celui de l'utilisateur (il n'y a pas de fusion), et il n'est lu que dans un dossier de confiance. Windows marche mais Mistral vise d'abord Unix. vibe --prompt répond puis quitte. Le logo est celui de Mistral AI."
+    },
+    {
+      "id": "kimi-code",
+      "nom": "Kimi Code CLI",
+      "editeur": "Moonshot AI",
+      "logo": "kimi-code.svg",
+      "logo_mono": false,
+      "couleur": "#1783FF",
+      "site": "https://www.kimi.com/code",
+      "doc": "https://moonshotai.github.io/kimi-code/en/",
+      "licence": "MIT",
+      "besoin": [
+        "compte",
+        "abonnement",
+        "cle"
+      ],
+      "besoin_texte": "Une connexion Kimi Code (compte Kimi avec offre Kimi Code) ou une clé API Moonshot AI Open Platform.",
+      "gratuit": false,
+      "executables": [
+        "kimi"
+      ],
+      "installation": {
+        "macos": {
+          "commande": "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash",
+          "requiert": []
+        },
+        "linux": {
+          "commande": "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash",
+          "requiert": []
+        },
+        "windows": {
+          "commande": "irm https://code.kimi.com/kimi-code/install.ps1 | iex",
+          "shell": "powershell",
+          "requiert": [
+            "git"
+          ]
+        }
+      },
+      "lancement": [
+        "kimi"
+      ],
+      "premier_message": null,
+      "premier_message_garde_session": false,
+      "instructions": [
+        "AGENTS.md"
+      ],
+      "lit_agents_md": true,
+      "mcp": {
+        "format": "claude",
+        "fichier": ".kimi-code/mcp.json",
+        "utilisateur": "~/.kimi-code/mcp.json",
+        "exemple": "{\n  \"mcpServers\": {\n    \"koracut\": {\n      \"command\": \"node\",\n      \"args\": [\n        \"/chemin/vers/koracut-mcp/main.js\"\n      ],\n      \"env\": {\n        \"KORACUT_PORTE\": \"/chemin/vers/porte-koracut.json\"\n      }\n    }\n  }\n}"
+      },
+      "notes": "Remplace l'ancien Kimi CLI en Python, archivé. kimi -p répond puis quitte : pas de premier message interactif. Sous Windows, Git for Windows est obligatoire (il utilise Git Bash). Les serveurs MCP du projet sont montrés dans la demande de confiance du dossier."
+    }
+  ]
+}

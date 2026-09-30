@@ -1,0 +1,36 @@
+[Global]
+IconName=koracut
+DesktopEntry=pro.pixework.koracut
+Comment=KoraCut
+
+[Event/RenderFinished]
+Name=Rendu terminé
+Comment=Le rendu est terminé
+Action=Popup
+
+[Event/RenderStarted]
+Name=Rendu démarré
+Comment=Le rendu a démarré
+Action=Popup
+
+[Event/FrameCaptured]
+Name=Image capturée
+Comment=Une image a été enregistrée sur le disque
+Sound=Oxygen-Sys-App-Message.ogg
+Action=Sound
+
+[Event/ReadyToCapture]
+Name=Prêt pour la capture
+Sound=Oxygen-Sys-App-Positive.ogg
+Action=Sound
+
+[Event/ErrorMessage]
+Name=Erreur
+Comment=Une erreur est survenue dans KoraCut
+Sound=Oxygen-Sys-Warning.ogg
+Action=Sound
+
+[Event/SaveSuccess]
+Name=Enregistrement réussi
+Sound=Oxygen-Sys-App-Positive.ogg
+Action=None

@@ -101,6 +101,10 @@ public:
                                       int length = 10);
 
     static QString createAVProducer(Mlt::Profile &prof, std::shared_ptr<ProjectItemModel> binModel);
+    /** @brief KoraCut : un clip du chutier fait d'un vrai fichier (son de test de la coupe automatique). */
+    static QString createFileProducer(Mlt::Profile &prof, std::shared_ptr<ProjectItemModel> binModel, const QString &path);
+    /** @brief KoraCut : charge un fichier de préréglages de rendu (data/profiles.xml) dans le dépôt des tests. */
+    static void loadRenderPresets(const QString &path);
 
     static std::unique_ptr<QDomElement> getProperty(const QDomElement &element, const QString &name);
 

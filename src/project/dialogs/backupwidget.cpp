@@ -38,7 +38,7 @@ BackupWidget::BackupWidget(const QUrl &projectUrl, QUrl projectFolder, const QSt
     m_projectWildcard.append(QStringLiteral("-??"));
     m_projectWildcard.append(QStringLiteral("-??"));
     m_projectWildcard.append(QStringLiteral("-??"));
-    m_projectWildcard.append(QStringLiteral("-??.kdenlive"));
+    m_projectWildcard.append(QStringLiteral("-??"));
     QAction *openContainingFolder = new QAction(QIcon::fromTheme(QStringLiteral("edit-find")), i18n("Open Containing Folder"), this);
     connect(openContainingFolder, &QAction::triggered, [&]() {
         if (backup_list->currentItem()) {
@@ -60,7 +60,8 @@ BackupWidget::~BackupWidget() = default;
 void BackupWidget::slotParseBackupFiles()
 {
     QLocale locale;
-    QStringList filter = {m_projectWildcard};
+    // Les copies faites avant le changement d'extension restent listées.
+    QStringList filter = {m_projectWildcard + QStringLiteral(".koracut"), m_projectWildcard + QStringLiteral(".kdenlive")};
     backup_list->clear();
 
     // Parse new XDG backup folder $HOME/.local/share/kdenlive/.backup
@@ -76,7 +77,7 @@ void BackupWidget::slotParseBackupFiles()
         }
         if (m_projectWildcard.startsWith(QLatin1Char('*'))) {
             // Displaying all backup files, so add project name in the entries
-            label.prepend(resultList.at(i).fileName().section(QLatin1Char('-'), 0, -7) + QStringLiteral(".kdenlive - "));
+            label.prepend(resultList.at(i).fileName().section(QLatin1Char('-'), 0, -7) + QStringLiteral(" - "));
         }
         auto *item = new QListWidgetItem(label, backup_list);
         item->setData(Qt::UserRole, resultList.at(i).absoluteFilePath());
@@ -98,7 +99,7 @@ void BackupWidget::slotParseBackupFiles()
             }
             if (m_projectWildcard.startsWith(QLatin1Char('*'))) {
                 // Displaying all backup files, so add project name in the entries
-                label.prepend(resultList2.at(i).fileName().section(QLatin1Char('-'), 0, -7) + QStringLiteral(".kdenlive - "));
+                label.prepend(resultList2.at(i).fileName().section(QLatin1Char('-'), 0, -7) + QStringLiteral(" - "));
             }
             auto *item = new QListWidgetItem(label, backup_list);
             item->setData(Qt::UserRole, resultList2.at(i).absoluteFilePath());

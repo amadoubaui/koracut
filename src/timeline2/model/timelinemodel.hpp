@@ -178,7 +178,8 @@ public:
         SelectedRole,       /// clip+composition only
         TrackActiveRole,    /// track only
         AudioRecordRole,    /// track only
-        EffectZonesRole     /// track only
+        EffectZonesRole,    /// track only
+        KoraCutColorRole    /// track only : KoraCut, la couleur choisie pour la piste (vide : par défaut)
     };
 
     enum MoveResult { MoveSuccess, MoveErrorAudio, MoveErrorVideo, MoveErrorType, MoveErrorOther };
@@ -268,8 +269,10 @@ public:
      */
     int getBlankSizeNearClip(int clipId, bool after) const;
 
-    /** @brief if the clip belongs to a AVSplit group, then return the id of the other corresponding clip. Otherwise, returns -1 */
-    int getClipSplitPartner(int clipId) const;
+    /** @brief if the clip belongs to a AVSplit group, then return the id of the other corresponding clip. Otherwise, returns -1
+     *  KoraCut : appelable depuis QML, pour n'écrire le nom d'un média qu'une fois quand ses deux
+     *  moitiés sont posées côte à côte. */
+    Q_INVOKABLE int getClipSplitPartner(int clipId) const;
 
     /** @brief Helper function that returns true if the given ID corresponds to a clip */
     Q_INVOKABLE bool isClip(int id) const;

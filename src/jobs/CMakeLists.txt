@@ -7,6 +7,7 @@ set(kdenlive_SRCS
   jobs/taskmanager.cpp
   jobs/audiolevels/audiolevelstask.cpp
   jobs/audiolevels/generators.cpp
+  jobs/cliploadrecovery.cpp
   jobs/cliploadtask.cpp
   jobs/proxytask.cpp
   jobs/stabilizetask.cpp

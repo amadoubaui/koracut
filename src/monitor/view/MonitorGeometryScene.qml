@@ -64,6 +64,10 @@ Item {
     onFramesizeChanged: {
         if (!(transformedFrame.isResizing || transformedFrame.isMoving)) _framesize = framesize
     }
+    // KoraCut, document 20 : les lignes d'aimantation (roses, comme Figma), -1 quand rien n'est aimanté.
+    property double snapLineX: -1
+    property double snapLineY: -1
+    readonly property color snapColor: "#FF4DA6"
     property bool disableHandles: controller.cursorOutsideEffect
     property bool showHandles: (controller.isKeyframe || K.KdenliveSettings.autoKeyframe) && !disableHandles
     property int requestedKeyFrame: 0
@@ -96,10 +100,18 @@ Item {
     }
 
     function getSnappedRect(frameRect, rotationAngle) {
-      if (!K.KdenliveSettings.showMonitorGrid) {
-        return frameRect
+      if (K.KdenliveSettings.showMonitorGrid) {
+        root.snapLineX = -1
+        root.snapLineY = -1
+        return SnappingLogic.getSnappedRect(frameRect, rotationAngle, K.KdenliveSettings.monitorGridH, K.KdenliveSettings.monitorGridV)
       }
-      return SnappingLogic.getSnappedRect(frameRect, rotationAngle, K.KdenliveSettings.monitorGridH, K.KdenliveSettings.monitorGridV)
+      // KoraCut, document 20 : sans grille, on s'aimante au centre, aux bords, aux tiers et aux repères
+      // (6 px d'écran), et un trait rose montre la cible.
+      var bounds = SnappingLogic.getRotatedBoundingRect(frameRect, rotationAngle || 0)
+      var snapped = root.controller.snapRect(bounds, 6 / Math.max(root.scalex, 0.0001))
+      root.snapLineX = snapped.lineX
+      root.snapLineY = snapped.lineY
+      return Qt.rect(frameRect.x + (snapped.x - bounds.x), frameRect.y + (snapped.y - bounds.y), frameRect.width, frameRect.height)
     }
     
     function shouldFlipText(rotationAngle) {
@@ -248,6 +260,39 @@ Item {
             color: K.KdenliveSettings.safeColor
             showSafeZone: root.controller.showSafezone
             profile: root.controller.profile
+        }
+        // KoraCut, document 20 : repères de plateforme, repères, et les traits d'aimantation.
+        K.MonitorPlatformZones {
+            anchors.fill: frame
+            controller: root.controller
+            scalex: root.scalex
+            scaley: root.scaley
+            position: root.controller.position
+            duration: root.duration
+        }
+        K.MonitorGuides {
+            anchors.fill: frame
+            controller: root.controller
+            scalex: root.scalex
+            scaley: root.scaley
+            rulersItem: monitorRulers
+            rulerSize: monitorRulers.size
+        }
+        Rectangle {
+            visible: root.snapLineX >= 0 && (transformedFrame.isMoving || transformedFrame.isResizing)
+            x: Math.round(root.snapLineX * root.scalex)
+            y: 0
+            width: 1
+            height: frame.height
+            color: root.snapColor
+        }
+        Rectangle {
+            visible: root.snapLineY >= 0 && (transformedFrame.isMoving || transformedFrame.isResizing)
+            x: 0
+            y: Math.round(root.snapLineY * root.scaley)
+            width: frame.width
+            height: 1
+            color: root.snapColor
         }
 
         Repeater {
@@ -560,6 +605,10 @@ Item {
             root._framesize = root.pendingFramesize
             root.framesize = root._framesize
             transformedFrame.isMoving = false
+            root.snapLineX = -1
+            root.snapLineY = -1
+            // KoraCut, document 20 : fin du glisser (ferme l'étape d'annulation du premier déplacement).
+            root.controller.transformDragEnded()
           }
           onPositionChanged: mouse => {
             if (pressed) {
@@ -599,6 +648,7 @@ Item {
                 root._rotation = root.pendingRotation
                 root.rect_rotation = root._rotation
                 transformedFrame.isRotating = false
+                root.controller.transformDragEnded()
             }
             
             onHandleRotationChanged: (angle) => {
@@ -662,6 +712,7 @@ Item {
                     root._framesize = root.pendingFramesize
                     root.framesize = root._framesize
                     transformedFrame.isResizing = false
+                    root.controller.transformDragEnded()
                 }
                 
                 onAddRemoveKeyframe: () => {
@@ -671,6 +722,16 @@ Item {
         }
     }
 
+    // KoraCut, document 20 : les règles (⇧R), au-dessus de la scène, sous la barre d'outils.
+    K.MonitorRulers {
+        id: monitorRulers
+        anchors.fill: parent
+        anchors.bottomMargin: clipMonitorRuler.height
+        controller: root.controller
+        frameItem: frame
+        scalex: root.scalex
+        scaley: root.scaley
+    }
     EffectToolBar {
         id: effectToolBar
         monitorController: root.controller

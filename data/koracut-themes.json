@@ -1,0 +1,124 @@
+{
+ "format": 1,
+ "note": "Les thèmes livrés avec KoraCut (25 septembre 2026). Un thème est une palette de jetons ; la feuille de style (data/koracut.qss, gabarit), la palette Qt, le schéma KDE et les couleurs de la timeline en sont tirés par src/koracut/koracutthemes.cpp. Sombre et Clair donnent tous leurs jetons (ce sont les valeurs de la charte, « 2 - Charte graphique KoraCut.md ») ; les autres ne donnent que ce qui les distingue, le reste est dérivé. Un jeton piste_* ne change les couleurs des clips que s'il est écrit ici. Chaque thème passe le contrôle de contraste (koracutthemetest) ; ecarts_charte liste les écarts connus de la charte, gardés tels quels en attendant la décision d'Amadou Ba (le blanc sur l'accent #0D99FF fait 2,99:1).",
+ "themes": [
+  {
+   "id": "sombre", "schema": "KoraCutDark", "nom": "Dark", "nom_fr": "Sombre", "base": "sombre",
+   "ecarts_charte": ["texte_sur_accent/accent", "texte_sur_accent/selection"],
+   "jetons": {
+    "fond": "#1E1E1E", "panneau": "#1E1E1E", "contenu": "#252525", "surface": "#2C2C2C", "champ": "#383838", "saisie": "#383838",
+    "champ_survol": "#424242", "poignee": "#4A4A4A", "poignee_survol": "#5A5A5A", "bordure": "#787878", "bordure_survol": "#8E8E8E",
+    "voile": "#FFFFFF", "texte": "#FFFFFF", "encre": "#FFFFFF", "texte_secondaire": "#FFFFFF9E", "texte_desactive": "#737373",
+    "texte_sur_accent": "#FFFFFF", "accent": "#0D99FF", "accent_survol": "#2BA6FF", "accent_vif": "#3AAEFF", "accent_presse": "#0A82DB",
+    "accent_doux": "#1B4A6E", "selection": "#0D99FF", "rouge": "#FF7262", "vert": "#4ADE80", "jaune": "#FFD166",
+    "piste_video": "#407499", "piste_titre": "#7C5CFF", "piste_voix": "#14A37F", "piste_musique": "#E07B39"
+   }
+  },
+  {
+   "id": "clair", "schema": "KoraCutLight", "nom": "Light", "nom_fr": "Clair", "base": "clair",
+   "ecarts_charte": ["texte_sur_accent/accent", "texte_sur_accent/selection", "accent/surface", "accent/fond"],
+   "jetons": {
+    "fond": "#E8E8E8", "panneau": "#F3F3F3", "contenu": "#F4F4F4", "surface": "#FFFFFF", "champ": "#EDEDED", "saisie": "#FFFFFF",
+    "champ_survol": "#E3E3E3", "poignee": "#C4C4C4", "poignee_survol": "#ABABAB", "bordure": "#8A8A8A", "bordure_survol": "#767676",
+    "voile": "#000000", "texte": "#1E1E1E", "encre": "#000000", "texte_secondaire": "#0000009E", "texte_desactive": "#A3A3A3",
+    "texte_sur_accent": "#FFFFFF", "accent": "#0D99FF", "accent_survol": "#2BA6FF", "accent_vif": "#3AAEFF", "accent_presse": "#0A82DB",
+    "accent_doux": "#D6ECFF", "selection": "#0D99FF", "rouge": "#C8372B", "vert": "#22A15F", "jaune": "#C86928",
+    "piste_video": "#407499", "piste_titre": "#7C5CFF", "piste_voix": "#14A37F", "piste_musique": "#E07B39"
+   }
+  },
+  {
+   "id": "tres-sombre", "schema": "KoraCutTresSombre", "nom": "Very Dark", "nom_fr": "Très sombre", "base": "sombre",
+   "ecarts_charte": ["texte_sur_accent/accent", "texte_sur_accent/selection"],
+   "inspiration": "Pour les salles d'étalonnage : tout descend d'une marche, l'accent ne bouge pas.",
+   "jetons": {
+    "fond": "#141414", "panneau": "#141414", "contenu": "#1A1A1A", "surface": "#1F1F1F", "champ": "#2A2A2A", "saisie": "#2A2A2A",
+    "champ_survol": "#333333", "poignee": "#3A3A3A", "poignee_survol": "#4A4A4A", "texte": "#FFFFFF", "accent": "#0D99FF",
+    "texte_sur_accent": "#FFFFFF", "texte_desactive": "#6A6A6A"
+   }
+  },
+  {
+   "id": "gris", "schema": "KoraCutGris", "nom": "Grey", "nom_fr": "Gris", "base": "sombre",
+   "inspiration": "Moins de contraste pour les longues journées : fonds plus clairs, texte un peu adouci.",
+   "jetons": {
+    "fond": "#333333", "panneau": "#333333", "contenu": "#383838", "surface": "#3D3D3D", "champ": "#474747", "saisie": "#474747",
+    "champ_survol": "#4D4D4D", "poignee": "#555555", "poignee_survol": "#646464", "bordure": "#8F8F8F", "bordure_survol": "#A0A0A0",
+    "texte": "#EDEDED", "texte_secondaire": "#EDEDEDB4", "texte_desactive": "#828282", "accent": "#3AAEFF", "texte_sur_accent": "#000000",
+    "accent_doux": "#2A5475", "rouge": "#FF8A7E", "piste_video": "#5B8DB5"
+   }
+  },
+  {
+   "id": "contraste-eleve", "schema": "KoraCutContrasteEleve", "nom": "High Contrast", "nom_fr": "Contraste élevé", "base": "sombre",
+   "inspiration": "Accessibilité : fond noir, textes secondaires éclaircis, accent relevé, texte noir sur l'accent.",
+   "jetons": {
+    "fond": "#000000", "panneau": "#000000", "contenu": "#0A0A0A", "surface": "#121212", "champ": "#1F1F1F", "saisie": "#1F1F1F",
+    "champ_survol": "#2E2E2E", "poignee": "#6A6A6A", "poignee_survol": "#8A8A8A", "bordure": "#D0D0D0", "bordure_survol": "#E0E0E0",
+    "texte": "#FFFFFF", "texte_secondaire": "#FFFFFFE6", "texte_desactive": "#BDBDBD", "accent": "#3FB0FF", "accent_survol": "#6CC4FF",
+    "accent_vif": "#6CC4FF", "accent_presse": "#1F9BF5", "texte_sur_accent": "#000000", "accent_doux": "#123E5E",
+    "piste_video": "#4F90C4"
+   }
+  },
+  {
+   "id": "matrix", "schema": "KoraCutMatrix", "nom": "Matrix", "nom_fr": "Matrix", "base": "sombre", "police": "mono", "rayon": 0,
+   "inspiration": "Noir et vert phosphore, texte en police à chasse fixe, coins droits.",
+   "jetons": {
+    "fond": "#000000", "panneau": "#000000", "contenu": "#030B05", "surface": "#061209", "champ": "#0B1F10", "saisie": "#0B1F10",
+    "texte": "#7DFF9A", "encre": "#7DFF9A", "voile": "#00FF41", "accent": "#00FF41", "texte_sur_accent": "#000000",
+    "bordure": "#1FA33F", "bordure_survol": "#39D35C", "accent_doux": "#0B3D17", "selection": "#00C835",
+    "rouge": "#FF5F56", "vert": "#00FF41", "jaune": "#D4FF3A",
+    "piste_video": "#12873A", "piste_titre": "#5CBF2A", "piste_voix": "#0E9E77", "piste_musique": "#8FA82B"
+   }
+  },
+  {
+   "id": "spider-man", "schema": "KoraCutSpiderMan", "nom": "Spider-Man", "nom_fr": "Spider-Man", "base": "sombre",
+   "inspiration": "Rouge vif, bleu profond et noir, les couleurs du costume.",
+   "jetons": {
+    "fond": "#070A14", "panneau": "#070A14", "contenu": "#0C1230", "surface": "#111A40", "champ": "#1B2757", "saisie": "#1B2757",
+    "champ_survol": "#233168", "texte": "#FFFFFF", "voile": "#9FB2FF", "accent": "#FF3B45", "texte_sur_accent": "#000000",
+    "accent_doux": "#4A1A2E", "selection": "#E62429", "bordure": "#7F8FD0", "rouge": "#FF7A7F",
+    "piste_video": "#D0222D", "piste_titre": "#3F6FE8", "piste_voix": "#2FA3C4", "piste_musique": "#E8A33A"
+   }
+  },
+  {
+   "id": "punk", "schema": "KoraCutPunk", "nom": "Punk", "nom_fr": "Punk", "base": "sombre", "rayon": 0,
+   "inspiration": "Noir, rose fluo et jaune acide, coins droits.",
+   "jetons": {
+    "fond": "#0A0A0A", "panneau": "#0A0A0A", "contenu": "#111111", "surface": "#171717", "champ": "#242424", "saisie": "#242424",
+    "texte": "#FFFFFF", "voile": "#E4FF1A", "accent": "#FF2E93", "texte_sur_accent": "#000000", "selection": "#FF2E93",
+    "accent_doux": "#4D1030", "bordure": "#E4FF1A", "bordure_survol": "#F2FF80", "jaune": "#E4FF1A", "rouge": "#FF6B5A",
+    "piste_video": "#E0267F", "piste_titre": "#C8E000", "piste_voix": "#00C2DB", "piste_musique": "#FF7A1A"
+   }
+  },
+  {
+   "id": "ocean", "schema": "KoraCutOcean", "nom": "Ocean", "nom_fr": "Océan", "base": "sombre",
+   "inspiration": "Bleu profond et turquoise, comme l'Atlantique au large de Dakar.",
+   "jetons": {
+    "fond": "#08161E", "panneau": "#08161E", "contenu": "#0C1F29", "surface": "#102834", "champ": "#173745", "saisie": "#173745",
+    "texte": "#E6F4F8", "encre": "#E6F4F8", "voile": "#BFE9F2", "accent": "#2EC4D6", "texte_sur_accent": "#00181D",
+    "accent_doux": "#12475A", "bordure": "#5E8E9C",
+    "piste_video": "#2A7FA8", "piste_titre": "#6E7BE6", "piste_voix": "#1FA38A", "piste_musique": "#E0923F"
+   }
+  },
+  {
+   "id": "sable", "schema": "KoraCutSable", "nom": "Sand", "nom_fr": "Sable", "base": "clair",
+   "inspiration": "Un thème clair et chaud, sable et terre cuite.",
+   "jetons": {
+    "fond": "#E9DFCC", "panneau": "#F3ECDF", "contenu": "#F5EFE4", "surface": "#FBF7F0", "champ": "#EFE5D3", "saisie": "#FFFDF8",
+    "champ_survol": "#E6DAC4", "texte": "#2B2118", "encre": "#2B2118", "voile": "#3A2A1A", "texte_secondaire": "#2B2118B4",
+    "accent": "#9C4F12", "accent_survol": "#B05E1C", "accent_vif": "#B8662A", "accent_presse": "#83410C", "texte_sur_accent": "#FFFFFF",
+    "accent_doux": "#F0D9C2", "selection": "#9C4F12", "bordure": "#8C7658", "bordure_survol": "#6E5C43",
+    "poignee": "#CDBDA2", "poignee_survol": "#B3A085", "texte_desactive": "#A8977D", "rouge": "#B23A22", "vert": "#2E7D4F", "jaune": "#9A6A00",
+    "piste_video": "#3F6E8C", "piste_titre": "#6A4FC4", "piste_voix": "#1F7F63", "piste_musique": "#B85A1E"
+   }
+  },
+  {
+   "id": "nuit-violette", "schema": "KoraCutNuitViolette", "nom": "Violet Night", "nom_fr": "Nuit violette", "base": "sombre",
+   "inspiration": "Dans l'esprit de la marque KoraCut : nuit #14112B, violet Kora, orange Coupe, craie.",
+   "jetons": {
+    "fond": "#0E0B1F", "panneau": "#0E0B1F", "contenu": "#14112B", "surface": "#1B1738", "champ": "#27214D", "saisie": "#27214D",
+    "texte": "#F6F4EE", "encre": "#F6F4EE", "voile": "#DAD7E6", "accent": "#8C7DFF", "texte_sur_accent": "#0E0B1F",
+    "accent_doux": "#2E2670", "bordure": "#7D78A3", "rouge": "#FF7A4D",
+    "piste_video": "#6A5CF2", "piste_titre": "#9B8CFF", "piste_voix": "#14A37F", "piste_musique": "#FF5A1F"
+   }
+  }
+ ]
+}

@@ -16,6 +16,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "titler/titlewidget.h"
 #include "utils/qstringutils.h"
 #include "xml/xml.hpp"
+#include "koracut/koracutarchive.h"
 
 #include "doc/kdenlivedoc.h"
 #include "kdenlive_debug.h"
@@ -366,7 +367,7 @@ void ArchiveWidget::openArchiveForExtraction()
     bool isProjectArchive = false;
     QStringList files = m_archive->directory()->entries();
     for (int i = 0; i < files.count(); ++i) {
-        if (files.at(i).endsWith(QLatin1String(".kdenlive"))) {
+        if (files.at(i).endsWith(QLatin1String(".koracut")) || files.at(i).endsWith(QLatin1String(".kdenlive"))) {
             m_projectName = files.at(i);
             isProjectArchive = true;
             break;
@@ -374,7 +375,7 @@ void ArchiveWidget::openArchiveForExtraction()
     }
 
     if (!isProjectArchive) {
-        Q_EMIT showMessage(QStringLiteral("dialog-close"), i18n("File %1\n is not an archived Kdenlive project", m_extractUrl.toLocalFile()));
+        Q_EMIT showMessage(QStringLiteral("dialog-close"), i18n("File %1\n is not an archived KoraCut project", m_extractUrl.toLocalFile()));
         groupBox->setEnabled(false);
         buttonBox->button(QDialogButtonBox::Apply)->setEnabled(false);
         return;
@@ -910,7 +911,7 @@ bool ArchiveWidget::processProjectFile()
     }
 
     // Make a copy of original project file for extra safety
-    QString path = archive_url->url().toLocalFile() + QDir::separator() + m_name + QStringLiteral("-backup.kdenlive");
+    QString path = archive_url->url().toLocalFile() + QDir::separator() + m_name + QStringLiteral("-backup.koracut");
     if (QFile::exists(path) && KMessageBox::warningTwoActions(this, i18n("File %1 already exists.\nDo you want to overwrite it?", path), {},
                                                               KStandardGuiItem::overwrite(), KStandardGuiItem::cancel()) != KMessageBox::PrimaryAction) {
         return false;
@@ -923,7 +924,7 @@ bool ArchiveWidget::processProjectFile()
         return false;
     }
 
-    path = archive_url->url().toLocalFile() + QDir::separator() + m_name + QStringLiteral(".kdenlive");
+    path = archive_url->url().toLocalFile() + QDir::separator() + m_name + QStringLiteral(".koracut");
     QFile file(path);
     if (file.exists() && KMessageBox::warningTwoActions(this, i18n("Output file already exists. Do you want to overwrite it?"), {},
                                                         KStandardGuiItem::overwrite(), KStandardGuiItem::cancel()) != KMessageBox::PrimaryAction) {
@@ -1043,6 +1044,11 @@ QString ArchiveWidget::processMltFile(const QDomDocument &doc, const QString &de
     }
 
     QDomElement mlt = doc.documentElement();
+    // KoraCut : le rendu d'aperçu pointe vers le cache de cette machine ; une archive part ailleurs.
+    {
+        QDomDocument shared = doc;
+        KoraCutArchive::stripPreview(shared);
+    }
     QString root = mlt.attribute(QStringLiteral("root"));
     if (!root.isEmpty() && !root.endsWith(QLatin1Char('/'))) {
         root.append(QLatin1Char('/'));
@@ -1243,7 +1249,7 @@ void ArchiveWidget::createArchive()
         success = false;
     }
     if (success) {
-        success = m_archive->addLocalFile(m_temp->fileName(), m_name + QStringLiteral(".kdenlive"));
+        success = m_archive->addLocalFile(m_temp->fileName(), m_name + QStringLiteral(".koracut"));
         delete m_temp;
         m_temp = nullptr;
     }

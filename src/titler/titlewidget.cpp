@@ -24,6 +24,7 @@
 #include "widgets/dragvalue.h"
 #include "widgets/timecodedisplay.h"
 #include "xml/xml.hpp"
+#include "koracut/koracutmetrics.h"
 
 #include <cmath>
 
@@ -110,8 +111,7 @@ TitleWidget::TitleWidget(const QUrl &url, QString projectTitlePath, Monitor *mon
     setFont(QFontDatabase::systemFont(QFontDatabase::SmallestReadableFont));
     frame_properties->setEnabled(false);
     frame_properties->setFixedHeight(frame_toolbar->height());
-    int size = style()->pixelMetric(QStyle::PM_SmallIconSize);
-    QSize iconSize(size, size);
+    const QSize iconSize = KoraCutMetrics::iconDefault();
 
     rectBColor->setAlphaChannelEnabled(true);
     rectFColor->setAlphaChannelEnabled(true);
@@ -442,7 +442,7 @@ TitleWidget::TitleWidget(const QUrl &url, QString projectTitlePath, Monitor *mon
     m_buttonSave->setShortcut(Qt::CTRL | Qt::Key_S);
     connect(m_buttonSave, &QAction::triggered, this, [this]() { saveTitle(); });
 
-    m_buttonDownload = new KNSWidgets::Action(i18n("Download New Title Templates…"), QStringLiteral(":data/kdenlive_titles.knsrc"), this);
+    m_buttonDownload = new KNSWidgets::Action(i18n("Download New Title Templates…"), QStringLiteral(":data/koracut_titles.knsrc"), this);
     m_buttonDownload->setShortcut(Qt::ALT | Qt::Key_D);
     m_toolbar->addAction(m_buttonDownload);
     connect(m_buttonDownload, &KNSWidgets::Action::dialogFinished, this, [&](const QList<KNSCore::Entry> &changedEntries) {
@@ -783,7 +783,7 @@ QStringList TitleWidget::extractFontList(const QString &xml)
 // static
 void TitleWidget::refreshTitleTemplates(const QString &projectPath)
 {
-    QStringList filters = QStringList() << QStringLiteral("*.kdenlivetitle");
+    QStringList filters = QStringList() << QStringLiteral("*.koracuttitle") << QStringLiteral("*.kdenlivetitle");
     titleTemplates.clear();
 
     // project templates
@@ -2282,7 +2282,7 @@ void TitleWidget::loadTitle(QUrl url)
     if (!url.isValid()) {
         QString startFolder = KRecentDirs::dir(QStringLiteral(":KdenliveProjectsTitles"));
         url = QFileDialog::getOpenFileUrl(this, i18n("Load Title"), QUrl::fromLocalFile(startFolder.isEmpty() ? m_projectTitlePath : startFolder),
-                                          i18n("Kdenlive title") + QStringLiteral(" (*.kdenlivetitle)"));
+                                          i18n("KoraCut title") + QStringLiteral(" (*.koracuttitle *.kdenlivetitle)"));
     }
     if (url.isValid()) {
         if (anim_start->isChecked()) {
@@ -2335,10 +2335,10 @@ QUrl TitleWidget::saveTitle(QUrl url)
     }
     if (!url.isValid()) {
         QPointer<QFileDialog> fs = new QFileDialog(this, i18n("Save Title"), m_projectTitlePath);
-        fs->setMimeTypeFilters(QStringList() << QStringLiteral("application/x-kdenlivetitle"));
+        fs->setMimeTypeFilters(QStringList() << QStringLiteral("application/x-koracuttitle"));
         fs->setFileMode(QFileDialog::AnyFile);
         fs->setAcceptMode(QFileDialog::AcceptSave);
-        fs->setDefaultSuffix(QStringLiteral("kdenlivetitle"));
+        fs->setDefaultSuffix(QStringLiteral("koracuttitle"));
 
         if ((fs->exec() != 0) && !fs->selectedUrls().isEmpty()) {
             url = fs->selectedUrls().constFirst();
@@ -2562,9 +2562,21 @@ void TitleWidget::readChoices()
     if (!sizes.isEmpty()) {
         splitter->setSizes(sizes);
     }
-    QFont font = titleConfig.readEntry("font_family", font_family->currentFont());
-    if (!QFontDatabase::families().contains(font.family())) {
-        font = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
+    // KoraCut, 23 septembre 2026 : à la première ouverture, la liste des polices commençait sur la
+    // première par ordre alphabétique (« Academy Engraved LET » sur un Mac). On part d'une police
+    // simple présente sur le système ; celle que l'utilisateur choisit reste mémorisée ensuite.
+    QFont defaultFont = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
+    const QStringList families = QFontDatabase::families();
+    for (const QString &family : {QStringLiteral("Helvetica Neue"), QStringLiteral("Segoe UI"), QStringLiteral("Noto Sans"), QStringLiteral("DejaVu Sans"),
+                                  QStringLiteral("Arial")}) {
+        if (families.contains(family)) {
+            defaultFont = QFont(family);
+            break;
+        }
+    }
+    QFont font = titleConfig.readEntry("font_family", defaultFont);
+    if (!families.contains(font.family())) {
+        font = defaultFont;
     }
     font_family->setCurrentFont(font);
     font_size->setValue(titleConfig.readEntry("font_pixel_size", m_frameHeight > 0 ? m_frameHeight / 20 : font_size->value()));

@@ -29,6 +29,8 @@ SpeechToTextWhisper::SpeechToTextWhisper(QObject *parent)
 {
     buildWhisperDeps(KdenliveSettings::enableSeamless());
     addScript(QStringLiteral("whisper/whispertotext.py"));
+    // KoraCut : mots horodatés en JSON pour la coupe automatique (document 15, lot 2).
+    addScript(QStringLiteral("whisper/koracut_mots.py"));
     addScript(QStringLiteral("whisper/whispertosrt.py"));
     addScript(QStringLiteral("whisper/whisperquery.py"));
     addScript(QStringLiteral("whisper/seamlessquery.py"));

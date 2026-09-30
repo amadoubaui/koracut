@@ -183,6 +183,8 @@ Q_SIGNALS:
     void passKeyEvent(QKeyEvent *);
     void panView(const QPoint &diff);
     void reconnectWindow();
+    /** @brief KoraCut, document 20 : demande de zoom autour d'un point de la vue (pincement, Ctrl + molette). */
+    void zoomRequested(double newZoom, const QPointF &viewPos);
 
 protected:
     // TODO: MTL has lock/unlock of individual nodes. Use those.
@@ -217,6 +219,15 @@ protected:
 private:
     QRect m_effectRect;
     QPoint m_panStart;
+    /** @name KoraCut, document 20 : gestes du trackpad et outil main. */
+    ///@{
+    /** Cumul de la molette en Ctrl, pour zoomer au cran complet avec un trackpad. */
+    int m_zoomWheelAccumulated{0};
+    /** Espace maintenu au-dessus d'une image plus grande que le panneau : l'outil main. */
+    bool m_spaceHeld{false};
+    /** Un glisser a eu lieu pendant que l'espace était tenu (on ne lance pas la lecture au relâcher). */
+    bool m_spaceDragged{false};
+    ///@}
     QPoint m_dragStart;
     QSemaphore m_initSem;
     QTimer m_mouseTimer;
@@ -277,6 +288,7 @@ private Q_SLOTS:
     void blankCursor();
 
 protected:
+    bool event(QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void mousePressEvent(QMouseEvent *) override;
     void mouseMoveEvent(QMouseEvent *) override;

@@ -102,10 +102,13 @@ Row {
             property int aWaveInPoint: Math.round((waveform.parentClip.inPoint + ((index + waveform.offset) * waveform.maxWidth / scaleFactor)) * Math.abs(waveform.parentClip.speed))
             waveInPoint: aWaveInPoint
             waveOutPoint: aWaveInPoint + Math.round(width / scaleFactor * Math.abs(waveform.parentClip.speed))
-            bgColorEven: waveform.parentClip.selected ? waveform.audioColor : waveform.audioColor.darker(1.5) //K.KdenliveSettings.thumbColor1.darker(5)
-            bgColorOdd: waveform.parentClip.selected ? waveform.audioColor : waveform.audioColor.darker(1.5)//K.KdenliveSettings.thumbColor2.darker(5)
-            fgColorEven: waveform.parentClip.selected ? K.KdenliveSettings.thumbColor1 :  K.KdenliveSettings.thumbColor1.darker(1.5)
-            fgColorOdd: waveform.parentClip.selected ? K.KdenliveSettings.thumbColor2 : K.KdenliveSettings.thumbColor2.darker(1.5)
+            bgColorEven: waveform.parentClip.selected ? waveform.audioColor : waveform.audioColor.darker(1.5)
+            bgColorOdd: waveform.parentClip.selected ? waveform.audioColor : waveform.audioColor.darker(1.5)
+            // KoraCut : le tracé passe au blanc à 55 %, sur le fond de la piste. Il était vert sur
+            // vert (`thumbColor1` et `thumbColor2`, deux réglages hérités) : une couleur de plus,
+            // qui n'est dans aucune charte, pour dire la même chose que la couleur du clip dit déjà.
+            fgColorEven: Qt.rgba(1, 1, 1, waveform.parentClip.selected ? 0.55 : 0.42)
+            fgColorOdd: Qt.rgba(1, 1, 1, waveform.parentClip.selected ? 0.55 : 0.42)
             drawChannelNames: false //(index + waveform.offset) == 0
         }
     }

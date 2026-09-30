@@ -36,7 +36,7 @@ TranscodeSeek::TranscodeSeek(bool onUserRequest, bool forceReplace, QWidget *par
     }
     setAttribute(Qt::WA_DeleteOnClose, false);
     setWindowTitle(i18nc("@title:window", "Transcode Clip"));
-    KConfig conf(QStringLiteral("kdenlivetranscodingrc"), KConfig::CascadeConfig, QStandardPaths::AppDataLocation);
+    KConfig conf(QStringLiteral("koracuttranscodingrc"), KConfig::CascadeConfig, QStandardPaths::AppDataLocation);
     KConfigGroup group(&conf, "intermediate");
     replace_original->setChecked(forceReplace || KdenliveSettings::transcodingReplace());
     m_encodeParams = group.entryMap();

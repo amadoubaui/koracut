@@ -174,13 +174,13 @@ void FilterTask::run()
     }
 
     // Build consumer
-    QTemporaryFile sourceFile(QDir::temp().absoluteFilePath(QStringLiteral("kdenlive-XXXXXX.mlt")));
+    QTemporaryFile sourceFile(QDir::temp().absoluteFilePath(QStringLiteral("koracut-XXXXXX.mlt")));
     if (!sourceFile.open()) {
         // Something went wrong
         return;
     }
     sourceFile.close();
-    QTemporaryFile destFile(QDir::temp().absoluteFilePath(QStringLiteral("kdenlive-XXXXXX.mlt")));
+    QTemporaryFile destFile(QDir::temp().absoluteFilePath(QStringLiteral("koracut-XXXXXX.mlt")));
     if (!destFile.open()) {
         // Something went wrong
         return;

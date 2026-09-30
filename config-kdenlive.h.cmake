@@ -11,6 +11,9 @@
 
 #define FFMPEG_SUFFIX "@FFMPEG_SUFFIX@"
 
+/* KoraCut : 1 quand le client, la session et le panneau des agents sont compilés (option CMake KORACUT_AGENTS). */
+#cmakedefine01 KORACUT_AGENTS
+
 #cmakedefine HAVE_MALLOC_H 1
 #cmakedefine HAVE_PTHREAD_H 1
 

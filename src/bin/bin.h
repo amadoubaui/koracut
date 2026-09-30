@@ -24,6 +24,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include <QMutex>
 #include <QPushButton>
 #include <QTimer>
+#include <QRect>
 #include <QTreeView>
 #include <QUrl>
 #include <QWidget>
@@ -93,6 +94,8 @@ private:
     PlaylistState::ClipState m_dragType;
     QModelIndex m_lastHoveredItem;
     QModelIndexList m_clickedIndexes;
+    /** @brief Zone du bouton de l'état vide, mise à jour à chaque peinture. Propre à cette vue. */
+    QRect m_emptyActionRect;
 };
 
 /** @class MyTreeView
@@ -126,6 +129,8 @@ private:
     PlaylistState::ClipState m_dragType;
     QModelIndex m_lastHoveredItem;
     QModelIndexList m_clickedIndexes;
+    /** @brief Zone du bouton de l'état vide, mise à jour à chaque peinture. Propre à cette vue. */
+    QRect m_emptyActionRect;
     bool m_editing;
     bool isEditing() const;
 
@@ -193,7 +198,12 @@ class Bin : public QWidget
     Q_OBJECT
 
     /** @brief Defines the view types (icon view, tree view,...)  */
-    enum BinViewType { BinTreeView, BinIconView, BinUnknownView };
+    /** KoraCut, 21 septembre 2026 : trois modes d'affichage, comme Resolve et Premiere.
+     *  `BinTreeView` est la vue Liste (dense, une ligne par média), `BinIconView` la vue Cartes
+     *  (vignette large, nom dessous), `BinDetailsView` la vue Détails (tableau triable).
+     *  `BinDetailsView` est ajouté en fin d'énumération pour que les configurations existantes,
+     *  qui stockent le mode par son numéro, gardent le même sens. */
+    enum BinViewType { BinTreeView, BinIconView, BinUnknownView, BinDetailsView };
 
 public:
     explicit Bin(std::shared_ptr<ProjectItemModel> model, QWidget *parent = nullptr, bool isMainBin = true, BinViewType type = BinUnknownView);
@@ -579,6 +589,10 @@ private:
     QLineEdit *m_searchLine;
     QToolButton *m_addButton;
     KSelectAction *m_listTypeAction{nullptr};
+    /** KoraCut : les trois modes d'affichage, aussi posés en contrôle segmenté dans la barre. */
+    QList<QAction *> m_viewModeActions;
+    /** KoraCut : pose la propriété `koracutSegment` sur les trois boutons de mode. */
+    void setupViewModeSegments();
     QMenu *m_extractAudioAction{nullptr};
     QAction *m_transcodeAction{nullptr};
     QMenu *m_clipsActionsMenu{nullptr};

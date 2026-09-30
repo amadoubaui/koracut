@@ -1,0 +1,6 @@
+[KNewStuff3]
+Name=Jeux de raccourcis KoraCut
+ProvidersUrl=https://autoconfig.kde.org/ocs/providers.xml
+Categories=Kdenlive Keyboard Schemes
+TargetDir=koracut/shortcuts
+Uncompress=archive

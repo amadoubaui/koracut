@@ -2,19 +2,20 @@
 SPDX-FileCopyrightText: 2012 Jean-Baptiste Mardelle <jb@kdenlive.org>
 SPDX-FileCopyrightText: 2014 Till Theato <root@ttill.de>
 SPDX-FileCopyrightText: 2020 Julius Künzel <julius.kuenzel@kde.org>
+SPDX-FileCopyrightText: 2026 KoraCut contributors / PIXEWORK
 SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 */
 
 #include "layouts/layoutswitcher.h"
 #include <QObject>
-#include <QPushButton>
+#include <QToolButton>
 
 LayoutSwitcher::LayoutSwitcher(QWidget *parent)
     : QWidget(parent)
     , m_buttonGroup(new QButtonGroup(this))
     , m_layout(new QHBoxLayout)
 {
-    m_layout->setSpacing(0);
+    m_layout->setSpacing(2);
     m_layout->setContentsMargins(0, 0, 0, 0);
     setLayout(m_layout);
     m_buttonGroup->setExclusive(true);
@@ -25,14 +26,13 @@ void LayoutSwitcher::buttonClicked(QAbstractButton *button)
 {
     if (button) {
         m_currentLayoutId = button->property("layoutid").toString();
-        qDebug() << ":::: LAYOUT BUTTON CLICKES: " << m_currentLayoutId;
         Q_EMIT layoutSelected(m_currentLayoutId);
     }
 }
 
-void LayoutSwitcher::setLayouts(const QList<QPair<QString, QString>> &layouts, const QString &currentLayout)
+void LayoutSwitcher::setLayouts(const QList<LayoutTab> &tabs, const QString &currentLayout)
 {
-    // Remove old buttons
+    // On efface les anciens onglets
     while (QLayoutItem *item = m_layout->takeAt(0)) {
         if (QWidget *w = item->widget()) {
             m_buttonGroup->removeButton(qobject_cast<QAbstractButton *>(w));
@@ -40,21 +40,57 @@ void LayoutSwitcher::setLayouts(const QList<QPair<QString, QString>> &layouts, c
         }
         delete item;
     }
-    // Add new buttons
-    for (const auto &pair : layouts) {
-        const QString &internalId = pair.first;
-        const QString &label = pair.second;
-        auto *btn = new QPushButton(label, this);
-        btn->setProperty("layoutid", internalId);
+    m_tabs = tabs;
+    for (const LayoutTab &tab : tabs) {
+        auto *btn = new QToolButton(this);
+        btn->setObjectName(QStringLiteral("koracutModuleTab"));
+        btn->setProperty("layoutid", tab.id);
+        btn->setText(tab.label);
+        if (!tab.icon.isNull()) {
+            btn->setIcon(tab.icon);
+            btn->setIconSize(QSize(16, 16));
+        }
+        btn->setToolButtonStyle(tab.icon.isNull() ? Qt::ToolButtonTextOnly : Qt::ToolButtonTextBesideIcon);
+        btn->setToolTip(tab.tooltip.isEmpty() ? tab.label : tab.tooltip);
         btn->setCheckable(true);
-        btn->setFlat(true);
+        btn->setAutoRaise(true);
         btn->setFocusPolicy(Qt::NoFocus);
+        btn->setCursor(Qt::PointingHandCursor);
+        btn->setFixedHeight(28);
         m_buttonGroup->addButton(btn);
         m_layout->addWidget(btn);
-        if (!currentLayout.isEmpty() && internalId == currentLayout) {
+        if (!currentLayout.isEmpty() && tab.id == currentLayout) {
             btn->setChecked(true);
-            m_currentLayoutId = internalId;
+            m_currentLayoutId = tab.id;
         }
+    }
+    // On mesure la largeur avec les noms avant de passer éventuellement en icônes seules.
+    m_naturalWidth = sizeHint().width();
+    applyCompactMode();
+}
+
+void LayoutSwitcher::setCompact(bool compact)
+{
+    if (m_compact == compact) {
+        return;
+    }
+    m_compact = compact;
+    applyCompactMode();
+}
+
+void LayoutSwitcher::applyCompactMode()
+{
+    const QList<QAbstractButton *> buttons = m_buttonGroup->buttons();
+    for (QAbstractButton *b : buttons) {
+        auto *btn = qobject_cast<QToolButton *>(b);
+        if (!btn) {
+            continue;
+        }
+        if (btn->icon().isNull()) {
+            btn->setToolButtonStyle(Qt::ToolButtonTextOnly);
+            continue;
+        }
+        btn->setToolButtonStyle(m_compact ? Qt::ToolButtonIconOnly : Qt::ToolButtonTextBesideIcon);
     }
 }
 
@@ -75,7 +111,17 @@ void LayoutSwitcher::setCurrentLayout(const QString &layoutId)
             QSignalBlocker blocker(m_buttonGroup);
             btn->setChecked(true);
             m_currentLayoutId = layoutId;
-            break;
+            return;
         }
+    }
+    // Disposition inconnue (chargée depuis un projet) : plus aucun onglet actif
+    if (layoutId.isEmpty()) {
+        QSignalBlocker blocker(m_buttonGroup);
+        m_buttonGroup->setExclusive(false);
+        for (QAbstractButton *btn : buttons) {
+            btn->setChecked(false);
+        }
+        m_buttonGroup->setExclusive(true);
+        m_currentLayoutId.clear();
     }
 }

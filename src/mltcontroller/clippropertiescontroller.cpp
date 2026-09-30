@@ -91,7 +91,10 @@ AnalysisTree::AnalysisTree(QWidget *parent)
 {
     setRootIsDecorated(false);
     setColumnCount(2);
-    setAlternatingRowColors(true);
+    // KoraCut : pas de zébrure. Elle alternait #1E1E1E et #2C2C2C, soit deux des quatre
+    // marches de surface : on ne savait plus si une ligne claire était une ligne paire
+    // ou une surface différente. La hauteur de ligne suffit à suivre une ligne.
+    setAlternatingRowColors(false);
     setHeaderHidden(true);
     setDragEnabled(true);
 }
@@ -271,7 +274,10 @@ void ClipPropertiesController::constructFileInfoPage()
     m_propertiesTree = new QTreeWidget(this);
     m_propertiesTree->setRootIsDecorated(false);
     m_propertiesTree->setColumnCount(2);
-    m_propertiesTree->setAlternatingRowColors(true);
+    // KoraCut : pas de zébrure. Elle alternait #1E1E1E et #2C2C2C, soit deux des quatre
+    // marches de surface : on ne savait plus si une ligne claire était une ligne paire
+    // ou une surface différente. La hauteur de ligne suffit à suivre une ligne.
+    m_propertiesTree->setAlternatingRowColors(false);
     m_propertiesTree->setItemDelegate(new PropertiesDelegate(this));
     m_propertiesTree->setHeaderHidden(true);
     box->addWidget(m_propertiesTree);
@@ -1103,7 +1109,10 @@ void ClipPropertiesController::constructMetadataPage()
     auto *metaTree = new QTreeWidget;
     metaTree->setRootIsDecorated(true);
     metaTree->setColumnCount(2);
-    metaTree->setAlternatingRowColors(true);
+    // KoraCut : pas de zébrure. Elle alternait #1E1E1E et #2C2C2C, soit deux des quatre
+    // marches de surface : on ne savait plus si une ligne claire était une ligne paire
+    // ou une surface différente. La hauteur de ligne suffit à suivre une ligne.
+    metaTree->setAlternatingRowColors(false);
     metaTree->setHeaderHidden(true);
     box->addWidget(metaTree);
 

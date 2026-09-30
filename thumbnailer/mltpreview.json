@@ -3,6 +3,8 @@
     "KPlugin": {
         "MimeTypes": [
             "video/mlt-playlist",
+            "application/x-koracut",
+            "application/x-koracuttitle",
             "application/x-kdenlive",
             "application/x-kdenlivetitle",
             "application/vnd.mlt+xml"
@@ -48,5 +50,5 @@
         "Name[zh_CN]": "MLT 播放列表",
         "Name[zh_TW]": "MLT 播放清單"
     },
-    "MimeType": "video/mlt-playlist;application/x-kdenlive;application/x-kdenlivetitle;application/vnd.mlt+xml;"
+    "MimeType": "video/mlt-playlist;application/x-koracut;application/x-koracuttitle;application/x-kdenlive;application/x-kdenlivetitle;application/vnd.mlt+xml;"
 }

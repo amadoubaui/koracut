@@ -73,7 +73,7 @@ RenderJob::RenderJob(const QString &errorMessage, int pid, QObject *parent)
     m_renderProcess.setReadChannel(QProcess::StandardError);
     connect(&m_renderProcess, &QProcess::finished, this, &RenderJob::slotIsOver);
 
-    QString servername = QStringLiteral("org.kde.kdenlive-%1").arg(m_pid);
+    QString servername = QStringLiteral("pro.pixework.koracut-%1").arg(m_pid);
     m_kdenlivesocket->connectToServer(servername);
     if (m_kdenlivesocket->waitForConnected(1000)) {
         QJsonObject method, args;
@@ -194,7 +194,7 @@ void RenderJob::updateProgress()
     } else if (!m_connectTimer.isActive()) {
         // Linux, try to reconnect if we have a Kdenlive instance
         qCWarning(KDENLIVE_RENDERER_LOG) << "Connection to Kdenlive instance lost, trying to reconnect";
-        QStringList files = QDir::temp().entryList({QStringLiteral("org.kde.kdenlive*")}, QDir::System);
+        QStringList files = QDir::temp().entryList({QStringLiteral("pro.pixework.koracut*")}, QDir::System);
         qCDebug(KDENLIVE_RENDERER_LOG) << "Searching for possible instances, results:" << files;
         if (!files.isEmpty()) {
             qCDebug(KDENLIVE_RENDERER_LOG) << "Found possible running instance:" << files.first();
@@ -203,7 +203,7 @@ void RenderJob::updateProgress()
             qCDebug(KDENLIVE_RENDERER_LOG) << "Found possible running instance PID:" << pid;
             if (ok && pid > -1) {
                 m_pid = pid;
-                QString servername = QStringLiteral("org.kde.kdenlive-%1").arg(m_pid);
+                QString servername = QStringLiteral("pro.pixework.koracut-%1").arg(m_pid);
                 m_kdenlivesocket->connectToServer(servername);
             }
         }
@@ -232,7 +232,7 @@ void RenderJob::start()
             m_kdenlivesocket->write(QJsonDocument(method).toJson());
             m_kdenlivesocket->flush();
         });
-        QString servername = QStringLiteral("org.kde.kdenlive-%1").arg(m_pid);
+        QString servername = QStringLiteral("pro.pixework.koracut-%1").arg(m_pid);
         m_kdenlivesocket->connectToServer(servername);
         if (m_kdenlivesocket->waitForConnected(1000)) {
         } else {

@@ -61,7 +61,7 @@ SPDX-FileCopyrightText = "2014 Uri Herrera <uri_herrera@nitrux.in> and others"
 SPDX-License-Identifier = "LGPL-3.0-or-later"
 
 [[annotations]]
-path = ["data/icons/**.png", "data/icons/kdenlive.ico", "data/icons/sc-apps-kdenlive.svgz", "data/icons/sc-mimetypes-application-x-kdenlivetitle.svgz"]
+path = ["data/icons/**.png", "data/icons/koracut.ico", "data/icons/sc-apps-koracut.svgz", "data/icons/sc-mimetypes-application-x-koracut.svgz", "data/icons/sc-mimetypes-application-x-koracuttitle.svgz", "data/icons/sc-mimetypes-application-x-kdenlivetitle.svgz"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Nara Oliveira and Farid Abdelnour"
 SPDX-License-Identifier = "LGPL-3.0-or-later"
@@ -97,7 +97,7 @@ SPDX-FileCopyrightText = "Marco Gittler"
 SPDX-License-Identifier = "CC0-1.0"
 
 [[annotations]]
-path = ["kdenlive.entitlements","data/Info.plist", "data/camcorderfilters.rc", "data/clipjobsettings.rc", "data/encodingprofiles.rc", "data/externalproxies.rc", "data/westley.xml", "data/scripts/automask/sammodelsinfo.rc"]
+path = ["koracut.entitlements","data/Info.plist", "data/camcorderfilters.rc", "data/clipjobsettings.rc", "data/encodingprofiles.rc", "data/externalproxies.rc", "data/westley.xml", "data/scripts/automask/sammodelsinfo.rc"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Jean-Baptiste Mardelle"
 SPDX-License-Identifier = "CC0-1.0"
@@ -109,7 +109,7 @@ SPDX-FileCopyrightText = "Jean-Baptiste Mardelle"
 SPDX-License-Identifier = "LGPL-3.0-or-later"
 
 [[annotations]]
-path = "data/pics/kdenlive-logo.png"
+path = "data/pics/koracut-logo.png"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Nara Oliveira and Farid Abdelnour"
 SPDX-License-Identifier = "LGPL-3.0-or-later"
@@ -157,7 +157,7 @@ SPDX-FileCopyrightText = "2025 Swastik Patel, Jean-Baptiste Mardelle"
 SPDX-License-Identifier = "CC0-1.0"
 
 [[annotations]]
-path = "data/man/kdenlive**"
+path = "data/man/koracut**"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Mads Bondo Dydensborg"
 SPDX-License-Identifier = "GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL"
@@ -169,7 +169,7 @@ SPDX-FileCopyrightText = "Jean-Baptiste Mardelle, Juku Trump"
 SPDX-License-Identifier = "CC0-1.0"
 
 [[annotations]]
-path = "data/org.kde.kdenlive.**"
+path = "data/pro.pixework.koracut.**"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Kdenlive translators"
 SPDX-License-Identifier = "GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL"
@@ -181,19 +181,19 @@ SPDX-FileCopyrightText = "Magic Lantern Project"
 SPDX-License-Identifier = "GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL"
 
 [[annotations]]
-path = "data/kdenlive**.notifyrc"
+path = "data/koracut**.notifyrc"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Jean-Baptiste Mardelle, Kdenlive translators"
 SPDX-License-Identifier = "GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL"
 
 [[annotations]]
-path = ["data/slideanimations.rc", "data/kdenlivedefaultlayouts.rc", "data/kdenlivetranscodingrc"]
+path = ["data/slideanimations.rc", "data/kdenlivedefaultlayouts.rc", "data/koracuttranscodingrc"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Jean-Baptiste Mardelle"
 SPDX-License-Identifier = "GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL"
 
 [[annotations]]
-path = "data/kdenliveeffectscategory.rc"
+path = "data/koracuteffectscategory.rc"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Massimo Stella"
 SPDX-License-Identifier = "GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL"
@@ -205,19 +205,13 @@ SPDX-FileCopyrightText = "Bruno Santos"
 SPDX-License-Identifier = "GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL"
 
 [[annotations]]
-path = [".flatpak-manifest.json", "packaging/flatpak/python-modules.json", "packaging/flatpak/org.kde.kdenlive-**.json"]
+path = [".flatpak-manifest.json", "packaging/flatpak/python-modules.json", "packaging/flatpak/pro.pixework.koracut-**.json"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "none"
 SPDX-License-Identifier = "CC0-1.0"
 
 [[annotations]]
 path = "dev-docs/**.md"
-precedence = "aggregate"
-SPDX-FileCopyrightText = "2020 Kdenlive contributors"
-SPDX-License-Identifier = "CC-BY-SA-4.0"
-
-[[annotations]]
-path = "doc/**"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2020 Kdenlive contributors"
 SPDX-License-Identifier = "CC-BY-SA-4.0"
@@ -235,7 +229,7 @@ SPDX-FileCopyrightText = "Julius Künzel, Jean-Baptiste Mardelle"
 SPDX-License-Identifier = "CC0-1.0"
 
 [[annotations]]
-path = ["src/org.kdenlive.MainWindow.xml", "src/mlt_config.h.in", "src/kdenliveui.rc", "src/kdenlivesettings.kcfg"]
+path = ["src/pro.pixework.koracut.MainWindow.xml", "src/mlt_config.h.in", "src/koracutui.rc", "src/kdenlivesettings.kcfg"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Jean-Baptiste Mardelle"
 SPDX-License-Identifier = "GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL"
@@ -287,3 +281,31 @@ path = ".well-known/funding-manifest-urls"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Farid Abdelnour"
 SPDX-License-Identifier = "GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL"
+
+# KoraCut : fichiers ajoutés par PIXEWORK (thème, symbole, icônes de modules).
+[[annotations]]
+path = ["data/koracut.qss", "data/koracut-themes.json", "data/color-schemes/**", "data/koracut/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 KoraCut contributors / PIXEWORK"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# KoraCut : thème d'icônes en trait fin, dessiné avec Lucide (ISC).
+[[annotations]]
+path = ["data/icons/koracut/**", "data/icons/koracut-icons.qrc"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Lucide Icons and Contributors, PIXEWORK"
+SPDX-License-Identifier = "ISC"
+
+# KoraCut : libvterm (Paul Evans, MIT), l'émulateur du terminal intégré, copié tel quel (document 18).
+[[annotations]]
+path = ["src/koracut/terminal/libvterm/**"]
+precedence = "override"
+SPDX-FileCopyrightText = "2008 Paul Evans <leonerd@leonerd.org.uk>"
+SPDX-License-Identifier = "MIT"
+
+# KoraCut : le catalogue des agents en ligne de commande (les logos ont leur propre REUSE.toml).
+[[annotations]]
+path = ["data/koracut-agents-cli.json", "data/koracut-agents-cli.qrc"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 KoraCut contributors / PIXEWORK"
+SPDX-License-Identifier = "GPL-3.0-or-later"

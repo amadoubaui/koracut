@@ -8,6 +8,8 @@
 
 #include <KLocalizedString>
 
+#include <QApplication>
+
 AutoTrackCreationDialog::AutoTrackCreationDialog(QWidget *parent, int missingTracks, int missingTracksBeforeMirror, int streamCount)
     : QDialog(parent)
     , ui(new Ui::AutoTrackCreationDialog_UI)
@@ -57,6 +59,11 @@ int AutoTrackCreationDialog::getTracksToCreate(QWidget *parent, int missingTrack
 {
     if (missingTracks <= 0) {
         return 0;
+    }
+    // KoraCut : pendant une commande de la porte (document 18), pas de fenêtre qui bloque. On prend
+    // le choix par défaut de cette fenêtre : créer toutes les pistes qui manquent.
+    if (qApp && qApp->property("koracut_sans_fenetre").toBool()) {
+        return missingTracks + missingTracksBeforeMirror;
     }
     AutoTrackCreationDialog dialog(parent, missingTracks, missingTracksBeforeMirror, streamCount);
     if (dialog.exec() != QDialog::Accepted) {

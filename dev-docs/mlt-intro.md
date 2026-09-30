@@ -1,8 +1,8 @@
 # MLT Concepts
 
-This article gives you some basic understanding about at least some MLT concepts. MLT is the media engine Kdenlive relies on for composing and rendering audio and video.
+This article gives you some basic understanding about at least some MLT concepts. MLT is the media engine KoraCut relies on for composing and rendering audio and video.
 
-Please understand that we can’t and don’t strive to give an extensive and exhaustive introduction to MLT. Instead, we see this as a kind of layman’s intro to foster some rough first understanding of the workings of MLT in order to understand how Kdenlive makes use of MLT.
+Please understand that we can’t and don’t strive to give an extensive and exhaustive introduction to MLT. Instead, we see this as a kind of layman’s intro to foster some rough first understanding of the workings of MLT in order to understand how KoraCut makes use of MLT.
 
 If you want to learn more about MLT please read the official [MLT Framework Design][mlt-docs] documentation.
 
@@ -11,8 +11,8 @@ If you want to learn more about MLT please read the official [MLT Framework Desi
 At MLT’s core are its four basic services (or types of services):
 
 * **producers** are sources of individual audio and video frames. As we’ll see later, there are basic (simple) producers, as well as more complex ones.
-* **consumers** are the sinks for audio and video frames. Examples are a screen display such as Kdenlive’s monitors, or an audio/video encoder such as AAC/H.264 that writes video container files.
-* **filters** (in MLT parlance) sit somewhere in between the producers and consomers. These filters modify frames as they are passing through them. In Kdenlive’s user interface, you usually see filters as effects.
+* **consumers** are the sinks for audio and video frames. Examples are a screen display such as KoraCut’s monitors, or an audio/video encoder such as AAC/H.264 that writes video container files.
+* **filters** (in MLT parlance) sit somewhere in between the producers and consomers. These filters modify frames as they are passing through them. In KoraCut’s user interface, you usually see filters as effects.
 * **transitions** (in MLT parlance) combine two input frames into a single new output frame. See below for more details.
 
 ### Producers
@@ -28,17 +28,17 @@ Alas, the producer services can be further divided into:
 
 #### Basic Producers
 
-MLT comes with a lot of producers, which we cannot all tackle here. Instead, we’re just shining some light one what we think will be the most notable producers in the context of Kdenlive. These are (in order of appearance):
+MLT comes with a lot of producers, which we cannot all tackle here. Instead, we’re just shining some light one what we think will be the most notable producers in the context of KoraCut. These are (in order of appearance):
 
 * **avformat** and **avformat-novalidate** for reading the myriad of different audio/video media format using FFmpeg
 * **timewarp** for speeing up or slowing down audio/video media
 * **pixbuf** for reading and understanding the many different image formats
-* **kdenlivetitle** for rendering Kdenlive titles
+* **kdenlivetitle** for rendering KoraCut titles
 * **color/colour** producer for producing uni-color frames
 
 ##### Avformat Producer
 
-The `avformat` producer is probably the most-used staple producer that produces frames from audio/video media files using the famous FFmpeg multimedia handling library. Whatever you can throw successfully at FFmpeg to decode or encode it, can thus be used in Kdenlive. For more details, please refer to MLT’s avformat producer documentation.
+The `avformat` producer is probably the most-used staple producer that produces frames from audio/video media files using the famous FFmpeg multimedia handling library. Whatever you can throw successfully at FFmpeg to decode or encode it, can thus be used in KoraCut. For more details, please refer to MLT’s avformat producer documentation.
 
 ##### Avformat-novalidate Producer
 
@@ -48,7 +48,7 @@ This variant of the `avformat` producer named `avformat-novalidate` is used to s
 
 The `timewarp` producer is relatively new that allows video and audio to be sped up (max. 20x) or slowed down (down to 0.01x). It can even reverse audio and video within the same range between 0.01x and 20x.
 
-Timewarp actually is an encapsulated producer. See also the MLT timewarp producer documentation. Kdenlive uses this producer internally to emulate the speed effect (which isn’t, technically spoken, an MLT filter, but an MLT producer).
+Timewarp actually is an encapsulated producer. See also the MLT timewarp producer documentation. KoraCut uses this producer internally to emulate the speed effect (which isn’t, technically spoken, an MLT filter, but an MLT producer).
 
 ##### Pixbuf Producer
 
@@ -64,7 +64,7 @@ MLT pixbuf producer documentation). Some notable features of this producer are:
  * XPM
  * …as well as many more.
 
-##### Kdenlivetitle Producer
+##### The `kdenlivetitle` Producer
 
 Feed the `kdenlivetitle` producer some XML and it will produce frames containing beautiful titles. The XML describing a title has to be directly included with this service in its `xmldata` property.
 Color/Colour Producers
@@ -74,7 +74,7 @@ This producer has two names: `color` and `colour`. It simply produces frames of 
 * a **32bit hex value** in textual form of RRGGBBAA. Here, RR is the 8bit red channel value ranging from `00` to `ff`. Similar, GG and BB encode the 8bit green and blue channel values, respectively. AA is an 8 bit alpha value, with `ff` denoting full opacity, and `00` meaning full transparency.
 * few **well-known colo(u)r names**, in particular, `black` and `white`.
 
-**Note:** Kdenlive uses the `colour`(!) producer for its timeline-internal lowest black track. In contrast, Kdenlive uses `color` producers for all the (project) bin color clips. Now that’s politically correct!
+**Note:** KoraCut uses the `colour`(!) producer for its timeline-internal lowest black track. In contrast, KoraCut uses `color` producers for all the (project) bin color clips. Now that’s politically correct!
 
 ### Tractors
 

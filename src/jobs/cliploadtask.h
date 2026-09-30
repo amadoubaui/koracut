@@ -46,7 +46,11 @@ private:
     bool m_thumbOnly;
     QString m_errorMessage;
     void generateThumbnail(std::shared_ptr<ProjectClip>binClip, std::shared_ptr<Mlt::Producer> producer);
-    void abort();
+    /** @brief Termine la tâche sans résultat.
+     *  KoraCut : @p loadFailed dit si le média lui-même a refusé de s'ouvrir. Sur une simple
+     *  interruption (annulation, changement de profil), on ne déclare plus le fichier introuvable
+     *  sans avoir vérifié qu'il a vraiment disparu du disque. */
+    void abort(bool loadFailed = false);
 
 Q_SIGNALS:
     void taskDone();

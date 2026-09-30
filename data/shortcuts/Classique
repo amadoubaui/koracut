@@ -1,0 +1,32 @@
+<gui name="koracut" version="1">
+  <ActionProperties>
+    <!-- L'ancien jeu de raccourcis, celui d'avant le 21 septembre 2026.
+         À choisir dans Préférences, Raccourcis clavier, Gérer les schémas,
+         pour retrouver les touches d'avant. -->
+    <Action name="select_tool" shortcut="S"/>
+    <Action name="razor_tool" shortcut="X"/>
+    <Action name="ripple_tool" shortcut=""/>
+    <Action name="slip_tool" shortcut=""/>
+    <Action name="spacer_tool" shortcut="M"/>
+    <!-- L'ancien état : le marqueur rapide était sur le pavé numérique seul, et
+         « Modifier le marqueur » n'avait pas de raccourci. -->
+    <Action name="add_marker_guide_quickly" shortcut="Num+*"/>
+    <Action name="edit_clip_marker" shortcut=""/>
+    <Action name="snap" shortcut=""/>
+    <Action name="cut_timeline_clip" shortcut="Shift+R"/>
+    <Action name="cut_timeline_all_clips" shortcut="Ctrl+Shift+R"/>
+    <Action name="trim_start_to_playhead" shortcut=""/>
+    <Action name="trim_end_to_playhead" shortcut=""/>
+    <Action name="ripple_trim_start" shortcut=""/>
+    <Action name="ripple_trim_end" shortcut=""/>
+    <Action name="insert_track" shortcut=""/>
+    <Action name="insert_to_in_point" shortcut="V"/>
+    <Action name="overwrite_to_in_point" shortcut="B"/>
+    <Action name="zoom_fit" shortcut=""/>
+    <Action name="select_timeline_zone" shortcut="Shift+Z"/>
+    <Action name="clip_switch" shortcut=""/>
+    <Action name="monitor_play_zone" shortcut="Ctrl+Space"/>
+    <Action name="switch_monitor" shortcut="T"/>
+    <Action name="switch_active_target" shortcut="A"/>
+  </ActionProperties>
+</gui>

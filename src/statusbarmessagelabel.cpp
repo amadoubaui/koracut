@@ -77,6 +77,11 @@ StatusBarMessageLabel::StatusBarMessageLabel(QWidget *parent)
     m_keyMap = new QLabel(this);
     m_keyMap->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     m_keyMap->setFont(QFontDatabase::systemFont(QFontDatabase::SmallestReadableFont));
+    // KoraCut, 23 septembre 2026 : une aide trop longue ne doit pas pousser les boutons de la barre
+    // d'état hors de la fenêtre (constaté à 1366 px) : elle se laisse couper, le texte entier est
+    // en infobulle.
+    m_keyMap->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    m_keyMap->setMinimumWidth(1);
     m_progress = new QProgressBar(this);
     m_progress->setFormat(i18nc("%p is the percent value, % is the percent sign", "%p%"));
     lay2->addWidget(m_selectionLabel);
@@ -87,6 +92,8 @@ StatusBarMessageLabel::StatusBarMessageLabel(QWidget *parent)
 
     auto *spacer = new QSpacerItem(1, 1, QSizePolicy::MinimumExpanding, QSizePolicy::Maximum);
     lay->addItem(spacer);
+    // KoraCut : l'aide prend la place libre, et seulement elle (voir plus haut).
+    lay->setStretchFactor(m_keyMap, 1);
     lay->addWidget(m_container);
     setLayout(lay);
     m_progress->setVisible(false);
@@ -111,6 +118,7 @@ void StatusBarMessageLabel::mousePressEvent(QMouseEvent *event)
 void StatusBarMessageLabel::setKeyMap(const QString &text)
 {
     m_keyMap->setText(text);
+    m_keyMap->setToolTip(text);
     m_keymapText = text;
 }
 

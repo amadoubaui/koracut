@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<!DOCTYPE kpartgui>
+<!-- SPDX-FileCopyrightText: 2026 KoraCut contributors / PIXEWORK -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- KoraCut, document 24 : le trémolo de FFmpeg (volume qui bat), base de l'effet de voix « Robot ». Il
+     était dans la liste des filtres écartés faute de fichier de description ; vérifié sous MLT 7.41. -->
+<effect xmlns="https://www.kdenlive.org" tag="avfilter.tremolo" id="avfilter.tremolo" type="audio">
+    <name>Tremolo</name>
+    <description>Sinusoidal amplitude modulation.</description>
+    <author>libavfilter</author>
+    <parameter type="constant" name="av.f" default="5" min="0.1" max="20000" decimals="3" suffix="Hz">
+        <name>Frequency</name>
+    </parameter>
+    <parameter type="constant" name="av.d" default="0.5" min="0" max="1" decimals="3">
+        <name>Depth</name>
+    </parameter>
+</effect>

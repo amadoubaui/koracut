@@ -1,4 +1,4 @@
-#Built in jobs have no name as this is filled by Kdenlive on startup with translated names
+#Built in jobs have no name as this is filled by KoraCut on startup with translated names
 [Ids]
 stabilize=
 scenesplit=

@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 KoraCut contributors / PIXEWORK
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Effets lourds (chantier 10, document 6, section 3g) : sur une machine modeste, ils sont mis en pause
+# pendant la lecture du moniteur Programme (« aperçu simplifié ») et reviennent à la pause. Le rendu
+# d'aperçu, l'export et l'enregistrement les gardent toujours. Un identifiant de service MLT par ligne.
+# Choisis parce qu'ils travaillent sur des voisinages de pixels (flou large, débruitage, stabilisation),
+# pas sur un pixel à la fois : leur coût croît avec la taille du rayon, pas seulement avec l'image.
+avfilter.gblur
+avfilter.boxblur
+avfilter.avgblur
+avfilter.dblur
+avfilter.smartblur
+avfilter.bilateral
+avfilter.median
+avfilter.unsharp
+avfilter.atadenoise
+avfilter.dctdnoiz
+avfilter.fftdnoiz
+avfilter.hqdn3d
+avfilter.vaguedenoiser
+avfilter.nlmeans
+avfilter.bm3d
+avfilter.deshake
+vidstab
+box_blur
+frei0r.IIRblur
+frei0r.squareblur
+frei0r.glow
+frei0r.softglow
+frei0r.edgeglow
+frei0r.cartoon
+frei0r.sharpness
+frei0r.hqdn3d

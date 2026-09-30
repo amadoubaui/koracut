@@ -123,6 +123,14 @@ int ClipModel::construct(const std::shared_ptr<TimelineModel> &parent, const QSt
     }
     auto result = binClip->giveMasterAndGetTimelineProducer(id, producer, state, tid, playlist == 1);
     std::shared_ptr<ClipModel> clip(new ClipModel(parent, result.first, binClipId, id, state, speed));
+    // KoraCut : la couleur lue dans le projet, quand le chutier rend un autre morceau que celui du fichier.
+    if (result.first != producer && producer->property_exists("kdenlive:koracut_color")) {
+        result.first->set("kdenlive:koracut_color", producer->get("kdenlive:koracut_color"));
+    }
+    // KoraCut : le nom propre du clip, de la même façon.
+    if (result.first != producer && producer->property_exists("kdenlive:koracut_clipname")) {
+        result.first->set("kdenlive:koracut_clipname", producer->get("kdenlive:koracut_clipname"));
+    }
     if (warp_pitch) {
         result.first->parent().set("warp_pitch", 1);
     }
@@ -927,6 +935,9 @@ void ClipModel::refreshProducerFromBin(int trackId, PlaylistState::ClipState sta
     // Q_ASSERT(binClip->statusReady());
     std::shared_ptr<Mlt::Producer> binProducer = binClip->getTimelineProducer(trackId, m_id, state, stream, m_speed, secondPlaylist, remapInfo);
     int length = m_producer->get_int("length");
+    // KoraCut : la couleur du clip survit au changement de producteur (vitesse, piste, flux).
+    const QByteArray koraCutColor(m_producer->get("kdenlive:koracut_color"));
+    const QByteArray koraCutName(m_producer->get("kdenlive:koracut_clipname"));
     m_producer = std::move(binProducer);
     if (m_endlessResize && m_producer->parent().get_length() < length) {
         // if endless resize is enabled, we have to carry the length over from
@@ -975,6 +986,12 @@ void ClipModel::refreshProducerFromBin(int trackId, PlaylistState::ClipState sta
     m_producer->set("_kdenlive_cid", m_id);
     if (activeEffect > 0) {
         m_producer->set("kdenlive:activeeffect", activeEffect);
+    }
+    if (!koraCutColor.isEmpty()) {
+        m_producer->set("kdenlive:koracut_color", koraCutColor.constData());
+    }
+    if (!koraCutName.isEmpty()) {
+        m_producer->set("kdenlive:koracut_clipname", koraCutName.constData());
     }
     m_endlessResize = !binClip->hasLimitedDuration();
 }
@@ -1348,7 +1365,8 @@ void ClipModel::passTimelineProperties(const std::shared_ptr<ClipModel> &other)
     READ_LOCK();
     Mlt::Properties source(m_producer->get_properties());
     Mlt::Properties dest(other->service()->get_properties());
-    dest.pass_list(source, "kdenlive:hide_keyframes,kdenlive:activeeffect");
+    // KoraCut : la couleur du clip suit ses deux moitiés après une coupe.
+    dest.pass_list(source, "kdenlive:hide_keyframes,kdenlive:activeeffect,kdenlive:koracut_color,kdenlive:koracut_clipname");
 }
 
 bool ClipModel::canBeVideo() const
@@ -1563,15 +1581,70 @@ int ClipModel::getMaxDuration() const
 
 const QString ClipModel::clipName() const
 {
+    // KoraCut : un clip renommé dans la timeline (outil renommer_clip) garde son nom à lui.
+    if (m_producer && m_producer->property_exists("kdenlive:koracut_clipname")) {
+        const QString own = QString::fromUtf8(m_producer->get("kdenlive:koracut_clipname"));
+        if (!own.isEmpty()) {
+            return own;
+        }
+    }
     return pCore->projectItemModel()->getClipByBinID(m_binClipId)->clipName();
 }
 
 const QString ClipModel::clipTag() const
 {
+    // KoraCut : la couleur propre du clip passe en premier, puis l'étiquette du chutier, puis la
+    // couleur de la piste. Vide : la couleur du type de clip (vidéo, titre, voix, musique).
+    const QString own = koraCutColor();
+    if (!own.isEmpty()) {
+        return own;
+    }
     if (KdenliveSettings::tagsintimeline()) {
-        return pCore->projectItemModel()->getClipByBinID(m_binClipId)->tags();
+        const QString tags = pCore->projectItemModel()->getClipByBinID(m_binClipId)->tags();
+        if (!tags.isEmpty()) {
+            return tags;
+        }
+    }
+    if (m_currentTrackId != -1) {
+        if (auto ptr = m_parent.lock()) {
+            if (ptr->isTrack(m_currentTrackId)) {
+                return ptr->getTrackById_const(m_currentTrackId)->getProperty(QStringLiteral("kdenlive:koracut_color")).toString();
+            }
+        }
     }
     return QString();
+}
+
+QString ClipModel::koraCutColor() const
+{
+    READ_LOCK();
+    return QString::fromUtf8(m_producer->get("kdenlive:koracut_color"));
+}
+
+void ClipModel::setKoraCutColor(const QString &color)
+{
+    QWriteLocker locker(&m_lock);
+    if (color.isEmpty()) {
+        m_producer->Mlt::Properties::clear("kdenlive:koracut_color");
+    } else {
+        m_producer->set("kdenlive:koracut_color", color.toUtf8().constData());
+    }
+}
+
+QString ClipModel::koraCutName() const
+{
+    READ_LOCK();
+    return QString::fromUtf8(m_producer->get("kdenlive:koracut_clipname"));
+}
+
+void ClipModel::setKoraCutName(const QString &name)
+{
+    QWriteLocker locker(&m_lock);
+    if (name.isEmpty()) {
+        m_producer->Mlt::Properties::clear("kdenlive:koracut_clipname");
+    } else {
+        m_producer->set("kdenlive:koracut_clipname", name.toUtf8().constData());
+    }
 }
 
 FileStatus::ClipStatus ClipModel::clipStatus() const

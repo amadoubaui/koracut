@@ -3,14 +3,14 @@
 
 function get_files
 {
-    echo org.kde.kdenlive.xml
+    echo pro.pixework.koracut.xml
 }
 
 function po_for_file
 {
     case "$1" in
-       org.kde.kdenlive.xml)
-           echo kdenlive_xml_mimetypes.po
+       pro.pixework.koracut.xml)
+           echo koracut_xml_mimetypes.po
        ;;
     esac
 }
@@ -18,7 +18,7 @@ function po_for_file
 function tags_for_file
 {
     case "$1" in
-       org.kde.kdenlive.xml)
+       pro.pixework.koracut.xml)
            echo comment
        ;;
     esac

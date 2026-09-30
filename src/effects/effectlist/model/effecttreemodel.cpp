@@ -4,6 +4,7 @@
 */
 
 #include "effecttreemodel.hpp"
+#include "koracut/koracuteffectpreviews.h"
 #include "abstractmodel/treeitem.hpp"
 #include "effects/effectsrepository.hpp"
 #include "kdenlivesettings.h"
@@ -320,6 +321,17 @@ void EffectTreeModel::editCustomAsset(const QString &newName, const QString &new
         file.close();
         reloadEffect(oldpath);
     }
+}
+
+QVariant EffectTreeModel::data(const QModelIndex &index, int role) const
+{
+    if (role == Qt::DecorationRole && index.isValid() && rowCount(index) == 0) {
+        const QString id = AssetTreeModel::data(index, IdRole).toString();
+        if (!id.isEmpty() && id != QLatin1String("root")) {
+            return QIcon(KoraCutEffectPreviews::instance()->preview(id, EffectsRepository::get()->isAudioEffect(id)));
+        }
+    }
+    return AssetTreeModel::data(index, role);
 }
 
 QMimeData *EffectTreeModel::mimeData(const QModelIndexList &indexes) const

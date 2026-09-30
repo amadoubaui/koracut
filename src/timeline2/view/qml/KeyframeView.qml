@@ -12,7 +12,9 @@ Rectangle
     id: keyframeContainer
     property int kfrCount : keyframes.count
     anchors.fill: parent
-    color: Qt.rgba(1,1,0.8, 0.3)
+    // KoraCut, 25 septembre 2026 : plus de voile jaune à 30 % sur tout le clip (il délavait les
+    // vignettes de chaque plan portant un effet animé). La courbe seule, en blanc léger.
+    color: 'transparent'
     property int activeIndex
     property int inPoint
     property int outPoint
@@ -149,7 +151,7 @@ Rectangle
             }
             var ctx = getContext("2d");
             ctx.beginPath()
-            ctx.fillStyle = Qt.rgba(0,0,0.8, 0.5);
+            ctx.fillStyle = Qt.rgba(1, 1, 1, 0.16);
             paths = []
 
             var firstKeyframe = keyframes.itemAt(0) as KeyframeDelegate

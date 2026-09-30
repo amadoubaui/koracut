@@ -66,7 +66,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
       <item row="1" column="0" colspan="2">
        <widget class="QLabel" name="label_18">
         <property name="text">
-         <string>Kdenlive will check this limit every 2 weeks. Set to zero to disable checking.</string>
+         <string>KoraCut will check this limit every 2 weeks. Set to zero to disable checking.</string>
         </property>
        </widget>
       </item>
@@ -132,7 +132,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
      <item>
       <widget class="KContextualHelpButton" name="kcontextualhelpbutton">
        <property name="contextualHelpText">
-        <string>This will apply to all KDE applications using the Breeze style.</string>
+        <string>This setting applies to all applications that use the Breeze style.</string>
        </property>
       </widget>
      </item>

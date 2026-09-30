@@ -291,6 +291,7 @@ QHash<int, QByteArray> TimelineItemModel::roleNames() const
     roles[TimeRemapRole] = "timeremap";
     roles[HeightRole] = "trackHeight";
     roles[TrackTagRole] = "trackTag";
+    roles[KoraCutColorRole] = "koracutColor";
     roles[ItemIdRole] = "item";
     roles[ItemATrack] = "a_track";
     roles[HasAudio] = "hasAudio";
@@ -449,6 +450,8 @@ QVariant TimelineItemModel::data(const QModelIndex &index, int role) const
             return getTrackById_const(id)->isAudioTrack();
         case TrackTagRole:
             return getTrackTagById(id);
+        case KoraCutColorRole:
+            return getTrackById_const(id)->getProperty(QStringLiteral("kdenlive:koracut_color")).toString();
         case IsLockedRole:
             return getTrackById_const(id)->isLocked();
         case HeightRole: {
@@ -459,8 +462,14 @@ QVariant TimelineItemModel::data(const QModelIndex &index, int role) const
             int height = getTrackById_const(id)->getProperty("kdenlive:trackheight").toInt();
             return (height > 0 ? height : KdenliveSettings::trackheight());
         }
-        case ThumbsFormatRole:
-            return getTrackById_const(id)->getProperty("kdenlive:thumbs_format").toInt();
+        case ThumbsFormatRole: {
+            // KoraCut : la bande continue de vignettes est le défaut. Avant, une piste sans
+            // réglage tombait sur 0, « début et fin » : deux vignettes séparées par une bande
+            // vide, ce qu'Amadou Ba appelait « des trucs noirs ». Aucun outil récent ne fait ça.
+            // Le mode 0 reste choisissable, c'est celui des machines modestes.
+            const QString format = getTrackById_const(id)->getProperty("kdenlive:thumbs_format").toString();
+            return format.isEmpty() ? 1 : format.toInt();
+        }
         case IsCompositeRole: {
         case AudioRecordRole:
             return getTrackById_const(id)->getProperty("kdenlive:audio_rec").toInt();
@@ -586,6 +595,15 @@ void TimelineItemModel::setTrackProperty(int trackId, const QString &name, const
         roles.push_back(HeightRole);
     } else if (name == QLatin1String("kdenlive:audio_rec")) {
         roles.push_back(AudioRecordRole);
+    } else if (name == QLatin1String("kdenlive:koracut_color")) {
+        // KoraCut : le filet de la tête de piste, et les clips qui suivent la couleur de leur piste.
+        roles.push_back(KoraCutColorRole);
+        for (const auto &clip : m_allClips) {
+            if (clip.second->getCurrentTrackId() == trackId) {
+                QModelIndex cix = makeClipIndexFromID(clip.first);
+                Q_EMIT dataChanged(cix, cix, {TagRole});
+            }
+        }
     }
     if (!roles.isEmpty()) {
         QModelIndex ix = makeTrackIndexFromID(trackId);

@@ -16,7 +16,7 @@ RenderServer::RenderServer(QObject *parent)
 {
     qWarning() << "Starting render server";
     m_server.setSocketOptions(QLocalServer::UserAccessOption);
-    QString servername = QStringLiteral("org.kde.kdenlive-%1").arg(QCoreApplication::applicationPid());
+    QString servername = QStringLiteral("pro.pixework.koracut-%1").arg(QCoreApplication::applicationPid());
     if (m_server.listen(servername)) {
         connect(&m_server, &QLocalServer::newConnection, this, &RenderServer::jobConnected);
     } else {

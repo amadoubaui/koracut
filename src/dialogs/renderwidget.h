@@ -26,7 +26,9 @@ class Menu;
 #include <QTimer>
 
 class QDomElement;
+class QCheckBox;
 class QKeyEvent;
+class QSpinBox;
 
 // RenderViewDelegate is used to draw the progress bars.
 class RenderViewDelegate : public QStyledItemDelegate
@@ -93,6 +95,10 @@ public:
     void loadConfig();
     void setGuides(std::weak_ptr<MarkerListModel> guidesModel);
     void focusItem(const QString &profile = QString());
+    /** @brief KoraCut, outil de développement : le nom du préréglage sélectionné. */
+    QString currentPresetName() const { return m_currentProfile; }
+    /** @brief KoraCut, outil de développement : pose le fichier de sortie et lance le rendu, sans question. */
+    void startRenderTo(const QString &file);
     void setRenderProgress(const QString &dest, int progress = 0, int frame = 0);
     void setRenderStatus(const QString &dest, int status, const QString &error);
     void setRenderProfile(const QMap<QString, QString> &props);
@@ -115,6 +121,16 @@ public:
     void showRenderDuration(int projectLength = -1);
     /** @brief True if a rendering is in progress. */
     bool isRendering() const;
+    /** @brief KoraCut, porte de commande : les rendus de la file `[{ tache_id, chemin, etat, avancement }]`. */
+    QJsonArray koraCutJobs() const;
+    /** @brief KoraCut, porte de commande : arrête (ou retire de la file) le rendu vers @p dest. */
+    bool koraCutAbortJob(const QString &dest);
+    /** @brief KoraCut, porte de commande : les bornes du prochain rendu (images, out inclus), -1 pour
+     *  suivre la fenêtre (projet entier, zone, guides). Consommées par le rendu suivant. */
+    void koraCutSetBounds(int in, int out);
+    /** @brief KoraCut, porte de commande : inclure les sous-titres (true) ou rendre une version sans. */
+    void koraCutSetSubtitles(bool include);
+    bool koraCutSubtitles() const;
 
 protected:
     QSize sizeHint() const override;
@@ -123,6 +139,8 @@ protected:
                       QString renderer = QStringLiteral("avformat"));
 
 public Q_SLOTS:
+    /** @brief Relit les préréglages sur le disque (extensions installées) et reconstruit la liste. */
+    void reloadPresets();
     void slotAbortCurrentJob();
     void slotPrepareExport(bool scriptExport = false);
     void adjustViewToProfile();
@@ -190,6 +208,11 @@ private:
     enum MemCheckStatus { NoWarning = 0, LowMemory, VeryLowMemory };
 
     Ui::RenderWidget_UI m_view;
+    /** @brief KoraCut : normaliser le son du rendu (case et cible en LUFS), rangé sous « Audio ». */
+    QPoint m_koraCutBounds{-1, -1};
+    QCheckBox *m_loudnessCheck{nullptr};
+    QSpinBox *m_loudnessTarget{nullptr};
+    QCheckBox *m_koraCutSubtitles{nullptr};
     QString m_projectFolder;
     RenderViewDelegate *m_scriptsDelegate;
     RenderViewDelegate *m_jobsDelegate;

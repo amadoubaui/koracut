@@ -51,7 +51,11 @@ int main(int argc, char *argv[])
     QHashSeed::setDeterministicGlobalSeed();
     qputenv("MLT_REPOSITORY_DENY", "libmltqt:libmltglaxnimate");
     QApplication app(argc, argv);
-    app.setApplicationName(QStringLiteral("kdenlive"));
+    // Le nom applicatif décide de QStandardPaths::AppDataLocation, donc du dossier où les tests
+    // cherchent les effets et les transitions. Resté à l'ancien nom après le renommage du
+    // 20 septembre 2026, il envoyait les tests dans share/kdenlive alors que les données
+    // s'installent dans share/koracut : plus aucun XML d'effet n'était trouvé.
+    app.setApplicationName(QStringLiteral("koracut"));
     qSetMessagePattern(QStringLiteral("%{time hh:mm:ss.zzz } %{file}:%{line} -- %{message}"));
 
     QString repoPath = getMltRepositoryPath();

@@ -186,7 +186,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
    <item row="1" column="3">
     <widget class="QRadioButton" name="format_json">
      <property name="text">
-      <string>Kdenlive JSON</string>
+      <string>KoraCut JSON</string>
      </property>
     </widget>
    </item>

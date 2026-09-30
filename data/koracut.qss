@@ -1,0 +1,1202 @@
+/* KoraCut : le gabarit de la feuille de style, pour TOUS les thèmes (25 septembre 2026).
+   Tokens : « 2 - Charte graphique KoraCut.md », révisée par « 11 - Refonte UI-UX, la passe moderne ».
+
+   Ce fichier n'est plus une feuille de Qt telle quelle : chaque couleur est un jeton, rendu par
+   src/koracut/koracutthemes.cpp avec la palette du thème à l'écran (data/koracut-themes.json pour
+   les thèmes livrés). Sombre et Clair sont deux palettes ; il n'y a plus de koracut-light.qss.
+     {jeton}          la couleur du jeton                    {surface}
+     {jeton@A}        la même, opacité A (0 à 255)            {voile@18}
+     {jeton@A/B}      A sur un thème sombre, B sur un clair    {voile@14/10}
+     {chevron}        « sombre » ou « clair » (icône de flèche)
+   Une couleur écrite en dur passe telle quelle dans tous les thèmes : pour une règle nouvelle,
+   prendre un jeton (liste et rôle de chacun : KoraCutThemes::tokenLabel).
+
+   Quatre marches de surface, et rien d'autre (valeurs de Sombre) :
+     fond de fenêtre     {fond}      #1E1E1E   derrière tout, gouttières entre panneaux
+     contenu de panneau  {contenu}   #252525   viewports de listes et d'arbres, canevas de la timeline
+     surface             {surface}   #2C2C2C   barres, chrome des panneaux, têtes de pistes, menus
+     contrôle            {champ}     #383838   champs, onglet actif, cellule d'inspecteur, chip
+     canevas d'image                 #000000   moniteur, aperçu (le même dans tous les thèmes)
+
+   Quatre rayons : 0 (ce qui pave la fenêtre), 4 (contrôles), 6 (cartes), 8 (surfaces flottantes) ;
+   un thème peut les mettre à l'échelle (jeton de thème « rayon »).
+   Six crans de texte : 10 étiquette, 11 dense, 12 base, 13 titre, 16 page, 22 accueil.
+   Une règle : on délimite par une marche de surface OU par un trait, jamais par les deux, jamais par rien.
+
+   Chargée par UiUtils::applyKoraCutStyleSheet() ; désactivable avec KORACUT_NO_QSS.
+   Pas de « font-size » global : il écraserait les textes à taille relative. */
+
+QToolBar {
+    background: {surface};
+    border: none;
+    /* 4 px entre deux boutons d'un même groupe, 8 px entre deux groupes (posés par les séparateurs) */
+    spacing: 4px;
+    padding: 2px 4px;
+}
+QToolBar::separator {
+    /* Une gouttière, pas un trait : les groupes se séparent par du vide. */
+    background: transparent;
+    width: 8px;
+    margin: 0;
+}
+
+QDockWidget::title {
+    background: {surface};
+    border: none;
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QStatusBar {
+    background: {surface};
+    border-top: 1px solid {voile@23};
+    font-size: 11px;
+}
+QStatusBar::item {
+    border: none;
+}
+
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QTextEdit, QPlainTextEdit {
+    background: {saisie};
+    color: {texte};
+    /* Le contour d'un champ est ce qui identifie le contrôle : 3,16:1 contre la surface,
+       c'est le seuil de WCAG 1.4.11, mesuré. Il était à 1,33:1. */
+    border: 1px solid {bordure};
+    border-radius: 4px;
+    padding: 3px 6px;
+    selection-background-color: {selection};
+    selection-color: {texte_sur_accent};
+}
+QLineEdit:hover, QSpinBox:hover, QDoubleSpinBox:hover, QComboBox:hover, QTextEdit:hover, QPlainTextEdit:hover {
+    border-color: {bordure_survol};
+}
+QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus, QTextEdit:focus, QPlainTextEdit:focus {
+    border: 1px solid {accent};
+}
+QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled {
+    color: {texte_desactive};
+    background: {surface};
+    border-color: {poignee};
+}
+QLineEdit[placeholderText] {
+    color: {texte};
+}
+QComboBox::drop-down {
+    border: none;
+    width: 20px;
+}
+/* La flèche d'une liste déroulante. La règle ci-dessus rend la zone « dessinable » : Qt ne demande
+   plus alors la flèche au style, et « Mode normal », « 1080p », « auto » se lisaient comme des
+   champs de texte (25 septembre 2026). Même chevron que les boutons à menu. */
+QComboBox::down-arrow {
+    image: url(:/koracut/chevron-bas-{chevron}.svg);
+    width: 12px;
+    height: 12px;
+}
+QComboBox QAbstractItemView {
+    background: {surface};
+    color: {texte};
+    border: 1px solid {voile@41};
+    border-radius: 8px;
+    selection-background-color: {selection};
+    selection-color: {texte_sur_accent};
+    outline: 0;
+}
+
+QPushButton {
+    background: {champ};
+    color: {texte};
+    border: none;
+    border-radius: 4px;
+    padding: 4px 12px;
+    min-height: 20px;
+}
+QPushButton:hover {
+    background: {champ_survol};
+}
+QPushButton:pressed {
+    background: {surface};
+}
+QPushButton:disabled {
+    color: {texte_desactive};
+    background: {surface};
+}
+QPushButton:default, QPushButton[default="true"] {
+    background: {accent};
+    color: {texte_sur_accent};
+}
+QPushButton:default:hover, QPushButton[default="true"]:hover {
+    background: {accent_survol};
+}
+QPushButton:default:pressed, QPushButton[default="true"]:pressed {
+    background: {accent_presse};
+}
+QPushButton:default:disabled, QPushButton[default="true"]:disabled {
+    background: {champ};
+    color: {texte_desactive};
+}
+
+/* Bouton discret : le vocabulaire des barres d'outils. Un état actif se marque par un fond
+   discret et un trait d'accent, jamais par un aplat plein : un réglage d'affichage n'a pas
+   le poids de l'action principale d'une page. */
+QToolButton {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    /* 4 px tout autour : une icône de 14 px tient dans une cible de 24 px, centrée au pixel près */
+    padding: 4px;
+}
+/* La gouttière du chevron d'un bouton à menu. `KoraCutStyle` y dessine le chevron, à 18 px du
+   bord droit (`KoraCutMetrics::MenuGutter`) ; ces deux règles décalent le glyphe vers la gauche
+   pour qu'il ne le touche pas. Les deux valeurs ne sont pas les mêmes parce que Qt ne réserve
+   de la place que dans un cas : pour un bouton à deux zones (`MenuButtonPopup`), il ajoute déjà
+   `PM_MenuButtonIndicator` à la largeur, il ne reste qu'à recentrer le glyphe ; pour un bouton
+   qui ouvre son menu d'un seul clic (`InstantPopup`), il ne réserve rien du tout, et c'est de là
+   que venait le chevron dessiné par-dessus le glyphe. */
+QToolButton[popupMode="1"] {
+    padding-right: 18px;
+}
+QToolButton[popupMode="2"] {
+    padding-right: 20px;
+}
+QToolButton:hover {
+    background: {voile@18};
+}
+QToolButton:pressed {
+    background: {voile@31};
+}
+QToolButton:checked {
+    background: {voile@18};
+    /* Qt ne peint pas une bordure partielle sur une boîte arrondie : ici le rayon tombe à 0 et
+       c'est le trait d'accent qui dit l'état actif. */
+    border: none;
+    border-bottom: 2px solid {accent};
+    border-radius: 0px;
+}
+QToolButton:checked:hover {
+    background: {voile@31};
+}
+
+/* Contrôle segmenté : les cinq outils exclusifs de la timeline forment un seul corps.
+   Apple, Segmented controls : un choix exclusif se lit comme un objet, pas comme cinq boutons
+   dont un est allumé. L'espacement de la barre est mis à zéro dans MainWindow::setupToolSegments(),
+   c'est la marge ci-dessous qui redonne 4 px entre deux boutons ordinaires. */
+QToolBar QToolButton {
+    margin: 0 2px;
+}
+QToolButton[koracutSegment] {
+    background: {voile@18};
+    margin: 0;
+    padding: 4px 6px;
+    border: none;
+    border-radius: 0;
+}
+QToolButton[koracutSegment="premier"] {
+    border-top-left-radius: 4px;
+    border-bottom-left-radius: 4px;
+}
+QToolButton[koracutSegment="dernier"] {
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+}
+QToolButton[koracutSegment="seul"] {
+    border-radius: 4px;
+}
+QToolButton[koracutSegment]:hover {
+    background: {voile@31};
+}
+QToolButton[koracutSegment]:checked {
+    background: {accent};
+    border: none;
+}
+
+/* La barre d'outils de la barre d'état, sans le rembourrage vertical des autres barres : il la
+   ramenait à 19 px pour des boutons de 16 posés 5 px plus bas, qui perdaient donc leurs deux
+   dernières lignes, justement celles du trait d'accent. Trouvé le 23 septembre 2026. */
+QStatusBar QToolBar {
+    padding: 0 4px;
+}
+
+/* Barre d'état : 24 px de haut, donc des boutons de 15 px. Le rembourrage tombe à zéro en
+   vertical pour laisser passer le trait d'accent de 2 px de l'état actif (icône 13 px + 2 = 15).
+   Les trois états sont réécrits en entier : un sélecteur descendant sans pseudo-classe l'emporte
+   sur `QToolButton:checked` pour le fond, et l'état actif perdait sa couleur. */
+QStatusBar QToolButton {
+    background: transparent;
+    padding: 0 6px;
+    margin: 0 2px;
+    border: none;
+    border-radius: 4px;
+}
+QStatusBar QToolButton:hover {
+    background: {voile@18};
+}
+/* L'état actif d'une bascule de barre d'état : fond discret et icône pleine, sans trait d'accent.
+   Le trait de 2 px que demande « 11 - Refonte UI-UX » (3.8) a été tenté trois fois et ne passe pas
+   sur un bouton de 15 px de haut : ni `border-bottom` (Qt ne peint pas de bordure partielle à cette
+   taille, alors qu'elle s'affiche dans la barre d'outils de la timeline), ni `qlineargradient` à
+   arrêt net (la déclaration est rejetée, avec ou sans `rgba()` dans les arrêts). Ce qui compte est
+   acquis : plus d'aplat bleu plein, qui donnait à un réglage d'affichage le poids d'une action
+   principale. Le trait est posé par KoraCutStyle::addCheckedAccent (peint dans la couleur de sélection du thème). */
+QStatusBar QToolButton:checked {
+    background: {voile@18};
+    border: none;
+    border-radius: 4px;
+    padding: 0 6px;
+}
+
+/* Un bouton à menu de la barre d'état garde sa gouttière de chevron : la règle ci-dessus
+   (padding 0 6px) l'emportait sur celle des boutons à menu, et le chevron du bouton des formes
+   d'onde se dessinait sur l'icône (25 septembre 2026). */
+QStatusBar QToolButton[popupMode="1"], QStatusBar QToolButton[popupMode="1"]:checked {
+    padding-right: 18px;
+}
+QStatusBar QToolButton[popupMode="2"], QStatusBar QToolButton[popupMode="2"]:checked {
+    padding-right: 20px;
+}
+QStatusBar QToolButton#koracutHelpButton, QStatusBar QToolButton#koracutBackgroundJobs {
+    padding-right: 6px;
+}
+
+/* Le « ? » d'aide des Préférences ouvre une bulle : pas de flèche de menu (25 septembre 2026). */
+KContextualHelpButton::menu-indicator {
+    image: none;
+    width: 0;
+}
+KContextualHelpButton {
+    padding: 2px;
+}
+
+/* Le « ? » et le compteur de tâches de la barre d'état ouvrent un menu : sans la flèche que Qt
+   ajoute d'office, qui prenait autant de place que le bouton (23 septembre 2026). */
+QToolButton#koracutHelpButton::menu-indicator,
+QToolButton#koracutBackgroundJobs::menu-indicator {
+    image: none;
+    width: 0;
+}
+
+/* Les pastilles de catégories au-dessus des cartes d'effets (23 septembre 2026). */
+QToolButton#koracutCategoryChip {
+    background: {voile@14/10};
+    border: none;
+    border-radius: 11px;
+    padding: 3px 10px;
+    min-height: 16px;
+}
+QToolButton#koracutCategoryChip:hover {
+    background: {voile@26/20};
+}
+QToolButton#koracutCategoryChip:checked {
+    background: {accent};
+    color: {texte_sur_accent};
+    border: none;
+}
+/* « Plus… » ouvre un menu : place pour le chevron, à côté du texte (25 septembre 2026). */
+QToolButton#koracutCategoryChip[popupMode="2"] {
+    padding-right: 22px;
+}
+
+QTabBar::tab {
+    background: transparent;
+    color: {texte_secondaire};
+    border: none;
+    border-radius: 4px;
+    padding: 6px 12px;
+    margin: 2px 2px;
+    font-size: 12px;
+}
+QTabBar::tab:hover {
+    background: {voile@18};
+    color: {texte};
+}
+QTabBar::tab:selected {
+    background: {champ};
+    color: {texte};
+    font-weight: 500;
+}
+QTabWidget::pane {
+    border: 1px solid {voile@23};
+    border-radius: 4px;
+    top: -1px;
+}
+
+/* Les onglets de séquences, au-dessus de la timeline (document 13, § 5 ; redessinés le
+   27 septembre 2026 à la demande d'Amadou Ba, qui trouvait le trait bleu en haut de l'onglet
+   « comme un chapeau »). Comme un onglet de navigateur : la bande est sur le fond, l'onglet choisi
+   prend la surface de la timeline qu'il prolonge (coins hauts arrondis, rien en bas), texte plein ;
+   les autres restent sur le fond, en texte secondaire. Aucun trait d'accent. Les séparateurs courts
+   entre onglets sont peints par KoraCutSequenceTabBar. Hauteur : 4 px de marge + 26 px = 30 px. */
+QTabBar#koracutSequenceTabs,
+QWidget#koracutSequenceStrip {
+    background: {fond};
+}
+QTabBar#koracutSequenceTabs::tab {
+    background: transparent;
+    color: {texte_secondaire};
+    border: none;
+    border-radius: 0;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    height: 26px;
+    padding: 0 6px 0 10px;
+    margin: 4px 1px 0 1px;
+    font-size: 12px;
+}
+QTabBar#koracutSequenceTabs::tab:hover {
+    background: {surface@120};
+    color: {texte};
+}
+QTabBar#koracutSequenceTabs::tab:selected {
+    background: {surface};
+    color: {texte};
+    font-weight: 500;
+}
+/* La vue côte à côte qui ne pilote pas le moniteur : son onglet reste raccordé à sa timeline,
+   mais son nom passe en secondaire (le voile sur la timeline dit le reste). */
+QTabBar#koracutSequenceTabs[koracutActive="false"]::tab:selected {
+    color: {texte_secondaire};
+    font-weight: 400;
+}
+QTabBar#koracutSequenceTabs QLineEdit#koracutSequenceRename {
+    padding: 0 4px;
+    border-radius: 4px;
+}
+/* Les flèches de défilement (beaucoup de séquences dans une vue étroite) : sur le fond, sans cadre. */
+QTabBar#koracutSequenceTabs QToolButton {
+    background: {fond};
+    border: none;
+    border-radius: 4px;
+    margin: 4px 0 0 0;
+}
+QTabBar#koracutSequenceTabs QToolButton:hover {
+    background: {voile@18};
+}
+/* Le « + » : un bouton sans cadre sur le fond, qui s'allume au survol comme les onglets. */
+QToolButton#koracutSequenceAdd {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    padding: 0;
+}
+QToolButton#koracutSequenceAdd:hover {
+    background: {voile@18};
+}
+QToolButton#koracutSequenceAdd:pressed {
+    background: {voile@28};
+}
+QSplitter#koracutTimelineSplitter::handle {
+    background: {fond};
+}
+
+QMenuBar {
+    background: {surface};
+    border: none;
+    font-size: 12px;
+}
+QMenuBar::item {
+    background: transparent;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+QMenuBar::item:selected {
+    background: {voile@18};
+}
+QMenu {
+    background: {surface};
+    color: {texte};
+    border: 1px solid {voile@20};
+    border-radius: 8px;
+    padding: 6px;
+    font-size: 12px;
+}
+QMenu::item {
+    padding: 5px 24px 5px 12px;
+    border-radius: 4px;
+}
+QMenu::item:selected {
+    background: {accent};
+    color: {texte_sur_accent};
+}
+QMenu::item:disabled {
+    color: {texte_desactive};
+}
+QMenu::separator {
+    height: 1px;
+    background: {voile@23};
+    margin: 5px 8px;
+}
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 8px;
+    margin: 0;
+}
+QScrollBar:horizontal {
+    background: transparent;
+    height: 8px;
+    margin: 0;
+}
+QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
+    background: {poignee};
+    border-radius: 4px;
+    min-height: 24px;
+    min-width: 24px;
+}
+QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {
+    background: {poignee_survol};
+}
+QScrollBar::add-line, QScrollBar::sub-line {
+    width: 0;
+    height: 0;
+    background: none;
+    border: none;
+}
+QScrollBar::add-page, QScrollBar::sub-page {
+    background: none;
+}
+
+/* Surface flottante : rayon 8, et la seule ombre autorisée est posée par le système. */
+QToolTip {
+    background: {fond};
+    color: {texte};
+    border: 1px solid {voile@41};
+    border-radius: 8px;
+    padding: 5px 8px;
+    font-size: 12px;
+}
+
+QSplitter::handle {
+    background: {fond};
+}
+QSplitter::handle:horizontal {
+    width: 1px;
+}
+QSplitter::handle:vertical {
+    height: 1px;
+}
+
+QGroupBox {
+    border: none;
+    border-radius: 6px;
+    margin-top: 12px;
+    padding-top: 4px;
+}
+/* Étiquette de groupe : le cran 10 px de la charte, capitales, 600. */
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 0px;
+    padding: 0 0 4px 0;
+    color: {texte_secondaire};
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+/* Guides d'arborescence : traités par KoraCutStyle (PE_IndicatorBranch), pas ici.
+   Essayé d'abord en feuille de style, sur les seuls états « ligne » : le pointillé disparaît bien,
+   mais le chevron de « Séquences » disparaît avec lui. C'est le piège documenté de
+   QTreeView::branch, dès qu'on stylise un état Qt cesse d'y peindre sa propre décoration.
+   Le style peint donc le chevron lui-même, au trait, comme les icônes de la charte. */
+
+QHeaderView::section {
+    background: {surface};
+    color: {texte_secondaire};
+    border: none;
+    border-bottom: 1px solid {voile@23};
+    padding: 5px 6px;
+    font-size: 12px;
+}
+
+QProgressBar {
+    background: {champ};
+    border: none;
+    border-radius: 4px;
+    text-align: center;
+    color: {texte};
+}
+QProgressBar::chunk {
+    background: {accent};
+    border-radius: 4px;
+}
+
+/* ---------------------------------------------------------------------------
+   Barre du haut de KoraCut (40 px), au-dessus de la zone des docks.
+   Dimensions et couleurs : « 2 - Charte graphique KoraCut.md ».
+   --------------------------------------------------------------------------- */
+
+QWidget#koracutTopBar {
+    background: {surface};
+    border-bottom: 1px solid {voile@23};
+}
+QWidget#koracutTopBar QLabel {
+    background: transparent;
+}
+QLabel#koracutProjectName {
+    color: {texte};
+    font-size: 13px;
+    font-weight: 600;
+}
+QLabel#koracutProjectState {
+    color: {texte_secondaire};
+    font-size: 12px;
+}
+
+QToolButton#koracutSymbol {
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+QToolButton#koracutSymbol:hover {
+    background: {voile@18};
+    border-radius: 4px;
+}
+
+QToolButton#koracutMainMenu {
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+QToolButton#koracutMainMenu:hover {
+    background: {voile@18};
+    border-radius: 4px;
+}
+
+/* Onglets de modules : cran « titre » de la charte, 13 px, actif sur #383838 */
+QToolButton#koracutModuleTab {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    padding: 0 10px;
+    color: {texte_secondaire};
+    font-size: 13px;
+    font-weight: 500;
+}
+QToolButton#koracutModuleTab:hover {
+    background: {voile@18};
+    color: {texte};
+}
+QToolButton#koracutModuleTab:checked {
+    background: {champ};
+    color: {texte};
+    font-weight: 600;
+}
+
+QLineEdit#koracutSearch {
+    background: {champ};
+    border: 1px solid {bordure};
+    border-radius: 4px;
+    color: {texte};
+    padding: 0 8px;
+    font-size: 12px;
+}
+QLineEdit#koracutSearch:focus {
+    border: 1px solid {accent};
+}
+
+QToolButton#koracutLayoutButton {
+    background: transparent;
+    border: 1px solid {bordure};
+    border-radius: 4px;
+    padding: 0 8px;
+    color: {texte_secondaire};
+    font-size: 12px;
+}
+QToolButton#koracutLayoutButton:hover {
+    background: {voile@18};
+    color: {texte};
+}
+QToolButton#koracutLayoutButton::menu-indicator {
+    image: none;
+    width: 0;
+}
+
+/* Le conteneur central : il ne se voit que dans la gouttière entre la barre des modules et la
+   zone des docks, et c'est là qu'il doit montrer le fond de fenêtre. */
+QWidget#koracutCentral {
+    background: {fond};
+}
+
+/* Page d'un module encore vide */
+QWidget#koracutPlaceholder {
+    background: {fond};
+}
+
+/* KoraCut, 22 septembre 2026 : de l'air dans le chutier. « On dirait que tout est collé. »
+   Un filet à 12 % sépare la barre d'outils de la liste : deux zones qui se touchent sans rien
+   entre elles ne se lisent pas comme deux zones. Et la grille de la vue Cartes prend 12 px de
+   marge, pour que les vignettes ne soient pas collées au bord du panneau. */
+QToolBar#koracutBinToolBar {
+    border: none;
+    border-bottom: 1px solid {voile@31};
+    padding: 2px 4px;
+}
+QListView#koracutBinIconView {
+    padding: 12px;
+}
+
+/* ---------------------------------------------------------------------------
+   Panneau Agents (chantier 3, 23 septembre 2026) : fond #1E1E1E, surfaces #2C2C2C, accent #0D99FF,
+   bulles à 9 px, cartes et boutons à 6 px. Les appels d'outils en monospace, discrets.
+   --------------------------------------------------------------------------- */
+
+QWidget#koracutAgentPanel, QWidget#koracutAgentThread, QScrollArea#koracutAgentScroll,
+QScrollArea#koracutAgentScroll > QWidget > QWidget {
+    background: {panneau};
+}
+QLabel#koracutAgentStatus {
+    color: {texte_secondaire};
+    font-size: 12px;
+    background: transparent;
+}
+QLabel#koracutAgentAuthor {
+    color: {encre@120};
+    font-size: 10px;
+    font-weight: 600;
+    background: transparent;
+    padding: 0 4px;
+}
+QLabel#koracutAgentBubblePerson {
+    background: {accent_doux};
+    color: {texte};
+    border-radius: 9px;
+    padding: 8px 12px;
+    font-size: 12px;
+}
+QLabel#koracutAgentBubbleAgent {
+    background: {surface};
+    color: {texte};
+    border-radius: 9px;
+    padding: 8px 12px;
+    font-size: 12px;
+}
+QLabel#koracutAgentToolLine {
+    color: {encre@120};
+    font-size: 11px;
+    background: transparent;
+    padding: 0 4px;
+}
+QLabel#koracutAgentToolLineError {
+    color: {rouge};
+    font-size: 11px;
+    background: transparent;
+    padding: 0 4px;
+}
+QLabel#koracutAgentNote {
+    color: {encre@120};
+    font-size: 11px;
+    background: transparent;
+    padding: 0 4px;
+}
+QWidget#koracutAgentCard {
+    background: {surface};
+    border: 1px solid {voile@23};
+    border-radius: 6px;
+}
+QLabel#koracutAgentCardTitle {
+    color: {texte};
+    font-size: 12px;
+    font-weight: 600;
+    background: transparent;
+}
+QLabel#koracutAgentCardBody {
+    color: {encre@200};
+    font-size: 12px;
+    background: transparent;
+}
+QPlainTextEdit#koracutAgentInput {
+    background: {saisie};
+    border: 1px solid {bordure};
+    border-radius: 6px;
+    color: {texte};
+    padding: 6px 8px;
+    font-size: 12px;
+}
+QPlainTextEdit#koracutAgentInput:focus {
+    border: 1px solid {accent};
+}
+QPlainTextEdit#koracutAgentInput:disabled {
+    color: {encre@120};
+    border: 1px solid {voile@40};
+}
+QPushButton#koracutAgentPrimaryButton {
+    background: {accent};
+    color: {texte_sur_accent};
+    border: none;
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+QPushButton#koracutAgentPrimaryButton:hover {
+    background: {accent_vif};
+}
+QPushButton#koracutAgentPrimaryButton:disabled {
+    background: {accent@90};
+    color: {texte_sur_accent@140/200};
+}
+QPushButton#koracutAgentButton, QPushButton#koracutAgentCancelButton {
+    background: transparent;
+    color: {texte};
+    border: 1px solid {bordure};
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 12px;
+}
+QPushButton#koracutAgentButton:hover, QPushButton#koracutAgentCancelButton:hover {
+    background: {voile@18};
+}
+QPushButton#koracutAgentButton:disabled {
+    color: {encre@100};
+    border: 1px solid {voile@40};
+}
+
+/* ---------------------------------------------------------------------------
+   Panneau Console (document 18, 24 septembre 2026) : le journal de la porte de commande en
+   monospace, les demandes d'accord en cartes, le champ du bas comme celui des Agents.
+   --------------------------------------------------------------------------- */
+
+QWidget#koracutConsolePanel, QWidget#koracutConsoleConfirmations, QScrollArea#koracutConsoleConfirmationsScroll,
+QScrollArea#koracutConsoleConfirmationsScroll > QWidget > QWidget {
+    background: {panneau};
+}
+QLabel#koracutConsoleStatus {
+    color: {texte_secondaire};
+    font-size: 12px;
+    background: transparent;
+}
+QTreeWidget#koracutConsoleJournal {
+    background: {surface};
+    border: 1px solid {voile@23};
+    border-radius: 6px;
+    color: {texte};
+    font-size: 11px;
+}
+QTreeWidget#koracutConsoleJournal::item {
+    height: 22px;
+}
+QTreeWidget#koracutConsoleJournal QHeaderView::section {
+    background: {surface};
+    color: {encre@120};
+    font-size: 10px;
+    font-weight: 600;
+    border: none;
+    border-bottom: 1px solid {voile@23};
+    padding: 4px 6px;
+}
+QWidget#koracutConsoleCard {
+    background: {surface};
+    border: 1px solid {accent};
+    border-radius: 6px;
+}
+QLabel#koracutConsoleCardTitle {
+    color: {texte};
+    font-size: 12px;
+    font-weight: 600;
+    background: transparent;
+}
+QLabel#koracutConsoleCardBody {
+    color: {encre@160};
+    font-size: 11px;
+    background: transparent;
+}
+QCheckBox#koracutConsoleTrust {
+    color: {encre@200};
+    font-size: 11px;
+    background: transparent;
+}
+QLineEdit#koracutConsoleInput {
+    background: {saisie};
+    border: 1px solid {bordure};
+    border-radius: 6px;
+    color: {texte};
+    padding: 5px 8px;
+    font-size: 12px;
+}
+QLineEdit#koracutConsoleInput:focus {
+    border: 1px solid {accent};
+}
+QPushButton#koracutConsolePrimaryButton {
+    background: {accent};
+    color: {texte_sur_accent};
+    border: none;
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+QPushButton#koracutConsolePrimaryButton:hover {
+    background: {accent_vif};
+}
+QPushButton#koracutConsolePrimaryButton:disabled {
+    background: {accent@90};
+    color: {texte_sur_accent@140/200};
+}
+QPushButton#koracutConsoleButton {
+    background: transparent;
+    color: {texte};
+    border: 1px solid {bordure};
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 12px;
+}
+QPushButton#koracutConsoleButton:hover {
+    background: {voile@18};
+}
+QPushButton#koracutAgentCancelButton {
+    color: {rouge};
+    border: 1px solid {rouge@120};
+}
+
+/* ---------------------------------------------------------------------------
+   Panneau Motion (chantier 9, 23 septembre 2026) : fond #1E1E1E, surfaces #2C2C2C, accent #0D99FF,
+   violet #7C5CFF des clips Motion. Éditeur de code en Menlo sur #1E1E1E, numéros de ligne sur #2C2C2C.
+   --------------------------------------------------------------------------- */
+
+QWidget#koracutMotionPanel, QWidget#koracutMotionPage {
+    background: {panneau};
+}
+QLabel#koracutMotionState, QLabel#koracutMotionHint, QLabel#koracutMotionVariables {
+    color: {texte_secondaire};
+    font-size: 12px;
+    background: transparent;
+}
+QLabel#koracutMotionLabel {
+    color: {encre@120};
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    background: transparent;
+    padding-top: 4px;
+}
+QLabel#koracutMotionInspectorTitle {
+    color: {texte};
+    font-size: 12px;
+    font-weight: 600;
+    background: transparent;
+}
+QWidget#koracutMotionInspector {
+    background: {surface};
+    border-bottom: 1px solid {voile@23};
+}
+QTreeWidget#koracutMotionProjects, QTreeWidget#koracutMotionElements, QListWidget#koracutMotionLint {
+    background: {surface};
+    border: 1px solid {voile@23};
+    border-radius: 4px;
+    font-size: 12px;
+}
+QListWidget#koracutMotionLint {
+    font-size: 11px;
+}
+QPlainTextEdit#koracutMotionCode {
+    background: {panneau};
+    color: {texte};
+    border: 1px solid {voile@23};
+    border-radius: 4px;
+    selection-background-color: {selection@90};
+}
+QPlainTextEdit#koracutMotionLog {
+    background: {surface};
+    color: {encre@180};
+    border: 1px solid {voile@23};
+    border-radius: 4px;
+}
+QPlainTextEdit#koracutMotionText {
+    background: {saisie};
+    color: {texte};
+    border: 1px solid {voile@23};
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 12px;
+}
+QPlainTextEdit#koracutMotionText:focus {
+    border: 1px solid {accent};
+}
+QPushButton#koracutMotionPrimaryButton {
+    background: {accent};
+    color: {texte_sur_accent};
+    border: none;
+    border-radius: 4px;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 500;
+}
+QPushButton#koracutMotionPrimaryButton:hover {
+    background: {accent_survol};
+}
+QPushButton#koracutMotionPrimaryButton:disabled {
+    background: {accent@90};
+    color: {texte_sur_accent@120};
+}
+QPushButton#koracutMotionButton {
+    background: {champ};
+    color: {texte};
+    border: none;
+    border-radius: 4px;
+    padding: 5px 10px;
+    font-size: 12px;
+}
+QPushButton#koracutMotionButton:hover {
+    background: {champ_survol};
+}
+QPushButton#koracutMotionButton:disabled {
+    color: {encre@90};
+}
+QToolButton#koracutMotionLogToggle {
+    color: {texte_secondaire};
+    font-size: 11px;
+    border: none;
+    background: transparent;
+    padding: 2px 4px;
+}
+
+/* ---------------------------------------------------------------------------
+   Section Outils de l'inspecteur (document 24, 30 septembre 2026) : réduire le bruit, améliorer la
+   voix, effets de voix en cartes, stabiliser. Plat, rayons 4 et 6, accent pour ce qui est posé.
+   --------------------------------------------------------------------------- */
+
+QWidget#koracutClipTools {
+    background: {surface};
+    border-bottom: 1px solid {voile@23};
+}
+QLabel#koracutToolTitle {
+    color: {texte};
+    font-size: 12px;
+    font-weight: 600;
+    background: transparent;
+    padding-bottom: 2px;
+}
+QLabel#koracutToolGroup {
+    color: {encre@120};
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    background: transparent;
+    padding-top: 4px;
+}
+QLabel#koracutToolName {
+    color: {texte};
+    font-size: 12px;
+    background: transparent;
+}
+QLabel#koracutToolLabel {
+    color: {texte_secondaire};
+    font-size: 11px;
+    background: transparent;
+}
+QLabel#koracutToolHint {
+    color: {texte_secondaire};
+    font-size: 11px;
+    background: transparent;
+}
+QWidget#koracutToolRow {
+    background: transparent;
+}
+QToolButton#koracutToolSegment {
+    font-size: 11px;
+    padding: 3px 6px;
+}
+QToolButton#koracutToolSegment:checked {
+    color: {texte_sur_accent};
+}
+QToolButton#koracutToolCard {
+    background: {champ};
+    color: {texte};
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 4px 2px 3px 2px;
+    font-size: 10px;
+}
+QToolButton#koracutToolCard:hover {
+    background: {champ_survol};
+}
+QToolButton#koracutToolCard:checked {
+    background: {accent@46};
+    border: 1px solid {accent};
+}
+QToolButton#koracutToolLink {
+    color: {accent};
+    background: transparent;
+    border: none;
+    font-size: 11px;
+    padding: 0 2px;
+}
+QToolButton#koracutToolLink:hover {
+    color: {accent_survol};
+}
+QPushButton#koracutToolButton {
+    background: {champ};
+    color: {texte};
+    border: none;
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 11px;
+}
+QPushButton#koracutToolButton:hover {
+    background: {champ_survol};
+}
+QProgressBar#koracutToolProgress {
+    background: {voile@23};
+    border: none;
+    border-radius: 2px;
+}
+QProgressBar#koracutToolProgress::chunk {
+    background: {accent};
+    border-radius: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   Panneau Script (document 21, 24 septembre 2026) : fond #1E1E1E, tableaux sur #2C2C2C,
+   champs #383838, accent #0D99FF. Le « + » et la poignée n'apparaissent qu'au survol.
+   --------------------------------------------------------------------------- */
+
+QWidget#koracutScriptPanel, QWidget#koracutScriptBar, QScrollArea#koracutScriptScroll, QWidget#koracutScriptCanvas,
+QFrame#koracutScriptBlock, QFrame#koracutScriptGap, QFrame#koracutScriptTableBlock {
+    background: {panneau};
+    border: none;
+}
+QLabel#koracutScriptPanelTitle {
+    color: {texte};
+    font-size: 13px;
+    font-weight: 600;
+    background: transparent;
+}
+QLabel#koracutScriptTypeChip {
+    color: {texte@180};
+    background: {surface};
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+}
+QLabel#koracutScriptHint {
+    color: {texte@140};
+    font-size: 11px;
+    background: transparent;
+}
+QToolButton#koracutScriptBarButton, QToolButton#koracutScriptGapButton, QToolButton#koracutScriptHandle, QToolButton#koracutScriptAddColumn {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    padding: 2px;
+}
+QToolButton#koracutScriptBarButton:hover, QToolButton#koracutScriptGapButton:hover, QToolButton#koracutScriptHandle:hover {
+    background: {champ};
+}
+QToolButton#koracutScriptBarButton::menu-indicator {
+    image: none;
+    width: 0;
+}
+QToolButton#koracutScriptAddColumn {
+    background: {surface};
+    border: 1px dashed {texte@40};
+}
+QToolButton#koracutScriptAddColumn:hover {
+    background: {champ};
+    border: 1px dashed {accent};
+}
+QFrame#koracutScriptGapLine {
+    background: {accent@110};
+    border: none;
+}
+QFrame#koracutScriptDivider {
+    background: {texte@30};
+    border: none;
+}
+QLineEdit#koracutScriptH1, QLineEdit#koracutScriptH2, QLineEdit#koracutScriptH3, QLineEdit#koracutScriptTableTitle {
+    background: transparent;
+    color: {texte};
+    border: none;
+    border-radius: 4px;
+    padding: 2px 4px;
+    font-weight: 600;
+}
+QLineEdit#koracutScriptH1 { font-size: 20px; }
+QLineEdit#koracutScriptH2 { font-size: 15px; }
+QLineEdit#koracutScriptH3 { font-size: 13px; }
+QLineEdit#koracutScriptTableTitle {
+    font-size: 12px;
+    color: {texte@190};
+}
+QLineEdit#koracutScriptH1:focus, QLineEdit#koracutScriptH2:focus, QLineEdit#koracutScriptH3:focus, QLineEdit#koracutScriptTableTitle:focus {
+    background: {surface};
+}
+QTextEdit#koracutScriptParagraph, QTextEdit#koracutScriptList {
+    background: transparent;
+    color: {texte@220};
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    selection-background-color: {selection@90};
+}
+QTextEdit#koracutScriptParagraph:focus, QTextEdit#koracutScriptList:focus {
+    background: {surface};
+}
+QTableView#koracutScriptTable {
+    background: {surface};
+    alternate-background-color: {surface};
+    color: {texte};
+    border: 1px solid {texte@23};
+    border-radius: 6px;
+    gridline-color: {texte@23};
+    font-size: 12px;
+    selection-background-color: {selection@60};
+    selection-color: {texte};
+}
+QTableView#koracutScriptTable::item {
+    padding: 4px 6px;
+}
+QTableView#koracutScriptTable::item:focus {
+    border: 1px solid {accent};
+}
+QTableView#koracutScriptTable QHeaderView::section {
+    background: {surface};
+    color: {texte@150};
+    border: none;
+    border-bottom: 1px solid {texte@23};
+    border-right: 1px solid {texte@23};
+    padding: 4px 6px;
+    font-size: 11px;
+    font-weight: 600;
+}
+QTableView#koracutScriptTable QHeaderView::section:vertical {
+    color: {texte@110};
+    padding: 0 4px;
+    font-weight: 400;
+}
+QTableView#koracutScriptTable QTableCornerButton::section {
+    background: {surface};
+    border: none;
+}
+QTableView#koracutScriptTable QLineEdit, QTableView#koracutScriptTable QComboBox {
+    background: {champ};
+    color: {texte};
+    border: 1px solid {accent};
+    border-radius: 4px;
+    padding: 2px 4px;
+}
+QPushButton#koracutScriptAddRow, QPushButton#koracutScriptAddBlock {
+    background: transparent;
+    color: {texte@140};
+    border: none;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    text-align: left;
+}
+QPushButton#koracutScriptAddRow:hover, QPushButton#koracutScriptAddBlock:hover {
+    background: {surface};
+    color: {texte};
+}
+QLabel#koracutSequenceCount {
+    color: {texte_secondaire};
+    background: transparent;
+    font-size: 11px;
+}
+
+/* Bandeaux de message (KMessageWidget : « Basculer vers le profil… » dans le chutier). Le fond est
+   celui de KDE (bleu, orange, rouge adoucis) ; sans cette règle, le texte restait blanc sur le bleu
+   pâle des thèmes clairs (vu le 25 septembre 2026 sur Clair et Sable). */
+KMessageWidget QLabel {
+    color: {texte};
+}

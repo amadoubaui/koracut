@@ -1,0 +1,42 @@
+[Global]
+IconName=koracut
+DesktopEntry=pro.pixework.koracut
+Comment=KoraCut
+
+[Event/RenderFinished]
+Name=Rendu terminé
+Comment=Le rendu est terminé
+Action=Popup
+
+[Event/RenderStarted]
+Name=Rendu démarré
+Comment=Le rendu a démarré
+Action=Popup
+
+[Event/FrameCaptured]
+Name=Image capturée
+Comment=Une image a été enregistrée sur le disque
+Sound=camera-shutter
+Action=Sound
+
+[Event/ReadyToCapture]
+Name=Prêt pour la capture
+Sound=dialog-information
+Action=Sound
+
+[Event/ErrorMessage]
+Name=Erreur
+Comment=Une erreur est survenue dans KoraCut
+Sound=dialog-error
+Action=Sound|Popup
+
+[Event/SaveSuccess]
+Name=Enregistrement réussi
+Sound=outcome-success
+Action=None
+
+[Event/SpeechRecognitionFinished]
+Name=Reconnaissance vocale terminée
+Comment=Une tâche de reconnaissance vocale (par exemple le sous-titrage automatique) est terminée
+Sound=dialog-information
+Action=Sound|Popup

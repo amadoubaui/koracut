@@ -6,11 +6,19 @@ MPEG=qscale=4 ab=192k vcodec=mpeg2video acodec=mp2 threads=%threads;mpg
 
 [proxy]
 # proxy settings should be FFmpeg type parameters, like: -vcodec libx264
+# KoraCut (29 septembre 2026, document 6) : x264-amf, x264-qsv et x264-videotoolbox n'avaient pas de
+# mise à l'échelle, le proxy d'un 4K sortait en 4K. Deux profils en plus, choisis selon la machine :
+# « KoraCut léger » (machine modeste) : H.264 tout-intra ultrafast, fastdecode, 8 bits. Mesuré sur 4 cœurs
+# « efficacité » d'Apple Silicon, 4 s de HEVC 4K ramenées en 640 px : relu 30 % plus vite que le x264 de
+# Kdenlive, sans matériel particulier, donc pareil sur les trois systèmes.
+# « KoraCut ProRes Proxy » : intra, le plus simple à relire, mais trois fois plus lourd sur le disque.
+KoraCut léger=-vf scale=%width:-2,format=yuv420p -fps_mode cfr -c:v libx264 -g 1 -bf 0 -vb 0 -crf 23 -preset ultrafast -tune fastdecode -c:a aac -ab 128k;mov
+KoraCut ProRes Proxy=-vf scale=%width:-2 -fps_mode cfr -c:v prores_ks -profile:v 0 -vendor apl0 -qscale:v 11 -c:a pcm_s16le;mov
 x264=-vf scale=%width:-2 -fps_mode cfr -c:v libx264 -g 1 -bf 0 -vb 0 -crf 20 -preset veryfast -c:a aac -ab 128k;mov
 x264-vaapi=-init_hw_device vaapi=vaapi0: -filter_hw_device vaapi0 -i -vf scale=%width:-2,format=nv12,hwupload -fps_mode cfr -c:v h264_vaapi -g 1 -bf 0 -qp 26 -c:a aac -ab 128k;mov
-x264-amf=-f mp4 -fps_mode cfr -c:v h264_amf -g 1 -bf 0 -qp 26 -c:a aac -ab 128k;mp4
-x264-qsv=-f mp4 -fps_mode cfr -c:v h264_qsv -g 1 -bf 0 -qp 26 -c:a aac -ab 128k;mp4
-x264-videotoolbox=-f mp4 -fps_mode cfr -c:v h264_videotoolbox -g 1 -bf 0 -qp 26 -c:a aac -ab 128k;mp4
+x264-amf=-f mp4 -vf scale=%width:-2 -fps_mode cfr -c:v h264_amf -g 1 -bf 0 -qp 26 -c:a aac -ab 128k;mp4
+x264-qsv=-f mp4 -vf scale=%width:-2 -fps_mode cfr -c:v h264_qsv -g 1 -bf 0 -qp 26 -c:a aac -ab 128k;mp4
+x264-videotoolbox=-f mp4 -vf scale=%width:-2 -fps_mode cfr -c:v h264_videotoolbox -g 1 -bf 0 -qp 26 -c:a aac -ab 128k;mp4
 x264-vaapi-scale=-hwaccel vaapi -hwaccel_output_format vaapi -i -vf scale_vaapi=w=%width:h=-2:format=nv12,hwupload -fps_mode cfr -c:v h264_vaapi -g 1 -bf 0 -qp 26 -c:a aac -ab 128k;mov
 x264-nvenc=-fps_mode cfr -c:v %nvcodec -resize %frameSize -i -c:v h264_nvenc -g 2 -bf 0 -c:a aac -ab 128k;mov
 MPEG2=-vf scale=%width:-2 -g 1 -bf 0 -vb 0 -qscale 6 -ab 128k -c:v mpeg2video -c:a ac3;mpg
@@ -35,6 +43,10 @@ MPEG=qscale=4 ab=192k vcodec=mpeg2video acodec=mp2 threads=%threads;mpg
 
 [timelinepreview]
 # timeline preview settings should be MLT type parameters, like: vcodec=libx264
+# KoraCut (24 septembre 2026) : H.264 tout-intra, choisi par défaut (previewmanager.cpp). Mesuré sur un Mac M2 Pro
+# avec 5 s de 1080p25 : écrit en 0,3 s (DNxHD 0,8 s), 9,8 Mo (DNxHD 23,6 Mo), relu à 400 i/s sur un seul fil
+# (DNxHD 274), PSNR 44,3 dB (DNxHD 45,1). Logiciel, donc identique sur les trois systèmes.
+KoraCut H.264 intra=vcodec=libx264 g=1 bf=0 crf=20 preset=ultrafast tune=fastdecode threads=0;mp4
 DNxHD 1080p 23.976fps=r=23.976 s=1920x1080 vb=36M threads=0 vcodec=dnxhd progressive=1;mov
 DNxHD 1080p 24fps=r=24 s=1920x1080 vb=36M threads=0 vcodec=dnxhd progressive=1;mov
 DNxHD 1080p 25fps=r=25 s=1920x1080 vb=36M threads=0 vcodec=dnxhd progressive=1;mov

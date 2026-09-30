@@ -2,18 +2,18 @@
 #
 # SPDX-License-Identifier: CC0-1.0
 ---
-name: kdenlive
+name: koracut
 confinement: strict
 grade: stable
 base: core24
-adopt-info: kdenlive
+adopt-info: koracut
 apps:
-  kdenlive:
+  koracut:
     extensions:
       - kde-neon-6
-    common-id: org.kde.kdenlive.desktop
-    desktop: usr/share/applications/org.kde.kdenlive.desktop
-    command: usr/bin/kdenlive
+    common-id: pro.pixework.koracut.desktop
+    desktop: usr/share/applications/pro.pixework.koracut.desktop
+    command: usr/bin/koracut
     plugs:
       - audio-record
       - removable-media
@@ -37,7 +37,7 @@ apps:
       LD_LIBRARY_PATH: "$SNAP/kf6/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR:$SNAP/ffmpeg-platform/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR:$LD_LIBRARY_PATH"
       PATH: $SNAP/ffmpeg-platform/usr/bin:$SNAP/usr/local/bin/:$PATH
       QT_PLUGIN_PATH: "$SNAP/usr/lib/$CRAFT_ARCH_TRIPLET/plugins:/snap/kf6-core24/current/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/plugins"
-      QML_IMPORT_PATH: "$SNAP/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/qml:$SNAP//snap/kdenlive/current/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/qt6/qml:/snap/kf6-core24/current/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/qml"
+      QML_IMPORT_PATH: "$SNAP/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/qml:$SNAP//snap/koracut/current/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/qt6/qml:/snap/kf6-core24/current/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/qml"
 
 package-repositories:
   - type: apt
@@ -56,7 +56,7 @@ plugs:
 slots:
   session-dbus-interface:
     interface: dbus
-    name: org.kde.kdenlive
+    name: pro.pixework.koracut
     bus: session
 parts:
   python-deps:
@@ -70,11 +70,11 @@ parts:
       - vosk
     stage:
       - "-pyvenv.cfg"
-  kdenlive:
+  koracut:
     after:
       - python-deps
     parse-info:
-      - usr/share/metainfo/org.kde.kdenlive.appdata.xml
+      - usr/share/metainfo/pro.pixework.koracut.appdata.xml
     plugin: cmake
     source: .
     source-type: local
@@ -158,7 +158,7 @@ parts:
       - -usr/lib/aspell/*
       - -usr/share/lintian
   gpu-2404:
-    after: [kdenlive]
+    after: [koracut]
     source: https://github.com/canonical/gpu-snap.git
     plugin: dump
     override-prime: |
@@ -168,7 +168,7 @@ parts:
       - bin/gpu-2404-wrapper
   cleanup:
     after:
-      - kdenlive
+      - koracut
     plugin: nil
     build-snaps:
       - core24

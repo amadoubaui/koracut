@@ -59,15 +59,15 @@ Wizard::Wizard(bool autoClose, QWidget *parent)
     , m_systemCheckIsOk(false)
     , m_brokenModule(false)
 {
-    setWindowTitle(i18nc("@title:window", "Welcome to Kdenlive"));
+    setWindowTitle(i18nc("@title:window", "Welcome to KoraCut"));
     int logoHeight = int(fontMetrics().height() * 2.5);
     setWizardStyle(QWizard::ModernStyle);
     setOption(QWizard::NoBackButtonOnLastPage, true);
     // setOption(QWizard::ExtendedWatermarkPixmap, false);
     m_page = new MyWizardPage(this);
-    m_page->setTitle(i18n("Welcome to Kdenlive %1", QString(KDENLIVE_VERSION)));
+    m_page->setTitle(i18n("Welcome to KoraCut %1", QString(KDENLIVE_VERSION)));
     m_page->setSubTitle(i18n("Using MLT %1", mlt_version_get_string()));
-    setPixmap(QWizard::LogoPixmap, QIcon::fromTheme(QStringLiteral(":/pics/kdenlive.png")).pixmap(logoHeight, logoHeight));
+    setPixmap(QWizard::LogoPixmap, QIcon::fromTheme(QStringLiteral(":/pics/koracut.png")).pixmap(logoHeight, logoHeight));
     m_startLayout = new QVBoxLayout;
     m_errorWidget = new KMessageWidget(this);
     m_startLayout->addWidget(m_errorWidget);
@@ -349,7 +349,7 @@ void Wizard::checkMltComponents()
             // Breeze icons not found
             qDebug() << "Missing Breeze icons";
             m_warnings.append(
-                i18n("<li>Missing package: <b>Breeze</b> icons (breeze-icon-theme)<br/>provides many icons used in Kdenlive. Install recommended</li>"));
+                i18n("<li>Missing package: <b>Breeze</b> icons (breeze-icon-theme)<br/>provides many icons used in KoraCut. Install recommended</li>"));
         }
 #endif
 
@@ -418,7 +418,7 @@ void Wizard::checkMltComponents()
         // Titler module
         if (!producersItemList.contains(QStringLiteral("kdenlivetitle"))) {
             qDebug() << "Missing TITLER MLT module";
-            m_warnings.append(i18n("<li>Missing MLT module: <b>kdenlivetitle</b><br/>required to create titles</li>"));
+            m_warnings.append(i18n("<li>Missing MLT module: <b>titles</b><br/>required to create titles</li>"));
             m_brokenModule = true;
         }
         // Animation module
@@ -449,23 +449,23 @@ const QString Wizard::fixKdenliveRenderPath()
     QString errorMessage;
     // Find path for Kdenlive renderer
 #ifdef Q_OS_WIN
-    kdenliverenderpath = QCoreApplication::applicationDirPath() + QStringLiteral("/kdenlive_render.exe");
+    kdenliverenderpath = QCoreApplication::applicationDirPath() + QStringLiteral("/koracut_render.exe");
 #else
-    kdenliverenderpath = QCoreApplication::applicationDirPath() + QStringLiteral("/kdenlive_render");
+    kdenliverenderpath = QCoreApplication::applicationDirPath() + QStringLiteral("/koracut_render");
 #endif
     if (!QFile::exists(kdenliverenderpath)) {
         const QStringList mltpath({QFileInfo(KdenliveSettings::meltpath()).canonicalPath(), qApp->applicationDirPath()});
-        kdenliverenderpath = QStandardPaths::findExecutable(QStringLiteral("kdenlive_render"), mltpath);
+        kdenliverenderpath = QStandardPaths::findExecutable(QStringLiteral("koracut_render"), mltpath);
         if (kdenliverenderpath.isEmpty()) {
-            kdenliverenderpath = QStandardPaths::findExecutable(QStringLiteral("kdenlive_render"));
+            kdenliverenderpath = QStandardPaths::findExecutable(QStringLiteral("koracut_render"));
         }
         if (kdenliverenderpath.isEmpty()) {
-            errorMessage = i18n("<li>Missing app: <b>kdenlive_render</b><br/>needed for rendering.</li>");
+            errorMessage = i18n("<li>Missing application: <b>koracut_render</b><br/>required for rendering.</li>");
         }
     }
 
     if (!kdenliverenderpath.isEmpty()) {
-        KdenliveSettings::setKdenliverendererpath(kdenliverenderpath);
+        KdenliveSettings::setKoracutrendererpath(kdenliverenderpath);
     }
     return errorMessage;
 }
@@ -517,7 +517,7 @@ void Wizard::slotCheckPrograms(QString &infos, QString &warnings, QString &error
             }
         }
     }
-    if (KdenliveSettings::kdenliverendererpath().isEmpty() || !QFileInfo::exists(KdenliveSettings::kdenliverendererpath())) {
+    if (KdenliveSettings::koracutrendererpath().isEmpty() || !QFileInfo::exists(KdenliveSettings::koracutrendererpath())) {
         const QString renderError = fixKdenliveRenderPath();
         if (!renderError.isEmpty()) {
             errors.append(renderError);
@@ -678,7 +678,7 @@ void Wizard::slotCheckMlt()
 {
     QString errorMessage;
     if (KdenliveSettings::meltpath().isEmpty()) {
-        errorMessage.append(i18n("Your MLT installation cannot be found. Install MLT and restart Kdenlive.\n"));
+        errorMessage.append(i18n("Your MLT installation cannot be found. Install MLT and restart KoraCut.\n"));
     }
 
     if (!errorMessage.isEmpty()) {
@@ -710,12 +710,12 @@ bool Wizard::isOk() const
 void Wizard::slotOpenManual()
 {
     auto *job = new KIO::OpenUrlJob(
-        QUrl(QStringLiteral("https://docs.kdenlive.org/troubleshooting/installation_troubleshooting.html?mtm_campaign=kdenlive_inapp&mtm_kwd=welcome_wizard")));
+        QUrl(QStringLiteral("https://koracut.org/docs")));
     job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, this));
     // methods like setRunExecutables, setSuggestedFilename, setEnableExternalBrowser, setFollowRedirections
     // exist in both classes
     job->start();
-    // KIO::OpenUrlJob(QUrl(QStringLiteral("https://docs.kdenlive.org/troubleshooting/installation_troubleshooting.html?mtm_campaign=kdenlive_inapp&mtm_kwd=welcome_wizard")),
+    // KIO::OpenUrlJob(QUrl(QStringLiteral("https://koracut.org/docs")),
     // QStringLiteral("text/html"));
 }
 

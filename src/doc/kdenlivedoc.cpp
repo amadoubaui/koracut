@@ -45,16 +45,20 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include <kddockwidgets/LayoutSaver.h>
 
 #include "kdenlive_debug.h"
+#include <QApplication>
 #include <QCryptographicHash>
 #include <QDomImplementation>
 #include <QFile>
 #include <QFileDialog>
+#include <QFontInfo>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QUndoGroup>
 #include <QUndoStack>
+#include "koracut/koracutperformance.h"
+#include "utils/machineprofile.h"
 #include <QtConcurrent/QtConcurrentRun>
 #include <memory>
 #include <mlt++/Mlt.h>
@@ -226,14 +230,14 @@ DocOpenResult KdenliveDoc::Open(const QUrl &url, const QString &projectFolder, Q
     bool success = validator.isProject();
     if (!success) {
         // It is not a project file
-        result.setError(i18n("File %1 is not a Kdenlive project file", url.toLocalFile()));
+        result.setError(i18n("File %1 is not a KoraCut project file", url.toLocalFile()));
         return result;
     }
 
     auto validationResult = validator.validate(DOCUMENTVERSION, DOCUMENTPATCHVERSION);
     success = validationResult.first;
     if (!success) {
-        result.setError(i18n("File %1 is not a valid Kdenlive project file.", url.toLocalFile()));
+        result.setError(i18n("File %1 is not a valid KoraCut project file.", url.toLocalFile()));
         return result;
     }
 
@@ -246,7 +250,7 @@ DocOpenResult KdenliveDoc::Open(const QUrl &url, const QString &projectFolder, Q
         success = validator.checkMovit();
     }
     if (!success) {
-        result.setError(i18n("GPU acceleration is turned off in Kdenlive settings, but is required for this project's Movit filters."));
+        result.setError(i18n("GPU acceleration is turned off in KoraCut settings, but is required for this project's Movit filters."));
         return result;
     }
 
@@ -507,6 +511,12 @@ QDomDocument KdenliveDoc::createEmptyDocument(const QList<TrackInfo> &tracks, bo
         track.set("kdenlive:track_name", tracks.at(i).trackName.toUtf8().constData());
         track.set("kdenlive:timeline_active", 1);
         track.set("kdenlive:trackheight", KdenliveSettings::trackheight());
+        // KoraCut, 22 septembre 2026 : une piste neuve arrive pliée. C'est ce qui rend dix
+        // pistes vidéo et dix pistes audio utilisables sur un petit écran, et c'est le
+        // comportement de Premiere Pro. La valeur est la hauteur repliée de la timeline
+        // (`collapsedHeight` dans Timeline.qml, max(28, 1,8 × la police de base)). L'état plié
+        // de chaque piste est enregistré dans le projet, il reste donc modifiable et persistant.
+        track.set("kdenlive:collapsed", qMax(28, int(QFontInfo(QApplication::font()).pixelSize() * 1.8)));
         if (tracks.at(i).type == AudioTrack) {
             track.set("kdenlive:audio_track", 1);
         }
@@ -574,6 +584,15 @@ bool KdenliveDoc::autoGenerateProxy(int width) const
 {
     return (m_documentProperties.value(QStringLiteral("generateproxy")).toInt() != 0) &&
            (width < 0 || width > m_documentProperties.value(QStringLiteral("proxyminsize")).toInt());
+}
+
+bool KdenliveDoc::autoGenerateProxy(int width, const QString &codec, const QString &pixFormat) const
+{
+    MachineProfile::ProxyRule rule;
+    rule.generate = m_documentProperties.value(QStringLiteral("generateproxy")).toInt() != 0;
+    rule.minWidth = m_documentProperties.value(QStringLiteral("proxyminsize")).toInt();
+    rule.heavyMinWidth = KoraCutPerformance::proxyHeavyMinWidth();
+    return MachineProfile::wantsProxy(rule, width, codec, pixFormat);
 }
 
 bool KdenliveDoc::autoGenerateImageProxy(int width) const
@@ -738,21 +757,28 @@ bool KdenliveDoc::saveSceneList(const QString &path, const QString &scene, bool 
     backupLastSavedVersion(path);
     if (m_documentOpenStatus != CleanProject && saveOverExistingFile) {
         // create visible backup file and warn user
-        QString baseFile = path.section(QStringLiteral(".kdenlive"), 0, 0);
+        QString baseFile = path;
+        // On retire l'extension du projet, ancienne ou nouvelle.
+        for (const QString &suffix : {QStringLiteral(".koracut"), QStringLiteral(".kdenlive")}) {
+            if (baseFile.endsWith(suffix)) {
+                baseFile.chop(suffix.length());
+                break;
+            }
+        }
         int ct = 0;
-        QString backupFile = baseFile + QStringLiteral("_backup") + QString::number(ct) + QStringLiteral(".kdenlive");
+        QString backupFile = baseFile + QStringLiteral("_backup") + QString::number(ct) + QStringLiteral(".koracut");
         while (QFile::exists(backupFile)) {
             ct++;
-            backupFile = baseFile + QStringLiteral("_backup") + QString::number(ct) + QStringLiteral(".kdenlive");
+            backupFile = baseFile + QStringLiteral("_backup") + QString::number(ct) + QStringLiteral(".koracut");
         }
         QString message;
         if (m_documentOpenStatus == UpgradedProject) {
             message =
-                i18n("Your project file was upgraded to the latest Kdenlive document version.\nTo make sure you do not lose data, a backup copy called %1 "
+                i18n("Your project file was upgraded to the latest KoraCut document version.\nTo make sure you do not lose data, a backup copy called %1 "
                      "was created.",
                      backupFile);
         } else {
-            message = i18n("Your project file was modified by Kdenlive.\nTo make sure you do not lose data, a backup copy called %1 was created.", backupFile);
+            message = i18n("Your project file was modified by KoraCut.\nTo make sure you do not lose data, a backup copy called %1 was created.", backupFile);
         }
 
         KIO::FileCopyJob *copyjob = KIO::file_copy(QUrl::fromLocalFile(path), QUrl::fromLocalFile(backupFile));
@@ -762,7 +788,7 @@ bool KdenliveDoc::saveSceneList(const QString &path, const QString &scene, bool 
         } else {
             KMessageBox::information(
                 QApplication::activeWindow(),
-                i18n("Your project file was upgraded to the latest Kdenlive document version, but it was not possible to create the backup copy %1.",
+                i18n("Your project file was upgraded to the latest KoraCut document version, but it was not possible to create the backup copy %1.",
                      backupFile));
         }
     }
@@ -785,7 +811,7 @@ bool KdenliveDoc::saveSceneList(const QString &path, const QString &scene, bool 
     QString fileName = info.completeBaseName();
     const QString timeStamp = info.lastModified().toString(QStringLiteral("yyyy-MM-dd-hh-mm"));
     fileName.append(QLatin1Char('-') + m_documentProperties.value(QStringLiteral("documentid")));
-    fileName.append(QStringLiteral("-%1.kdenlive.jpg").arg(timeStamp));
+    fileName.append(QStringLiteral("-%1.koracut.jpg").arg(timeStamp));
     QDir backupFolder(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/.backup"));
     Q_EMIT pCore->saveTimelinePreview(backupFolder.absoluteFilePath(fileName));
     return true;
@@ -814,6 +840,17 @@ QString KdenliveDoc::projectRenderFolder(const QString &newPath) const
     if (m_url.isValid() && (KdenliveSettings::videotodefaultfolder() == KdenliveDoc::SaveToProjectFolder || m_sameProjectFolder)) {
         // Always render to project folder
         return QFileInfo(m_url.toLocalFile()).absolutePath();
+    }
+    // KoraCut, 27 septembre 2026 (demande d'Amadou Ba : « je ne vois pas où tu exportes ») : par
+    // défaut, les exports d'un projet enregistré vont dans son sous-dossier « Exports », à côté du
+    // fichier projet ; ceux d'un projet pas encore enregistré dans ~/Movies/KoraCut/Exports. Avant,
+    // tout partait en vrac dans ~/Movies. Un dossier choisi dans les Préférences garde la priorité.
+    const QString projectFile = m_url.isValid() ? m_url.toLocalFile() : QString();
+    QDir exports(projectFile.isEmpty() || !QFileInfo::exists(projectFile)
+                     ? QDir(QStandardPaths::writableLocation(QStandardPaths::MoviesLocation)).filePath(QStringLiteral("KoraCut/Exports"))
+                     : QFileInfo(projectFile).dir().filePath(QStringLiteral("Exports")));
+    if (exports.mkpath(QStringLiteral("."))) {
+        return exports.absolutePath();
     }
     return QStandardPaths::writableLocation(QStandardPaths::MoviesLocation);
 }
@@ -1193,7 +1230,7 @@ void KdenliveDoc::slotCreateTextTemplateClip(const QString &group, const QString
     QString titlesFolder = QDir::cleanPath(m_projectFolder + QStringLiteral("/titles/"));
     if (path.isEmpty()) {
         QPointer<QFileDialog> d = new QFileDialog(QApplication::activeWindow(), i18nc("@title:window", "Enter Template Path"), titlesFolder);
-        d->setMimeTypeFilters(QStringList() << QStringLiteral("application/x-kdenlivetitle"));
+        d->setMimeTypeFilters(QStringList() << QStringLiteral("application/x-koracuttitle") << QStringLiteral("application/x-kdenlivetitle"));
         d->setFileMode(QFileDialog::ExistingFile);
         if (d->exec() == QDialog::Accepted && !d->selectedUrls().isEmpty()) {
             path = d->selectedUrls().first();
@@ -1438,7 +1475,7 @@ void KdenliveDoc::backupLastSavedVersion(const QString &path)
     QFileInfo info(file);
     fileName.append(QLatin1Char('-') + m_documentProperties.value(QStringLiteral("documentid")));
     const QString timeStamp = info.lastModified().toString(QStringLiteral("yyyy-MM-dd-hh-mm"));
-    fileName.append(QStringLiteral("-%1.kdenlive").arg(timeStamp));
+    fileName.append(QStringLiteral("-%1.koracut").arg(timeStamp));
     QString backupFile = backupFolder.absoluteFilePath(fileName);
     if (file.exists()) {
         // delete previous backup if it was done less than 60 seconds ago
@@ -1479,7 +1516,7 @@ void KdenliveDoc::cleanupBackupFiles()
     projectFile.append(QStringLiteral("-??"));
     projectFile.append(QStringLiteral("-??"));
     projectFile.append(QStringLiteral("-??"));
-    projectFile.append(QStringLiteral("-??.kdenlive"));
+    projectFile.append(QStringLiteral("-??.koracut"));
 
     QStringList filter;
     filter << projectFile;
@@ -2105,6 +2142,14 @@ std::pair<int, int> KdenliveDoc::getFpsFraction(double fps, bool *adjusted)
 
 void KdenliveDoc::switchProfile(ProfileParam *pf, const QString &clipName)
 {
+    // KoraCut, 22 septembre 2026 : on ne propose le changement de profil qu'une fois par projet.
+    // Avant, la boîte revenait à chaque média importé dont la cadence diffère de celle du projet,
+    // et il n'y avait aucun moyen de s'en débarrasser. Un refus est retenu dans les propriétés du
+    // document, donc il survit à l'enregistrement.
+    if (getDocumentProperty(QStringLiteral("profileproposaldeclined")).toInt() == 1) {
+        delete pf;
+        return;
+    }
     // Request profile update
     // Check profile fps so that we don't end up with an fps = 30.003 which would mess things up
     QString adjustMessage;
@@ -2159,9 +2204,15 @@ void KdenliveDoc::switchProfile(ProfileParam *pf, const QString &clipName)
         QAction *ac = new QAction(QIcon::fromTheme(QStringLiteral("dialog-ok")), i18n("Switch"), this);
         connect(ac, &QAction::triggered, this, [this, profilePath]() { this->slotSwitchProfile(profilePath, true); });
         QAction *ac2 = new QAction(QIcon::fromTheme(QStringLiteral("dialog-cancel")), i18n("Cancel"), this);
+        // KoraCut : « Annuler » veut dire « ne me le redemande plus pour ce projet ».
+        connect(ac2, &QAction::triggered, this, [this]() {
+            setDocumentProperty(QStringLiteral("profileproposaldeclined"), QStringLiteral("1"));
+            setModified(true);
+        });
         QList<QAction *> list = {ac, ac2};
         adjustMessage.append(i18n("Switch to clip (%1) profile %2?", clipName, profile->descriptiveString()));
-        Q_EMIT pCore->displayBinMessage(adjustMessage, KMessageWidget::Information, list, false, BinMessage::BinCategory::ProfileMessage);
+        // KoraCut : la croix de fermeture est visible, pour pouvoir écarter le message sans répondre.
+        Q_EMIT pCore->displayBinMessage(adjustMessage, KMessageWidget::Information, list, true, BinMessage::BinCategory::ProfileMessage);
     } else {
         // No known profile, ask user if he wants to use clip profile anyway
         if (qFuzzyCompare(double(profile->m_frame_rate_num) / profile->m_frame_rate_den, fps)) {
@@ -2222,6 +2273,15 @@ void KdenliveDoc::selectPreviewProfile()
     KConfig conf(QStringLiteral("encodingprofiles.rc"), KConfig::CascadeConfig, QStandardPaths::AppDataLocation);
     KConfigGroup group(&conf, "timelinepreview");
     QMap<QString, QString> values = group.entryMap();
+    // KoraCut (29 septembre 2026, document 6) : le profil tout-intra mesuré le 24 septembre passe avant
+    // l'encodeur matériel (plus rapide à écrire et à relire, plus petit). La recherche « x264-<matériel> »
+    // de Kdenlive ne trouvait de toute façon pas « h264-videotoolbox ».
+    if (values.contains(QStringLiteral("KoraCut H.264 intra"))) {
+        const QString best = values.value(QStringLiteral("KoraCut H.264 intra"));
+        setDocumentProperty(QStringLiteral("previewparameters"), best.section(QLatin1Char(';'), 0, 0));
+        setDocumentProperty(QStringLiteral("previewextension"), best.section(QLatin1Char(';'), 1, 1));
+        return;
+    }
     if (!KdenliveSettings::supportedHWCodecs().isEmpty()) {
         QString codecFormat = QStringLiteral("x264-");
         codecFormat.append(KdenliveSettings::supportedHWCodecs().constFirst().section(QLatin1Char('_'), 1));
@@ -2306,8 +2366,14 @@ void KdenliveDoc::initProxySettings()
     KConfigGroup group(&conf, "proxy");
     QString params;
     QMap<QString, QString> values = group.entryMap();
+    // KoraCut (chantier 10) : le profil selon la machine (« KoraCut léger » sur machine modeste,
+    // l'encodeur matériel ailleurs, avec mise à l'échelle).
+    const QString koraCutProfile = MachineProfile::proxyProfileFor(MachineProfile::effectiveLevel(), KdenliveSettings::supportedHWCodecs(), values.keys());
+    if (!koraCutProfile.isEmpty()) {
+        params = values.value(koraCutProfile);
+    }
     // Select best proxy profile depending on hw encoder support
-    if (!KdenliveSettings::supportedHWCodecs().isEmpty()) {
+    if (params.isEmpty() && !KdenliveSettings::supportedHWCodecs().isEmpty()) {
         QString codecFormat = QStringLiteral("x264-");
         codecFormat.append(KdenliveSettings::supportedHWCodecs().constFirst().section(QLatin1Char('_'), 1));
         if (values.contains(codecFormat)) {

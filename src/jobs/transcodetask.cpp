@@ -178,7 +178,7 @@ void TranscodeTask::run()
         if (KdenliveSettings::ffmpegpath().isEmpty()) {
             // FFmpeg not detected, cannot process the Job
             QMetaObject::invokeMethod(pCore.get(), "displayBinMessage", Qt::QueuedConnection,
-                                      Q_ARG(QString, i18n("FFmpeg not found, please set path in Kdenlive's settings Environment")),
+                                      Q_ARG(QString, i18n("FFmpeg not found, please set path in KoraCut's settings Environment")),
                                       Q_ARG(int, int(KMessageWidget::Warning)));
             return;
         }

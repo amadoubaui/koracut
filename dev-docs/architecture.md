@@ -1,6 +1,6 @@
 # Architecture
 
-*This document describes Kdenlive’s architecture top-down.*
+*This document describes KoraCut’s architecture top-down.*
 
 * Top-down architecture
   * Dependencies MLT etc.
@@ -10,16 +10,16 @@
 
 ## Architectural Overview
 
-Kdenlive uses a number of libraries. The most important library is MLT which is
+KoraCut uses a number of libraries. The most important library is MLT which is
 responsible for the core video editing functionality: the process of applying
-effects to clips which are organised in tracks and timeline(s). Kdenlive
+effects to clips which are organised in tracks and timeline(s). KoraCut
 provides the user interface for this functionality.
 
-Kdenlive and MLT use a number of resources like frei0r for video effects.
+KoraCut and MLT use a number of resources like frei0r for video effects.
 
 ```
               ┌────────┐   
-              │Kdenlive├─────┐
+              │KoraCut ├─────┐
               └────┬───┘     │
     Render projects│         │Configure
  Decode audio/video│         │effect settings

@@ -4,11 +4,13 @@
 */
 
 #include "assetlistwidget.hpp"
+#include "koracut/koracutemptystate.h"
 #include "assets/assetlist/model/assetfilter.hpp"
 #include "assets/assetlist/model/assettreemodel.hpp"
 #include "assets/assetlist/view/asseticonprovider.hpp"
 #include "kdenlivesettings.h"
 #include "mltconnection.h"
+#include "koracut/koracutmetrics.h"
 
 #include <KAboutData>
 #include <KMessageBox>
@@ -23,6 +25,7 @@
 #include <QLineEdit>
 #include <QListView>
 #include <QMenu>
+#include <QPainter>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QStandardPaths>
@@ -50,6 +53,40 @@ protected:
             option->font = font;
             option->fontMetrics = QFontMetrics(font);
         }
+    }
+};
+
+/** @brief L'arbre des effets et des compositions, avec son état vide.
+ *
+ * Le cas qui compte est la recherche sans résultat : sans rien à l'écran, on ne sait pas si la
+ * recherche n'a rien trouvé ou si le panneau est cassé. Le modèle en quatre éléments de la charte
+ * le dit, sans bouton : l'action à faire est d'effacer la recherche, et le champ est juste au-dessus.
+ */
+class AssetTreeView : public QTreeView
+{
+public:
+    using QTreeView::QTreeView;
+    /** @brief Vrai quand une recherche est en cours, ce qui change le texte affiché. */
+    bool m_filtre{false};
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        QTreeView::paintEvent(event);
+        if (!model() || model()->rowCount() > 0) {
+            return;
+        }
+        QPainter painter(viewport());
+        painter.setRenderHint(QPainter::Antialiasing);
+        const KoraCutEmptyState::Modele modele =
+            m_filtre ? KoraCutEmptyState::Modele{QStringLiteral("edit-find"),
+                                                 i18nc("@info liste d'effets, recherche sans résultat", "No results"),
+                                                 i18nc("@info liste d'effets, recherche sans résultat", "Try another word, or clear the search."),
+                                                 QString()}
+                     : KoraCutEmptyState::Modele{QStringLiteral("view-filter"),
+                                                 i18nc("@info liste d'effets vide", "Nothing to show"),
+                                                 i18nc("@info liste d'effets vide", "Pick another category in the list above."), QString()};
+        KoraCutEmptyState::paint(painter, viewport()->rect(), palette(), modele);
     }
 };
 
@@ -123,8 +160,7 @@ AssetListWidget::AssetListWidget(bool isEffect, QAction *includeList, QAction *t
     }
     // Create toolbar for buttons
     m_toolbar = new QToolBar(this);
-    int iconSize = style()->pixelMetric(QStyle::PM_SmallIconSize);
-    m_toolbar->setIconSize(QSize(iconSize, iconSize));
+    m_toolbar->setIconSize(KoraCutMetrics::iconToolbar());
     m_toolbar->setToolButtonStyle(Qt::ToolButtonIconOnly);
     QActionGroup *filterGroup = new QActionGroup(this);
     QAction *allEffects = new QAction(this);
@@ -181,17 +217,15 @@ AssetListWidget::AssetListWidget(bool isEffect, QAction *includeList, QAction *t
     filterGroup->addAction(favEffects);
     m_toolbar->addAction(favEffects);
 
-    QAction *toggleView = nullptr;
-    if (!m_isEffect) {
-        // Icon view for effects still needs work
-        // Add view mode toggle button
-        toggleView = new QAction(this);
-        toggleView->setIcon(QIcon::fromTheme(QStringLiteral("view-list-icons")));
-        toggleView->setToolTip(i18n("Toggle between list and icon view"));
-        toggleView->setCheckable(true);
-        connect(toggleView, &QAction::triggered, this, &AssetListWidget::toggleViewMode);
-        m_toolbar->addAction(toggleView);
-    }
+    // KoraCut, 23 septembre 2026 : la bascule cartes / liste vaut aussi pour les effets (la vue en
+    // icônes y était désactivée, « still needs work »). Les cartes montrent la vignette de chaque effet.
+    QAction *toggleView = new QAction(this);
+    toggleView->setIcon(QIcon::fromTheme(QStringLiteral("view-list-icons")));
+    toggleView->setToolTip(m_isEffect ? i18nc("@info:tooltip", "Cards or list") : i18n("Toggle between list and icon view"));
+    toggleView->setCheckable(true);
+    toggleView->setObjectName(QStringLiteral("koracut_asset_view_toggle"));
+    connect(toggleView, &QAction::triggered, this, &AssetListWidget::toggleViewMode);
+    m_toolbar->addAction(toggleView);
 
     m_lay->addWidget(m_toolbar);
     QWidget *empty = new QWidget(this);
@@ -257,7 +291,7 @@ AssetListWidget::AssetListWidget(bool isEffect, QAction *includeList, QAction *t
     });
 
     if (m_isEffect) {
-        KNSWidgets::Action *downloadAction = new KNSWidgets::Action(i18n("Download New Effects..."), QStringLiteral(":data/kdenlive_effects.knsrc"), this);
+        KNSWidgets::Action *downloadAction = new KNSWidgets::Action(i18n("Download New Effects..."), QStringLiteral(":data/koracut_effects.knsrc"), this);
         m_toolbar->addAction(downloadAction);
         connect(downloadAction, &KNSWidgets::Action::dialogFinished, this, [&](const QList<KNSCore::Entry> &changedEntries) {
             if (changedEntries.count() > 0) {
@@ -277,7 +311,7 @@ AssetListWidget::AssetListWidget(bool isEffect, QAction *includeList, QAction *t
             }
         });
     } else {
-        KNSWidgets::Action *downloadAction = new KNSWidgets::Action(i18n("Download New Wipes..."), QStringLiteral(":data/kdenlive_wipes.knsrc"), this);
+        KNSWidgets::Action *downloadAction = new KNSWidgets::Action(i18n("Download New Wipes..."), QStringLiteral(":data/koracut_wipes.knsrc"), this);
         m_toolbar->addAction(downloadAction);
         connect(downloadAction, &KNSWidgets::Action::dialogFinished, this, [&](const QList<KNSCore::Entry> &changedEntries) {
             if (changedEntries.count() > 0) {
@@ -314,10 +348,13 @@ AssetListWidget::AssetListWidget(bool isEffect, QAction *includeList, QAction *t
     m_effectsView = new QStackedWidget(this);
 
     // Tree view
-    m_effectsTree = new QTreeView(this);
+    m_effectsTree = new AssetTreeView(this);
     m_effectsTree->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     m_effectsTree->setHeaderHidden(true);
-    m_effectsTree->setAlternatingRowColors(true);
+    // KoraCut : pas de zébrure. Elle alternait #1E1E1E et #2C2C2C, soit deux des quatre
+    // marches de surface : on ne savait plus si une ligne claire était une ligne paire
+    // ou une surface différente. La hauteur de ligne suffit à suivre une ligne.
+    m_effectsTree->setAlternatingRowColors(false);
     m_effectsTree->setRootIsDecorated(true);
     m_effectsTree->setDragEnabled(true);
     m_effectsTree->setDragDropMode(QAbstractItemView::DragDrop);
@@ -378,12 +415,11 @@ AssetListWidget::AssetListWidget(bool isEffect, QAction *includeList, QAction *t
     // Initialize icon provider for the list view
     m_assetIconProvider = new AssetIconProvider(m_isEffect, this);
     if (m_isEffect) {
-        // Icon view for effects still needs work
-        /*if (KdenliveSettings::effectViewAsIcon()) {
-            toggleView->setChecked(true);
-            toggleViewMode(true);
-        }*/
+        // La vue retenue est restaurée par EffectListWidget, une fois son modèle de cartes posé.
+        m_toggleView = toggleView;
     } else {
+        // KoraCut : les compositions ont aussi − et + (TransitionListWidget).
+        m_toggleView = toggleView;
         if (KdenliveSettings::transitionViewAsIcon()) {
             toggleView->setChecked(true);
             toggleViewMode(true);
@@ -406,7 +442,7 @@ bool AssetListWidget::eventFilter(QObject *watched, QEvent *event)
     case QEvent::KeyPress: {
         const auto key = static_cast<QKeyEvent *>(event)->key();
         if (key == Qt::Key_Return || key == Qt::Key_Enter) {
-            activate(m_effectsTree->currentIndex());
+            activate(isIconView() ? m_effectsIcon->currentIndex() : m_effectsTree->currentIndex());
             setFilterName(QString());
             event->accept();
             return true;
@@ -479,6 +515,8 @@ QString AssetListWidget::getDescription(const QModelIndex &index) const
 
 void AssetListWidget::setFilterName(const QString &pattern)
 {
+    // KoraCut : l'état vide ne dit pas la même chose selon qu'on cherche ou non.
+    static_cast<AssetTreeView *>(m_effectsTree)->m_filtre = !pattern.isEmpty();
     QItemSelectionModel *sel = m_effectsTree->selectionModel();
     QModelIndex current = m_proxyModel->getModelIndex(sel->currentIndex());
     m_proxyModel->setFilterName(!pattern.isEmpty(), pattern);
@@ -505,8 +543,22 @@ QVariantMap AssetListWidget::getMimeData(const QString &assetId) const
     return mimeData;
 }
 
-void AssetListWidget::activate(const QModelIndex &ix)
+QModelIndex AssetListWidget::toTreeIndex(const QModelIndex &index) const
 {
+    // KoraCut : la vue en cartes des effets a son propre modèle, qui aplatit l'arbre
+    // (KoraCutFlatAssetProxy). Tout ce qui travaille sur l'arbre reçoit l'index de l'arbre.
+    if (!index.isValid() || index.model() == m_proxyModel.get()) {
+        return index;
+    }
+    if (const auto *flat = qobject_cast<const QAbstractProxyModel *>(index.model())) {
+        return flat->mapToSource(index);
+    }
+    return index;
+}
+
+void AssetListWidget::activate(const QModelIndex &viewIndex)
+{
+    const QModelIndex ix = toTreeIndex(viewIndex);
     if (!ix.isValid()) {
         return;
     }
@@ -547,7 +599,7 @@ void AssetListWidget::onCustomContextMenu(const QPoint &pos)
 {
     QModelIndex index;
     if (isIconView()) {
-        index = m_effectsIcon->indexAt(pos);
+        index = toTreeIndex(m_effectsIcon->indexAt(pos));
     } else {
         index = m_effectsTree->indexAt(pos);
     }
@@ -566,7 +618,8 @@ void AssetListWidget::onCustomContextMenu(const QPoint &pos)
                     ac->setText(isFavorite ? i18n("Remove from favorites") : i18n("Add to favorites"));
                 }
             }
-            m_contextMenu->exec(m_effectsTree->viewport()->mapToGlobal(pos));
+            // KoraCut : sous le pointeur de la vue affichée (la liste ou les cartes).
+            m_contextMenu->exec((isIconView() ? m_effectsIcon->viewport() : m_effectsTree->viewport())->mapToGlobal(pos));
         }
     }
 }
@@ -618,7 +671,7 @@ const QString AssetListWidget::buildLink(const QString &id, AssetListType::Asset
     } else {
         prefix = QStringLiteral("other");
     }
-    return QStringLiteral("https://docs.kdenlive.org/%1/%2?mtm_campaign=inapp_asset_link&mtm_kwd=%3&mtm_campaign=%4")
+    return QStringLiteral("https://koracut.org/docs?sujet=%1/%2&nom=%3&version=%4")
         .arg(prefix, id, id, KAboutData::applicationData().version());
 }
 
@@ -642,13 +695,16 @@ void AssetListWidget::toggleViewMode(bool checked)
     if (newIndex == 0) {
         // Switching to tree view
         if (m_effectsIcon->selectionModel() && m_effectsIcon->selectionModel()->hasSelection()) {
-            QModelIndex iconIndex = m_effectsIcon->selectionModel()->currentIndex();
+            QModelIndex iconIndex = toTreeIndex(m_effectsIcon->selectionModel()->currentIndex());
             m_effectsTree->selectionModel()->setCurrentIndex(iconIndex, QItemSelectionModel::ClearAndSelect);
         }
     } else {
         // Switching to icon view
-        if (m_effectsTree->selectionModel() && m_effectsTree->selectionModel()->hasSelection()) {
+        if (m_effectsTree->selectionModel() && m_effectsTree->selectionModel()->hasSelection() && m_effectsIcon->selectionModel()) {
             QModelIndex treeIndex = m_effectsTree->selectionModel()->currentIndex();
+            if (const auto *flat = qobject_cast<const QAbstractProxyModel *>(m_effectsIcon->model()); flat && flat != m_proxyModel.get()) {
+                treeIndex = flat->mapFromSource(treeIndex);
+            }
             m_effectsIcon->selectionModel()->setCurrentIndex(treeIndex, QItemSelectionModel::ClearAndSelect);
         }
     }
@@ -670,7 +726,8 @@ bool AssetListWidget::isIconView() const
 void AssetListWidget::setItemFavorite()
 {
     if (isIconView()) {
-        setFavorite(m_effectsIcon->currentIndex(), !isFavorite(m_effectsIcon->currentIndex()));
+        const QModelIndex current = toTreeIndex(m_effectsIcon->currentIndex());
+        setFavorite(current, !isFavorite(current));
     } else {
         setFavorite(m_effectsTree->currentIndex(), !isFavorite(m_effectsTree->currentIndex()));
     }

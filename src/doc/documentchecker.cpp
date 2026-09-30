@@ -12,6 +12,7 @@
 #include "titler/titlewidget.h"
 #include "transitions/transitionsrepository.hpp"
 #include "xml/xml.hpp"
+#include "kdenlive_debug.h"
 
 #include <KLocalizedString>
 #include <KUrlRequester>
@@ -119,6 +120,10 @@ bool DocumentChecker::resolveProblemsWithGUI()
         return true;
     }
     Q_EMIT pCore->GUISetupDone();
+    // KoraCut : ce qui a déclenché la fenêtre, dans le journal (une porte de commande ne voit que ses boutons).
+    for (const auto &item : std::as_const(m_items)) {
+        qCWarning(KDENLIVE_LOG) << "KoraCut: problème du document" << int(item.type) << int(item.status) << item.originalFilePath << item.clipId;
+    }
     DCResolveDialog *d = new DCResolveDialog(m_items, m_url);
     // d->show(getInfoMessages());
     if (d->exec() == QDialog::Rejected) {
@@ -722,9 +727,10 @@ bool DocumentChecker::ensureProducerIsNotPlaceholder(QDomElement &producer)
     QString guessedService;
     if (Xml::hasXmlProperty(producer, QStringLiteral("ttl"))) {
         guessedService = QStringLiteral("qimage");
-    } else if (resource.endsWith(QLatin1String(".kdenlivetitle"))) {
+    } else if (resource.endsWith(QLatin1String(".koracuttitle")) || resource.endsWith(QLatin1String(".kdenlivetitle"))) {
         guessedService = QStringLiteral("kdenlivetitle");
-    } else if (resource.endsWith(QLatin1String(".kdenlive")) || resource.endsWith(QLatin1String(".mlt"))) {
+    } else if (resource.endsWith(QLatin1String(".koracut")) || resource.endsWith(QLatin1String(".kdenlive")) ||
+               resource.endsWith(QLatin1String(".mlt"))) {
         guessedService = QStringLiteral("xml");
     } else {
         guessedService = QStringLiteral("avformat");

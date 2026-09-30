@@ -73,9 +73,27 @@
       <label>Autosave when we reach this count of undo entries.</label>
       <default>25</default>
     </entry>
+    <entry name="koracut_dual_monitor_hint" type="Bool">
+      <label>The two-monitor tip for wide screens has been shown.</label>
+      <!-- KoraCut, 23 septembre 2026 : sur un écran de 1600 px ou plus, on propose une fois le
+           mode deux moniteurs (« 9 - UX »), sans l'imposer. -->
+      <default>false</default>
+    </entry>
+    <entry name="singleMonitor" type="Bool">
+      <label>Show a single monitor with Source / Program tabs, instead of two side by side.</label>
+      <!-- KoraCut : un moniteur par défaut, deux sur demande (« 9 - UX de l'application »).
+           Deux moniteurs côte à côte, c'est la moitié haute de la fenêtre occupée par deux zones
+           vides de plus de 600 px de large chacune tant qu'aucun projet n'est ouvert. Le second
+           revient par ⌘⇧M, et la bascule automatique Source / Programme ne change pas. -->
+      <default>true</default>
+    </entry>
     <entry name="tabposition" type="Int">
       <label>Select tab position in dockwidgets.</label>
-      <default>1</default>
+      <!-- KoraCut : 0, les onglets en haut. Ils étaient en bas, c'est-à-dire que l'onglet qui
+           choisit ce qu'on regarde était placé sous les commandes de ce qu'on regarde : inversion
+           de l'ordre de lecture (défaut 7 de « 11 - Refonte UI-UX »). Le cas le plus net était les
+           moniteurs, où « Moniteur de clip / Moniteur de projet » vivait sous la barre de transport. -->
+      <default>0</default>
     </entry>
     <entry name="checkfirstprojectclip" type="Bool">
       <label>Check if document profile is same as first imported clip.</label>
@@ -204,13 +222,17 @@
 
   <group name="project">
     <entry name="videotracks" type="Int">
+      <!-- KoraCut, 22 septembre 2026 : dix pistes vidéo par défaut au lieu de deux. Elles
+           arrivent pliées (voir createEmptyDocument), sans quoi elles ne tiendraient sur aucun
+           écran. Coût mesuré à l'ouverture d'un projet neuf : voir le journal du document 13. -->
       <label>Default number of video tracks.</label>
-      <default>2</default>
+      <default>10</default>
     </entry>
 
     <entry name="audiotracks" type="Int">
+      <!-- KoraCut, 22 septembre 2026 : dix pistes audio, même raison que les pistes vidéo. -->
       <label>Default number of audio tracks.</label>
-      <default>2</default>
+      <default>10</default>
     </entry>
 
     <entry name="audio_channels" type="Int">
@@ -581,7 +603,8 @@
 
     <entry name="window_background" type="Color">
       <label>Background color for OpenGL monitor.</label>
-      <default>#535353</default>
+      <!-- KoraCut: fond des moniteurs = fond général de la charte produit (#1E1E1E), vérifié sur Kdenlive 26.08 le 19/09/2026 -->
+      <default>#1E1E1E</default>
     </entry>
 
     <entry name="showMonitorGrid" type="Bool">
@@ -671,8 +694,8 @@
       <default></default>
     </entry>
 
-    <entry name="kdenliverendererpath" type="Path">
-      <label>Kdenlive renderer install path.</label>
+    <entry name="koracutrendererpath" type="Path">
+      <label>KoraCut renderer install path.</label>
       <default></default>
     </entry>
 
@@ -683,6 +706,11 @@
 
     <entry name="ffmpegpath" type="Path">
       <label>FFmpeg / Libav binary path.</label>
+      <default></default>
+    </entry>
+
+    <entry name="koracut_nodepath" type="Path">
+      <label>KoraCut : le binaire node pour HyperFrames (vide : cherché sur la machine).</label>
       <default></default>
     </entry>
 
@@ -723,7 +751,7 @@
     </entry>
 
     <entry name="maxcachesize" type="Int">
-      <label>Kdenlive will periodically check if the cached data exceeds this limit. Data is in Mb</label>
+      <label>KoraCut will periodically check if the cached data exceeds this limit. Data is in Mb</label>
       <default>1024</default>
     </entry>
 
@@ -738,7 +766,7 @@
     </entry>
 
     <entry name="lastCacheCheck" type="DateTime">
-      <label>Kdenlive will check every 2 weeks on startup if the cached data exceeds the defined maxcachesize. This is the last checked date</label>
+      <label>KoraCut will check every 2 weeks on startup if the cached data exceeds the defined maxcachesize. This is the last checked date</label>
       <default></default>
     </entry>
 
@@ -753,7 +781,7 @@
     </entry>
 
     <entry name="sameprojectfolder" type="Bool">
-      <label>Use the parent folder of the *.kdenlive file to store project files.</label>
+      <label>Use the parent folder of the project file to store project files.</label>
       <default>false</default>
     </entry>
 
@@ -1050,7 +1078,8 @@
     </entry>
     <entry name="layoutsOrder" type="StringList">
       <label>Project layout order</label>
-      <default>logging,editing,audio,effects,color</default>
+      <!-- KoraCut : les cinq dispositions de Kdenlive sont devenues les modules. -->
+      <default>montage,etalonnage,audio,vfx</default>
     </entry>
 
     <entry name="showdescriptioncolumn" type="Bool">
@@ -1249,7 +1278,8 @@
 
     <entry name="showtitlebars" type="Bool">
       <label>Show dock widget titlebars to allow un/docking.</label>
-      <default>true</default>
+      <!-- KoraCut : panneaux verrouillés par défaut (9 - UX de l'application.md, principe 1). -->
+      <default>false</default>
     </entry>
 
     <entry name="colorclipcolor" type="Color">
@@ -1279,17 +1309,20 @@
 
     <entry name="videoColor" type="Color">
       <label>Color for video clips in the timeline.</label>
-      <default>#00000000</default>
+      <!-- KoraCut : un remplissage de clip n'est jamais la couleur d'accent. Le bleu #0D99FF
+           portait à la fois la tête de lecture, la sélection, l'outil actif et le fond des clips
+           vidéo : le contenu et le chrome se confondaient. Même teinte, désaturée. -->
+      <default>#407499</default>
     </entry>
 
     <entry name="audioColor" type="Color">
       <label>Color for audio clips in the timeline.</label>
-      <default>#00000000</default>
+      <default>#14A37F</default>
     </entry>
 
     <entry name="titleColor" type="Color">
       <label>Color for title clips in the timeline.</label>
-      <default>#00000000</default>
+      <default>#7C5CFF</default>
     </entry>
 
     <entry name="imageColor" type="Color">
@@ -1459,7 +1492,8 @@
     </entry>
     <entry name="effectViewAsIcon" type="Bool">
       <label>Show effects as icon list.</label>
-      <default>false</default>
+      <!-- KoraCut, 23 septembre 2026 : les cartes avec vignettes par défaut, comme CapCut. -->
+      <default>true</default>
     </entry>
     <entry name="transitionViewAsIcon" type="Bool">
       <label>Show transitions as icon list.</label>
@@ -1467,6 +1501,36 @@
     </entry>
     </group>
   <group name="startup">
+    <entry name="koracut_theme_applied" type="Bool">
+      <label>KoraCut Dark color scheme was applied on first start.</label>
+      <default>false</default>
+    </entry>
+
+    <entry name="koracut_theme_mode" type="String">
+      <!-- KoraCut, 22 septembre 2026 : trois états et non deux. « system » suit le mode clair
+           ou sombre du système et change à chaud quand le système change ; « light » et « dark »
+           sont des choix explicites que rien ne vient contredire. C'est ce que font macOS,
+           VS Code et Figma. Voir « 14 - Themes, sauvegarde, marqueurs, extensions.md », § 1. -->
+      <label>Theme mode: system, light or dark.</label>
+      <default>system</default>
+    </entry>
+    <!-- KoraCut, 23 septembre 2026 : le thème pris quand on suit le système, pour chaque cas. -->
+    <entry name="koracut_theme_system_dark" type="String">
+      <label>Theme used when following the system and the system is dark.</label>
+      <default>KoraCutDark</default>
+    </entry>
+    <entry name="koracut_theme_system_light" type="String">
+      <label>Theme used when following the system and the system is light.</label>
+      <default>KoraCutLight</default>
+    </entry>
+    <entry name="koracut_module" type="String">
+      <label>KoraCut: last active module (top bar tab).</label>
+      <default>montage</default>
+    </entry>
+    <entry name="koracut_topbar_applied" type="Bool">
+      <label>KoraCut top bar defaults (main toolbar and menu bar hidden) were applied once.</label>
+      <default>false</default>
+    </entry>
     <entry name="force_breeze" type="Bool">
       <label>Force breeze icon theme for consistent look.</label>
       <default>false</default>
@@ -1480,15 +1544,15 @@
       <default>true</default>
     </entry>
     <entry name="lastSeenVersionMajor" type="Int">
-      <label>Last used version of Kdenlive - major.</label>
+      <label>Last used version of KoraCut - major.</label>
       <default>0</default>
     </entry>
     <entry name="lastSeenVersionMinor" type="Int">
-      <label>Last used version of Kdenlive - minor.</label>
+      <label>Last used version of KoraCut - minor.</label>
       <default>0</default>
     </entry>
     <entry name="lastSeenVersionMicro" type="Int">
-      <label>Last used version of Kdenlive - micro.</label>
+      <label>Last used version of KoraCut - micro.</label>
       <default>0</default>
     </entry>
 
@@ -1510,7 +1574,7 @@
         <default>false</default>
         </entry>
         <entry name="titlerVersion" type="Int">
-        <label>Version of the Kdenlivetitler MLT module.</label>
+        <label>Version of the MLT title module.</label>
         <default>0</default>
         </entry>
         <entry name="titlerHGuides" type="Int">
@@ -1700,4 +1764,16 @@
       <default>true</default>
     </entry>
     </group>
+  <group name="koracut">
+    <!-- KoraCut, chantier 3 (23 septembre 2026) : le service d'agents. Vide : aucun service, le panneau
+         le dit. KORACUT_AGENTS_URL, si elle est posée, passe avant ce réglage. -->
+    <entry name="koracut_agents_url" type="String">
+      <label>Address of the agents service (ws:// or wss://). Empty: no service.</label>
+      <default></default>
+    </entry>
+    <entry name="koracut_agents_budget" type="Int">
+      <label>Maximum number of tool calls in one agent turn.</label>
+      <default>30</default>
+    </entry>
+  </group>
 </kcfg>

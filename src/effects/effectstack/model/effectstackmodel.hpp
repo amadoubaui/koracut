@@ -44,6 +44,11 @@ public:
     /** @brief Add an effect at the bottom of the stack */
     bool appendEffect(const QString &effectId, bool makeCurrent = false, stringMap params = {});
     std::pair<bool, bool> appendEffectWithUndo(const QString &effectId, Fun &undo, Fun &redo);
+    /** @brief KoraCut : ajoute un effet avec des paramètres déjà réglés, dans une macro d'annulation (baisse automatique de la musique). */
+    bool appendEffectWithParams(const QString &effectId, const stringMap &params, Fun &undo, Fun &redo)
+    {
+        return doAppendEffect(effectId, false, params, undo, redo).first;
+    }
     /** @brief Copy an existing effect and append it at the bottom of the stack
      */
     bool copyEffect(const std::shared_ptr<AbstractEffectItem> &sourceItem, PlaylistState::ClipState state, bool logUndo = true);

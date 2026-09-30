@@ -1,0 +1,18 @@
+<!DOCTYPE RCC>
+<!-- SPDX-FileCopyrightText: 2026 KoraCut contributors / PIXEWORK
+     SPDX-License-Identifier: GPL-3.0-or-later -->
+<RCC version="1.0">
+ <qresource prefix="/koracut/plateformes">
+  <file>youtube.svg</file>
+  <file>youtubeshorts.svg</file>
+  <file>tiktok.svg</file>
+  <file>instagram.svg</file>
+  <file>facebook.svg</file>
+  <file>x.svg</file>
+  <file>linkedin.svg</file>
+  <file>snapchat.svg</file>
+  <file>vimeo.svg</file>
+  <file>whatsapp.svg</file>
+  <file>twitch.svg</file>
+ </qresource>
+</RCC>

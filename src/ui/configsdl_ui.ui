@@ -49,7 +49,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
    <item row="4" column="0" colspan="2">
     <widget class="KMessageWidget" name="kmessagewidget">
      <property name="text">
-      <string>Warning: changes to the drivers and devices can make Kdenlive unstable. Change only if you know what you do.</string>
+      <string>Warning: changes to the drivers and devices can make KoraCut unstable. Change only if you know what you do.</string>
      </property>
      <property name="wordWrap">
       <bool>true</bool>
@@ -69,7 +69,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
    <item row="5" column="1">
     <widget class="QCheckBox" name="kcfg_gpu_accel">
      <property name="text">
-      <string>Enable - restart Kdenlive to apply</string>
+      <string>Enable - restart KoraCut to apply</string>
      </property>
     </widget>
    </item>

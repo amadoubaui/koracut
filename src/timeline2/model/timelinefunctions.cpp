@@ -111,6 +111,191 @@ bool TimelineFunctions::cloneClip(const std::shared_ptr<TimelineItemModel> &time
     return res;
 }
 
+bool TimelineFunctions::removeZonesOnAllTracks(const std::shared_ptr<TimelineItemModel> &timeline, const QList<QPair<int, int>> &zones, bool liftOnly,
+                                               bool moveGuides, Fun &undo, Fun &redo)
+{
+    // Toutes les pistes à la fois, sinon la vidéo et le son se décalent l'un par rapport à l'autre.
+    QVector<int> tracks;
+    for (const auto &track : timeline->m_allTracks) {
+        if (!track->isLocked()) {
+            tracks << track->getId();
+        }
+    }
+    if (tracks.isEmpty()) {
+        return false;
+    }
+    // De la fin vers le début : retirer une zone décale ce qui la suit, jamais ce qui la précède.
+    for (auto it = zones.crbegin(); it != zones.crend(); ++it) {
+        const QPoint zone(it->first, it->second);
+        if (zone.y() <= zone.x()) {
+            continue;
+        }
+        for (int trackId : std::as_const(tracks)) {
+            if (!liftZone(timeline, trackId, zone, undo, redo)) {
+                undo();
+                return false;
+            }
+        }
+        if (!liftOnly && !removeSpace(timeline, zone, undo, redo, tracks, false)) {
+            // removeSpace a déjà rejoué l'annulation accumulée.
+            return false;
+        }
+        // Les guides suivent, comme pour « Extraire la zone » (TimelineController::extractZone) :
+        // ceux de la zone disparaissent avec elle, ceux d'après reculent d'autant.
+        if (!liftOnly && moveGuides) {
+            auto guides = timeline->getGuideModel();
+            const QList<CommentedTime> inside = guides->getMarkersInRange(zone.x(), zone.y());
+            for (const CommentedTime &g : inside) {
+                guides->removeMarker(g.time(), undo, redo);
+            }
+            const QList<CommentedTime> after = guides->getMarkersInRange(zone.y(), -1);
+            if (!after.isEmpty()) {
+                const double fps = pCore->getCurrentFps();
+                guides->moveMarkers(after, GenTime(zone.y(), fps), GenTime(zone.x(), fps), undo, redo);
+            }
+        }
+    }
+    return true;
+}
+
+bool TimelineFunctions::moveClipsBy(const std::shared_ptr<TimelineItemModel> &timeline, const QList<QPair<int, int>> &clipDeltas, Fun &undo, Fun &redo)
+{
+    QList<QPair<int, int>> backward;
+    QList<QPair<int, int>> forward;
+    for (const auto &cd : clipDeltas) {
+        if (cd.second < 0) {
+            backward << cd;
+        } else if (cd.second > 0) {
+            forward << cd;
+        }
+    }
+    auto byPosition = [&timeline](const QPair<int, int> &a, const QPair<int, int> &b) {
+        return timeline->getClipPosition(a.first) < timeline->getClipPosition(b.first);
+    };
+    std::sort(backward.begin(), backward.end(), byPosition);
+    std::sort(forward.begin(), forward.end(), byPosition);
+    std::reverse(forward.begin(), forward.end());
+    std::unordered_set<int> movedGroups;
+    for (const auto &list : {backward, forward}) {
+        for (const auto &cd : list) {
+            const int cid = cd.first;
+            bool ok = true;
+            if (timeline->m_groups->isInGroup(cid)) {
+                const int root = timeline->m_groups->getRootId(cid);
+                if (movedGroups.count(root) > 0) {
+                    continue;
+                }
+                movedGroups.insert(root);
+                ok = timeline->requestGroupMove(cid, root, 0, cd.second, true, true, undo, redo);
+            } else {
+                ok = timeline->requestClipMove(cid, timeline->getClipTrackId(cid), timeline->getClipPosition(cid) + cd.second, true, true, true, true, undo, redo) ==
+                     TimelineModel::MoveSuccess;
+            }
+            if (!ok) {
+                undo();
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+bool TimelineFunctions::applyCameraPlan(const std::shared_ptr<TimelineItemModel> &timeline, const QList<QPair<QPair<int, int>, int>> &shots,
+                                        const QList<int> &cameraForSpeaker, int wideTrack, Fun &undo, Fun &redo)
+{
+    QList<int> cameraTracks;
+    for (int t : cameraForSpeaker) {
+        if (t > -1 && !cameraTracks.contains(t)) {
+            cameraTracks << t;
+        }
+    }
+    if (wideTrack > -1 && !cameraTracks.contains(wideTrack)) {
+        cameraTracks << wideTrack;
+    }
+    auto chosenTrack = [&](int speaker) {
+        if (speaker < 0) {
+            return wideTrack;
+        }
+        return speaker < cameraForSpeaker.size() ? cameraForSpeaker.at(speaker) : -1;
+    };
+    // 1. Couper chaque piste caméra à chaque changement de plan.
+    for (int i = 1; i < shots.size(); ++i) {
+        const int boundary = shots.at(i).first.first;
+        for (int track : std::as_const(cameraTracks)) {
+            if (timeline->getTrackById_const(track)->isLocked()) {
+                continue;
+            }
+            const int cid = timeline->getClipByPosition(track, boundary);
+            if (cid > -1 && timeline->getClipPosition(cid) < boundary && !requestClipCut(timeline, cid, boundary, undo, redo)) {
+                undo();
+                return false;
+            }
+        }
+    }
+    // 2. Activer la caméra choisie, désactiver les autres, morceau par morceau.
+    for (int track : std::as_const(cameraTracks)) {
+        if (timeline->getTrackById_const(track)->isLocked()) {
+            continue;
+        }
+        for (int cid : timeline->getItemsInRange(track, 0, -1, false)) {
+            if (!timeline->isClip(cid)) {
+                continue;
+            }
+            const int middle = timeline->getClipPosition(cid) + timeline->getClipPlaytime(cid) / 2;
+            int shown = -2;
+            for (const auto &shot : shots) {
+                if (middle >= shot.first.first && middle < shot.first.second) {
+                    shown = chosenTrack(shot.second);
+                    break;
+                }
+            }
+            if (shown == -2) {
+                continue; // hors du plan de montage : on n'y touche pas
+            }
+            const bool disabled = timeline->getClipState(cid).first == PlaylistState::Disabled;
+            const bool wanted = shown == track;
+            if (wanted == disabled && !changeClipState(timeline, cid, wanted ? PlaylistState::VideoOnly : PlaylistState::Disabled, undo, redo)) {
+                undo();
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+int TimelineFunctions::requestClipOnNewTrack(const std::shared_ptr<TimelineItemModel> &timeline, const QString &data, int position, int &newTrack)
+{
+    newTrack = -1;
+    std::shared_ptr<ProjectClip> clip = pCore->projectItemModel()->getClipByBinID(data.section(QLatin1Char('/'), 0, 0));
+    if (!clip) {
+        return -1;
+    }
+    const bool audio = clip->clipType() == ClipType::Audio;
+    // Les positions de piste comptent depuis le bas : 0 est la piste la plus basse.
+    int trackPosition = 0;
+    if (!audio) {
+        const int count = timeline->getTracksCount();
+        while (trackPosition < count && timeline->isAudioTrack(timeline->getTrackIndexFromPosition(trackPosition))) {
+            ++trackPosition;
+        }
+    }
+    Fun undo = []() { return true; };
+    Fun redo = []() { return true; };
+    if (!timeline->requestTrackInsertion(trackPosition, newTrack, QString(), audio, undo, redo)) {
+        undo();
+        newTrack = -1;
+        return -1;
+    }
+    int id = -1;
+    if (!timeline->requestClipInsertion(data, newTrack, position, id, true, true, true, undo, redo)) {
+        undo();
+        newTrack = -1;
+        return -1;
+    }
+    pCore->pushUndo(undo, redo, i18nc("@action nom de l'étape d'annulation", "Add a Clip on a New Track"));
+    return id;
+}
+
 bool TimelineFunctions::requestMultipleClipsInsertion(const std::shared_ptr<TimelineItemModel> &timeline, const QStringList &binIds, int trackId, int position,
                                                       QList<int> &clipIds, bool logUndo, bool refreshView)
 {
@@ -3551,4 +3736,134 @@ int TimelineFunctions::spacerMinPos()
 int TimelineFunctions::spacerMaxPos()
 {
     return spacerMaxPosition;
+}
+
+// KoraCut : couleur des clips et des pistes (document 13, journal du 24 septembre 2026).
+QString TimelineFunctions::koraCutClipColor(const std::shared_ptr<TimelineItemModel> &timeline, int clipId)
+{
+    if (!timeline->isClip(clipId)) {
+        return QString();
+    }
+    return timeline->getClipPtr(clipId)->koraCutColor();
+}
+
+bool TimelineFunctions::koraCutSetClipsColor(const std::shared_ptr<TimelineItemModel> &timeline, const QList<int> &clipIds, const QString &color, Fun &undo, Fun &redo)
+{
+    QMap<int, QString> before;
+    for (int cid : clipIds) {
+        if (!timeline->isClip(cid)) {
+            return false;
+        }
+        before.insert(cid, timeline->getClipPtr(cid)->koraCutColor());
+    }
+    std::weak_ptr<TimelineItemModel> weak = timeline;
+    auto apply = [weak](const QMap<int, QString> &colors) {
+        auto tl = weak.lock();
+        if (!tl) {
+            return false;
+        }
+        for (auto it = colors.cbegin(); it != colors.cend(); ++it) {
+            if (tl->isClip(it.key())) {
+                tl->getClipPtr(it.key())->setKoraCutColor(it.value());
+                const QModelIndex ix = tl->makeClipIndexFromID(it.key());
+                tl->notifyChange(ix, ix, TimelineModel::TagRole);
+            }
+        }
+        return true;
+    };
+    QMap<int, QString> after;
+    for (int cid : clipIds) {
+        after.insert(cid, color);
+    }
+    Fun local_redo = [apply, after]() { return apply(after); };
+    Fun local_undo = [apply, before]() { return apply(before); };
+    local_redo();
+    UPDATE_UNDO_REDO_NOLOCK(local_redo, local_undo, undo, redo);
+    return true;
+}
+
+bool TimelineFunctions::koraCutSetClipName(const std::shared_ptr<TimelineItemModel> &timeline, int clipId, const QString &name, Fun &undo, Fun &redo)
+{
+    if (!timeline->isClip(clipId)) {
+        return false;
+    }
+    const QString previous = timeline->getClipPtr(clipId)->koraCutName();
+    std::weak_ptr<TimelineItemModel> weak = timeline;
+    auto apply = [weak, clipId](const QString &value) {
+        auto tl = weak.lock();
+        if (!tl || !tl->isClip(clipId)) {
+            return false;
+        }
+        tl->getClipPtr(clipId)->setKoraCutName(value);
+        const QModelIndex ix = tl->makeClipIndexFromID(clipId);
+        tl->notifyChange(ix, ix, TimelineModel::NameRole);
+        return true;
+    };
+    Fun local_redo = [apply, name]() { return apply(name); };
+    Fun local_undo = [apply, previous]() { return apply(previous); };
+    local_redo();
+    UPDATE_UNDO_REDO_NOLOCK(local_redo, local_undo, undo, redo);
+    return true;
+}
+
+int TimelineFunctions::koraCutRelocateMedia(const std::shared_ptr<TimelineItemModel> &timeline, const QString &binId, const QString &from, const QString &to)
+{
+    if (!timeline || from.isEmpty() || to.isEmpty()) {
+        return 0;
+    }
+    const QByteArray target = to.toUtf8();
+    int count = 0;
+    // Le producteur de piste est le parent du morceau posé dans la piste : c'est lui que le projet
+    // écrit (resource), et lui qu'un chargement reprend tel quel (giveMasterAndGetTimelineProducer).
+    for (const auto &clip : timeline->m_allClips) {
+        if (clip.second->binId() != binId) {
+            continue;
+        }
+        Mlt::Producer *cut = clip.second->service();
+        if (cut == nullptr || !cut->is_valid()) {
+            continue;
+        }
+        Mlt::Producer parent(cut->parent());
+        if (!parent.is_valid()) {
+            continue;
+        }
+        bool changed = false;
+        for (const char *key : {"resource", "kdenlive:originalurl", "warp_resource"}) {
+            const QString value = QString::fromUtf8(parent.get(key));
+            if (value == from) {
+                parent.set(key, target.constData());
+                changed = true;
+            } else if (value.endsWith(QLatin1Char(':') + from)) {
+                // Un ralenti s'écrit « vitesse:chemin ».
+                parent.set(key, (value.left(value.size() - from.size()) + to).toUtf8().constData());
+                changed = true;
+            }
+        }
+        if (changed) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+bool TimelineFunctions::koraCutSetTrackColor(const std::shared_ptr<TimelineItemModel> &timeline, int trackId, const QString &color, Fun &undo, Fun &redo)
+{
+    if (!timeline->isTrack(trackId)) {
+        return false;
+    }
+    const QString previous = timeline->getTrackProperty(trackId, QStringLiteral("kdenlive:koracut_color")).toString();
+    std::weak_ptr<TimelineItemModel> weak = timeline;
+    auto apply = [weak, trackId](const QString &value) {
+        auto tl = weak.lock();
+        if (!tl || !tl->isTrack(trackId)) {
+            return false;
+        }
+        tl->setTrackProperty(trackId, QStringLiteral("kdenlive:koracut_color"), value);
+        return true;
+    };
+    Fun local_redo = [apply, color]() { return apply(color); };
+    Fun local_undo = [apply, previous]() { return apply(previous); };
+    local_redo();
+    UPDATE_UNDO_REDO_NOLOCK(local_redo, local_undo, undo, redo);
+    return true;
 }

@@ -97,6 +97,11 @@ void RenderRequest::setEmbedSubtitles(bool enabled)
     m_embedSubtitles = enabled;
 }
 
+void RenderRequest::setBurnSubtitles(bool enabled)
+{
+    m_burnSubtitles = enabled;
+}
+
 void RenderRequest::setTwoPass(bool enabled)
 {
     m_twoPass = enabled;
@@ -122,6 +127,11 @@ void RenderRequest::setOverlayData(const QString &data)
 void RenderRequest::setAspectRatio(const QString &aspectRatio)
 {
     m_aspectRatio = aspectRatio;
+}
+
+void RenderRequest::setLoudnessTarget(int lufs)
+{
+    m_loudnessTarget = lufs;
 }
 
 std::vector<RenderRequest::RenderJob> RenderRequest::process()
@@ -179,8 +189,12 @@ std::vector<RenderRequest::RenderJob> RenderRequest::process()
         modified = true;
     }
 
-    if (m_embedSubtitles && project->hasSubtitles()) {
+    if (m_burnSubtitles && m_embedSubtitles && project->hasSubtitles()) {
         // disable subtitle filter(s) as they will be embedded in a second step of rendering
+        KdenliveDoc::disableSubtitles(doc);
+        modified = true;
+    } else if (!m_burnSubtitles) {
+        // KoraCut : une version sans sous-titres, la piste de la timeline reste comme elle est.
         KdenliveDoc::disableSubtitles(doc);
         modified = true;
     }
@@ -189,6 +203,16 @@ std::vector<RenderRequest::RenderJob> RenderRequest::process()
     // we need to remove the black background track
     if (m_presetParams.hasAlpha()) {
         KdenliveDoc::makeBackgroundTrackTransparent(doc);
+        modified = true;
+    }
+
+    // KoraCut : le son au niveau demandé (guide PIXEWORK : -14 LUFS réseaux, -16 podcast, -23 télévision).
+    // Le mixage de la zone rendue est mesuré, puis un gain fixe et un limiteur sont posés sur le tractor
+    // principal (repli sur dynamic_loudness si la mesure échoue). Avec plusieurs sections entre marqueurs,
+    // la mesure porte sur toute la plage : chaque fichier reçoit le même gain.
+    m_loudnessPlan = KoraCutLoudness::Plan();
+    if (m_loudnessTarget != 0) {
+        m_loudnessPlan = KoraCutLoudness::prepare(doc, m_boundingIn, m_boundingOut, m_loudnessTarget);
         modified = true;
     }
 
@@ -231,7 +255,7 @@ std::vector<RenderRequest::RenderJob> RenderRequest::process()
         QDomDocument sectionDoc = doc.cloneNode(true).toDocument();
 
         QString subtitleFile;
-        if (m_embedSubtitles) {
+        if (m_embedSubtitles && m_burnSubtitles) {
             subtitleFile = createEmptyTempFile(QStringLiteral("srt"));
             if (subtitleFile.isEmpty()) {
                 addErrorMessage(i18n("Could not create temporary subtitle file"));
@@ -253,6 +277,12 @@ std::vector<RenderRequest::RenderJob> RenderRequest::process()
         createRenderJobs(jobs, sectionDoc, newPlaylistPath, outputPath, subtitleFile, currentUuid);
     }
 
+    // KoraCut, 28 septembre 2026 : le fichier vide koracut-XXXXXX.mlt ne sert qu'à réserver un nom (les
+    // rendus écrivent koracut-XXXXXX-1.mlt…). Il restait dans le dossier temporaire à chaque export :
+    // 122 fichiers relevés. Un rendu différé, lui, garde son fichier dans le dossier du projet.
+    if (!m_delayedRendering) {
+        QFile::remove(playlistPath);
+    }
     return jobs;
 }
 
@@ -330,7 +360,7 @@ void RenderRequest::createRenderJobs(std::vector<RenderJob> &jobs, const QDomDoc
 
 QString RenderRequest::createEmptyTempFile(const QString &extension)
 {
-    QTemporaryFile tmp(QDir::temp().absoluteFilePath(QStringLiteral("kdenlive-XXXXXX.%1").arg(extension)));
+    QTemporaryFile tmp(QDir::temp().absoluteFilePath(QStringLiteral("koracut-XXXXXX.%1").arg(extension)));
     if (!tmp.open()) {
         // Something went wrong
         qDebug() << "Could not create temporary file";

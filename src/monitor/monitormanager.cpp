@@ -5,6 +5,8 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 */
 
 #include "monitormanager.h"
+#include <KConfigGroup>
+#include <KSharedConfig>
 #include "core.h"
 #include "kdenlivesettings.h"
 #include "mainwindow.h"
@@ -561,10 +563,40 @@ void MonitorManager::setupActions()
     connect(monitorZoomOut, &QAction::triggered, this, &MonitorManager::slotZoomOut);
     pCore->window()->addAction(QStringLiteral("monitor_zoomout"), monitorZoomOut, {}, QStringLiteral("monitor"));
 
-    QAction *monitorZoomReset = new QAction(i18n("Reset Monitor Zoom"), this);
+    // KoraCut, document 20 : « Ajuster » remet l'image entière visible (⌘0), 100 % montre un pixel du
+    // projet par pixel d'écran, ⇧R affiche les règles. Avant : sans raccourci et sans pourcentage.
+    QAction *monitorZoomReset = new QAction(i18nc("@action KoraCut monitor", "Fit Image in Monitor"), this);
     monitorZoomReset->setIcon(QIcon::fromTheme(QStringLiteral("zoom-original")));
     connect(monitorZoomReset, &QAction::triggered, this, &MonitorManager::slotZoomReset);
-    pCore->window()->addAction(QStringLiteral("monitor_zoomreset"), monitorZoomReset, {}, QStringLiteral("monitor"));
+    pCore->window()->addAction(QStringLiteral("monitor_zoomreset"), monitorZoomReset, Qt::CTRL | Qt::Key_0, QStringLiteral("monitor"));
+
+    QAction *monitorZoom100 = new QAction(i18nc("@action KoraCut monitor", "Monitor Zoom 100 %"), this);
+    monitorZoom100->setIcon(QIcon::fromTheme(QStringLiteral("zoom-original")));
+    connect(monitorZoom100, &QAction::triggered, this, [this]() {
+        if (m_activeMonitor) {
+            static_cast<Monitor *>(m_activeMonitor)->koraCutSetZoomPercent(100);
+        }
+    });
+    pCore->window()->addAction(QStringLiteral("monitor_zoom_100"), monitorZoom100, {}, QStringLiteral("monitor"));
+
+    QAction *monitorRulers = new QAction(i18nc("@action KoraCut monitor", "Show/Hide Monitor Rulers"), this);
+    monitorRulers->setIcon(QIcon::fromTheme(QStringLiteral("measure")));
+    connect(monitorRulers, &QAction::triggered, this, [this]() {
+        if (m_activeMonitor) {
+            static_cast<Monitor *>(m_activeMonitor)->koraCutToggleRulers();
+        }
+    });
+    pCore->window()->addAction(QStringLiteral("monitor_rulers"), monitorRulers, Qt::SHIFT | Qt::Key_R, QStringLiteral("monitor"));
+
+    // Les points clés automatiques sont le défaut de KoraCut (on bouge l'élément, le point clé se pose).
+    // Le réglage existe dans Kdenlive, on ne change son défaut qu'une fois, au premier lancement.
+    {
+        KConfigGroup kc(KSharedConfig::openConfig(), QStringLiteral("KoraCut"));
+        if (!kc.readEntry(QStringLiteral("points_cles_auto_defaut"), false)) {
+            KdenliveSettings::setAutoKeyframe(true);
+            kc.writeEntry(QStringLiteral("points_cles_auto_defaut"), true);
+        }
+    }
 
     QAction *monitorSeekBackward = new QAction(QIcon::fromTheme(QStringLiteral("media-seek-backward")), i18n("Rewind"), this);
     connect(monitorSeekBackward, &QAction::triggered, this, [&](bool) { MonitorManager::slotRewind(); });

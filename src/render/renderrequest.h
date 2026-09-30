@@ -5,8 +5,11 @@
 
 #pragma once
 
+#include <QDomDocument>
+
 #include "bin/model/markerlistmodel.hpp"
 #include "doc/kdenlivedoc.h"
+#include "koracut/koracutloudness.h"
 #include "renderpresets/renderpresetmodel.hpp"
 
 class RenderRequest
@@ -39,11 +42,18 @@ public:
     void setDelayedRendering(bool enabled);
     void setProxyRendering(bool enabled);
     void setEmbedSubtitles(bool enabled);
+    /** @brief KoraCut : false rend la vidéo sans sous-titres (ni incrustés ni joints), sans toucher à la piste. */
+    void setBurnSubtitles(bool enabled);
     void setTwoPass(bool enabled);
     void setAspectRatio(const QString &aspectRatio);
     void setAudioFilePerTrack(bool enabled);
     void setGuideParams(std::weak_ptr<MarkerListModel> model, bool enableMultiExport, int filterCategory);
     void setOverlayData(const QString &data);
+    /** @brief KoraCut : nivelle le son du rendu à @p lufs (mesure du mixage, puis gain fixe et limiteur sur le
+     * tractor principal, KoraCutLoudness::prepare). 0 : rien. Cible du guide PIXEWORK selon le type (document 16). */
+    void setLoudnessTarget(int lufs);
+    /** @brief KoraCut : ce que le nivellement a posé, connu après process(). */
+    KoraCutLoudness::Plan loudnessPlan() const { return m_loudnessPlan; }
 
     std::vector<RenderJob> process();
 
@@ -69,6 +79,8 @@ private:
     };
 
     QString m_overlayData;
+    int m_loudnessTarget{0};
+    KoraCutLoudness::Plan m_loudnessPlan;
     QString m_aspectRatio;
     bool m_proxyRendering = false;
     RenderPresetParams m_presetParams;
@@ -76,6 +88,7 @@ private:
     bool m_delayedRendering = false;
     QString m_outputFile;
     bool m_embedSubtitles = false;
+    bool m_burnSubtitles = true;
     std::weak_ptr<MarkerListModel> m_guidesModel;
     bool m_guideMultiExport = false;
     int m_guideCategory = -1; /// category used as filter if @variable guideMultiExport is @value true

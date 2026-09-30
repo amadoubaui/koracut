@@ -117,6 +117,10 @@ private:
 
 protected:
     QTreeView *m_effectsTree;
+    /** @brief KoraCut : le bouton cartes / liste (effets), pour le rétablir au démarrage. */
+    QAction *m_toggleView{nullptr};
+    /** @brief KoraCut : l'index de l'arbre pour un index de l'une ou l'autre vue. */
+    QModelIndex toTreeIndex(const QModelIndex &index) const;
     AssetListView *m_effectsIcon;
     QToolBar *m_toolbar;
     QStackedWidget *m_effectsView;

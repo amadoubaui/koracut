@@ -6,13 +6,13 @@ if(USE_DBUS)
     set(QT_USE_QTDBUS 1)
 endif()
 
-set(kdenlive_render_SRCS
-  kdenlive_render.cpp
+set(koracut_render_SRCS
+  koracut_render.cpp
   renderjob.cpp
   ../src/lib/localeHandling.cpp
 )
 
-ecm_qt_declare_logging_category(kdenlive_render_SRCS
+ecm_qt_declare_logging_category(koracut_render_SRCS
     HEADER kdenlive_renderer_debug.h
     IDENTIFIER KDENLIVE_RENDERER_LOG
     CATEGORY_NAME org.kde.kdenlive.render
@@ -20,20 +20,20 @@ ecm_qt_declare_logging_category(kdenlive_render_SRCS
     EXPORT KDENLIVE
 )
 
-add_executable(kdenlive_render ${kdenlive_render_SRCS})
-ecm_mark_nongui_executable(kdenlive_render)
+add_executable(koracut_render ${koracut_render_SRCS})
+ecm_mark_nongui_executable(koracut_render)
 
-target_link_libraries(kdenlive_render
+target_link_libraries(koracut_render
     Qt${QT_MAJOR_VERSION}::Core
     Qt${QT_MAJOR_VERSION}::Widgets
     Qt${QT_MAJOR_VERSION}::Xml
     Mlt7::mlt++)
 if(NOT USE_DBUS)
-    target_compile_definitions(kdenlive_render PRIVATE NODBUS)
-    target_link_libraries(kdenlive_render Qt${QT_MAJOR_VERSION}::Network)
+    target_compile_definitions(koracut_render PRIVATE NODBUS)
+    target_link_libraries(koracut_render Qt${QT_MAJOR_VERSION}::Network)
 else()
-    target_link_libraries(kdenlive_render Qt${QT_MAJOR_VERSION}::DBus)
-    target_link_libraries(kdenlive_render Qt${QT_MAJOR_VERSION}::Network)
+    target_link_libraries(koracut_render Qt${QT_MAJOR_VERSION}::DBus)
+    target_link_libraries(koracut_render Qt${QT_MAJOR_VERSION}::Network)
 endif()
 
-install(TARGETS kdenlive_render DESTINATION ${KDE_INSTALL_BINDIR})
+install(TARGETS koracut_render DESTINATION ${KDE_INSTALL_BINDIR})
