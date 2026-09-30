@@ -140,7 +140,13 @@ if(KORACUT_AGENTS)
   # Les définitions d'outils des agents vivent dans « Agents in-app/outils/ », à côté du dépôt, pour
   # qu'il n'y ait qu'une seule copie (le banc et le service les lisent aussi). On les embarque en
   # ressource Qt par une qrc générée ici, avec des chemins absolus.
-  set(KORACUT_AGENT_TOOLS_DIR "${CMAKE_SOURCE_DIR}/../../Agents in-app/outils" CACHE PATH "KoraCut: folder of the agent tool definitions (Agents in-app/outils)")
+  # Hors du dossier de développement (intégration continue, paquets), la copie rangée dans le dépôt :
+  # data/agents-outils, remise à jour par Sources/outils-multiplateforme/synchroniser-outils.sh.
+  set(_koracut_tools_default "${CMAKE_SOURCE_DIR}/../../Agents in-app/outils")
+  if(NOT EXISTS "${_koracut_tools_default}")
+    set(_koracut_tools_default "${CMAKE_SOURCE_DIR}/data/agents-outils")
+  endif()
+  set(KORACUT_AGENT_TOOLS_DIR "${_koracut_tools_default}" CACHE PATH "KoraCut: folder of the agent tool definitions (Agents in-app/outils)")
   file(GLOB KORACUT_AGENT_TOOL_FILES "${KORACUT_AGENT_TOOLS_DIR}/*.json")
   if(NOT KORACUT_AGENT_TOOL_FILES)
     message(FATAL_ERROR "KORACUT_AGENTS is ON but no *.json was found in '${KORACUT_AGENT_TOOLS_DIR}'. Set KORACUT_AGENT_TOOLS_DIR, or build with -DKORACUT_AGENTS=OFF.")

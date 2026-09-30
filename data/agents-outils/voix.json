@@ -1,0 +1,129 @@
+[
+  {
+    "name": "voix_off_generer",
+    "description": "Génère une voix off parlée à partir d'un texte, dans l'application : le moteur fait plusieurs prises, Whisper écoute chaque prise et garde la plus fidèle, la voix est nettoyée (silences, pauses de plus de 0,36 s raccourcies, traitement studio, -16 LUFS, crête -1,5 dBTP) et écrite en WAV dans le dossier « Voix off » du projet (« NN - Premiers mots.wav »), puis importée dans le chutier (dossier « Voix off »). Avec poser, le son est posé sur la piste audio « Voix off » (créée si besoin) à la position donnée. Le tout est une seule étape d'annulation. Une phrase par appel : un fichier par plan. L'appel attend la fin (15 à 60 s en local). Renvoie { ok, media_id, fichier, duree_s, moteur, voix, verifiee, fidelite (1 = tous les mots entendus), entendu, mots_douteux, a_reecouter, prises, lufs, crete_dbfs, clip_id?, piste_id?, position?, duree?, decalee?, pose_refusee?, credit? }. Si a_reecouter est vrai, lis entendu et mots_douteux, réécris le mot fautif dans dire et régénère. Moteur local absent : erreur moteur_absent avec la taille et le dossier ; demande l'accord de la personne puis appelle voix_off_installer.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "texte": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000,
+          "description": "Le texte de la voix, tel qu'il s'écrit (celui du sous-titre)."
+        },
+        "dire": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "Ce que la voix doit prononcer s'il diffère du texte : « afébaba point com » pour afebaba.com, « télé » pour TV. Whisper vérifie contre texte."
+        },
+        "voix": {
+          "type": "string",
+          "description": "L'identifiant d'une voix (voix_off_voix). Défaut : la voix par défaut du moteur (en local, « Grave et posée »)."
+        },
+        "moteur": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "local",
+            "elevenlabs",
+            "openai"
+          ],
+          "description": "auto (défaut) : le moteur local s'il est prêt, sinon une connexion de voix de la page Connexions IA. local : Kyutai sur cet ordinateur, gratuit. elevenlabs, openai : la connexion de la page Connexions IA (payant)."
+        },
+        "vitesse": {
+          "type": "number",
+          "minimum": 0.8,
+          "maximum": 1.25,
+          "description": "1 = naturelle (défaut). 1,1 = 10 % plus rapide, sans changer la hauteur de la voix."
+        },
+        "ton": {
+          "type": "string",
+          "enum": [
+            "pose",
+            "vivant",
+            "doux",
+            "serieux"
+          ],
+          "description": "pose (défaut), vivant (pub énergique), doux, serieux (documentaire). En local l'effet est léger."
+        },
+        "prises": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "description": "Nombre de prises dont Whisper garde la meilleure. Défaut 3."
+        },
+        "nom": {
+          "type": "string",
+          "maxLength": 48,
+          "description": "La description courte du fichier, après le numéro. Défaut : les premiers mots du texte."
+        },
+        "poser": {
+          "type": "object",
+          "description": "Absent : la voix va seulement dans le chutier. Présent : elle est posée sur la timeline dans la même étape.",
+          "properties": {
+            "position": {
+              "description": "Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet). Défaut : la tête de lecture ; si la place est prise sur la piste, juste après ce qui l'occupe (decalee: true dans la réponse). Une position donnée ne glisse jamais : prise, la voix reste dans le chutier (pose_refusee).",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "string",
+                  "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+                }
+              ]
+            },
+            "piste_id": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Une piste audio. Défaut : la piste « Voix off », créée sous les autres si elle n'existe pas."
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "texte"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait : src/koracut/koracutagenttoolsvoix.cpp, moteur src/koracut/voix/koracutvoiceover.cpp, script data/scripts/voix/koracut_voix.py (processus à part, rien dans le fil principal).",
+    "x_confirmation": false
+  },
+  {
+    "name": "voix_off_voix",
+    "description": "Liste les moteurs de voix off et leurs voix, sans rien modifier. Renvoie { ok, moteur_auto, moteurs: [{ moteur, nom, pret, raison?, conseil?, installe?, modele_present?, taille_mo?, dossiers?, installation?: { en_cours, pourcent, etape }, connexion?, avertissement?, credit? }], voix: [{ id, nom, description, moteur, defaut }] }. Le moteur local (Kyutai, gratuit, sur les trois systèmes, lent sans carte graphique) a quatre voix françaises permises en publicité ; ElevenLabs et OpenAI apparaissent quand une connexion avec sa clé existe dans Connexions IA. Appelle-le avant la première voix d'un projet, et pour suivre une installation en cours.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "moteur": {
+          "type": "string",
+          "enum": [
+            "local",
+            "elevenlabs",
+            "openai"
+          ],
+          "description": "Un seul moteur. Défaut : tous."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait : src/koracut/koracutagenttoolsvoix.cpp.",
+    "x_confirmation": false
+  },
+  {
+    "name": "voix_off_installer",
+    "description": "Installe le moteur de voix local (Kyutai TTS : environnement Python, moteur, modèle de 3,8 Go et quatre voix), environ 4,1 Go à télécharger une seule fois (sous Windows et Linux, plus PyTorch : 0,1 à 0,2 Go sans carte NVIDIA, 2,5 Go avec) dans ~/.cache/koracut-voix et ~/.cache/huggingface. À appeler seulement après l'accord explicite de la personne, en lui disant la taille et l'endroit. L'installation continue en tâche de fond : l'appel répond tout de suite { ok, en_cours, taille_mo, dossiers } ou { ok, deja_installe }. voix_off_voix dit où elle en est. Erreurs : python_absent (Python 3.10 ou plus récent manque ; 3.10 à 3.13 hors Mac à puce Apple).",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait : src/koracut/koracutagenttoolsvoix.cpp, KoraCutVoiceOver::install.",
+    "x_confirmation": true
+  }
+]

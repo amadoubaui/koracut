@@ -1,0 +1,483 @@
+[
+  {
+    "name": "lister_prereglages",
+    "description": "Liste les préréglages d'export disponibles sur cette machine : les cinq préréglages KoraCut (groupe « KoraCut » de la bibliothèque : ils gardent le format et la cadence du projet ; pour un vrai 9:16 il faut une séquence verticale) et tous ceux de la bibliothèque de rendu. Un préréglage dont le codec manque sur la machine est marqué indisponible, avec la raison. À appeler avant exporter si la personne demande un format qui n'est pas dans les cinq. Renvoie { ok, prereglages: [ { nom, categorie, extension, disponible, koracut (true si c'est l'un des cinq), preset (son identifiant KoraCut, s'il en a un), raison (si indisponible) } ], total }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "categorie": {
+          "type": "string",
+          "maxLength": 60,
+          "description": "Filtre sur une catégorie, par exemple \"Generic\" ou \"Audio only\". Défaut : toutes."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (lot B) : RenderPresetRepository::getAllPresets, getPreset(nom)->error() pour la disponibilité ; les cinq préréglages KoraCut sont dans data/profiles.xml, groupe « KoraCut ».",
+    "x_confirmation": false
+  },
+  {
+    "name": "verifier_avant_export",
+    "description": "Passe le projet en revue avant un export, sans rien modifier. À appeler avant tout export : il coûte quelques secondes (le son du mixage est mesuré si le projet fait moins de quinze minutes) et évite un rendu raté de vingt minutes. Renvoie { ok, pret (booléen), duree {i, tc}, problemes: [ { gravite: \"bloquant\" | \"attention\", code, message, position {i, tc} (si utile) } ], taille_estimee_mo, espace_libre_mo }. Codes : timeline_vide, media_manquant, fichier_protege, espace_disque, chemin_relatif, dossier_introuvable (bloquants) ; proxy_en_cours, vide_video (image noire), rapport_image (le préréglage vise un autre format que le projet), silence_total, niveau_sonore (loin de la cible, niveau_lufs dans exporter y remédie), crete (au-dessus de -1 dBTP), niveau_sonore_non_mesure (projet long), extension, fichier_existe (attentions). Le solo du mixeur n'est pas visible d'ici.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "preset": {
+          "type": "string",
+          "enum": [
+            "master_4k_prores",
+            "youtube_1080p",
+            "reels_tiktok_9x16",
+            "audio_wav",
+            "apercu_gif",
+            "personnalise"
+          ],
+          "description": "Préréglage KoraCut. master_4k_prores : fichier maître pour l'archive. youtube_1080p : MP4 H.264/AAC 1920 x 1080. reels_tiktok_9x16 : MP4 H.264/AAC 1080 x 1920. audio_wav : son seul. apercu_gif : GIF court et léger. personnalise : donner alors nom_preset_kdenlive."
+        },
+        "nom_preset_kdenlive": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Nom exact d'un préréglage de rendu lu dans lister_prereglages, requis si preset = personnalise. Exemple : \"MP4-H264/AAC\"."
+        },
+        "chemin": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Le fichier de sortie prévu, pour vérifier son dossier, son extension, s'il existe déjà et l'espace du disque qui le recevra. Facultatif."
+        },
+        "niveau_lufs": {
+          "type": "integer",
+          "minimum": -30,
+          "maximum": -6,
+          "description": "La cible sonore prévue pour l'export, pour comparer le mixage. Défaut : celle du préréglage KoraCut (-14 pour youtube_1080p et reels_tiktok_9x16), sinon aucune."
+        }
+      },
+      "required": [
+        "preset"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (lot B) : ProjectClip::clipStatus pour les médias manquants, TaskManager::hasPendingJob(PROXYJOB), les plages couvertes par les pistes vidéo visibles pour les vides, mesurer_audio pour le son, QStorageInfo pour le disque.",
+    "x_confirmation": false
+  },
+  {
+    "name": "estimer_export",
+    "description": "Estime la taille du fichier et le temps de rendu d'un export, sans le lancer. À appeler avant exporter pour pouvoir annoncer un chiffre à la personne. La taille vient du débit du préréglage (ou d'un ordre de grandeur par codec). Le temps vient d'un vrai rendu d'essai de deux secondes de la plage, fait une fois par préréglage et par session (quelques secondes) ; les rendus finis de la session affinent aussi la mesure. Grossier : à donner comme un ordre de grandeur. Renvoie { ok, duree_exportee {i, tc}, taille_estimee_mo, temps_estime_secondes (null si non disponible), temps: \"mesure\" | \"non_disponible\", espace_libre_mo, rendu_long (true au-delà de 2 minutes estimées) }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "preset": {
+          "type": "string",
+          "enum": [
+            "master_4k_prores",
+            "youtube_1080p",
+            "reels_tiktok_9x16",
+            "audio_wav",
+            "apercu_gif",
+            "personnalise"
+          ],
+          "description": "Préréglage KoraCut. master_4k_prores : fichier maître pour l'archive. youtube_1080p : MP4 H.264/AAC 1920 x 1080. reels_tiktok_9x16 : MP4 H.264/AAC 1080 x 1920. audio_wav : son seul. apercu_gif : GIF court et léger. personnalise : donner alors nom_preset_kdenlive."
+        },
+        "nom_preset_kdenlive": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Nom exact d'un préréglage de rendu lu dans lister_prereglages, requis si preset = personnalise. Exemple : \"MP4-H264/AAC\"."
+        },
+        "plage": {
+          "type": "object",
+          "description": "Partie de la timeline à exporter. Défaut : tout le projet.",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "projet_entier",
+                "zone",
+                "entre_marqueurs"
+              ],
+              "description": "zone : de debut à fin (fin comprise) ; sans debut ni fin, la zone posée sur le moniteur. entre_marqueurs : un fichier par section entre deux marqueurs, nommé d'après le marqueur."
+            },
+            "debut": {
+              "description": "Début de la zone, si type = zone. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "string",
+                  "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+                }
+              ]
+            },
+            "fin": {
+              "description": "Fin de la zone, si type = zone, dernière image comprise. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "string",
+                  "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+                }
+              ]
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        "mesurer_temps": {
+          "type": "boolean",
+          "description": "false : ne fait pas de rendu d'essai, le temps n'est donné que s'il a déjà été mesuré dans la session. Défaut : true."
+        }
+      },
+      "required": [
+        "preset"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (lot B) : taille d'après vb / ab du préréglage (RenderPresetModel::params, estimateFileSize de Kdenlive rend -1) ; temps par un rendu koracut_render de deux secondes, vitesse gardée par préréglage pour la session.",
+    "x_confirmation": false
+  },
+  {
+    "name": "exporter",
+    "description": "Lance le rendu du projet vers un fichier. Le rendu tourne en tâche de fond dans un processus séparé : l'outil revient tout de suite avec un identifiant, suivre ensuite avec etat_exports. Demande toujours une confirmation de la personne, avec le chemin, le préréglage et le temps estimé. Si le fichier de sortie existe déjà, l'outil refuse et renvoie l'erreur fichier_existe : proposer un autre nom, ou redemander avec ecraser = true seulement si la personne l'a dit en toutes lettres. L'outil n'écrit jamais par-dessus un média du projet, même avec ecraser = true (erreur fichier_protege). Le rendu se fait toujours avec les originaux, jamais avec les proxys. N'envoie rien sur internet : l'outil écrit un fichier, il ne publie pas. niveau_lufs met le son au niveau demandé pendant le rendu (-14 pour YouTube et les réseaux, -16 podcast, -23 télévision) ; absent, le son part tel quel. sous_titres « sans » rend une version sans sous-titres sans désactiver la piste. Renvoie { ok, export_id, tache_id (le chemin, pour la porte de commande), chemin, preset, preset_kdenlive, etat, plage, duree_exportee {i, tc}, taille_estimee_mo, temps_estime_secondes (null si jamais mesuré), niveau_lufs (si posé), sous_titres, remplace_un_fichier, exports (si entre_marqueurs : un par section) }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "preset": {
+          "type": "string",
+          "enum": [
+            "master_4k_prores",
+            "youtube_1080p",
+            "reels_tiktok_9x16",
+            "audio_wav",
+            "apercu_gif",
+            "personnalise"
+          ],
+          "description": "Préréglage KoraCut. master_4k_prores : fichier maître pour l'archive. youtube_1080p : MP4 H.264/AAC 1920 x 1080. reels_tiktok_9x16 : MP4 H.264/AAC 1080 x 1920. audio_wav : son seul. apercu_gif : GIF court et léger. personnalise : donner alors nom_preset_kdenlive."
+        },
+        "nom_preset_kdenlive": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Nom exact d'un préréglage de rendu lu dans lister_prereglages, requis si preset = personnalise. Exemple : \"MP4-H264/AAC\"."
+        },
+        "chemin": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Chemin absolu du fichier de sortie, avec son extension. Le dossier doit exister. Par défaut, proposer le dossier \"Exports\" à côté du fichier projet."
+        },
+        "plage": {
+          "type": "object",
+          "description": "Partie de la timeline à exporter. Défaut : tout le projet.",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "projet_entier",
+                "zone",
+                "entre_marqueurs"
+              ],
+              "description": "zone : de debut à fin (fin comprise) ; sans debut ni fin, la zone posée sur le moniteur. entre_marqueurs : un fichier par section entre deux marqueurs, nommé d'après le marqueur."
+            },
+            "debut": {
+              "description": "Début de la zone, si type = zone. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "string",
+                  "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+                }
+              ]
+            },
+            "fin": {
+              "description": "Fin de la zone, si type = zone, dernière image comprise. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "string",
+                  "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+                }
+              ]
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        "ecraser": {
+          "type": "boolean",
+          "description": "true : remplace le fichier s'il existe. Défaut : false. Ne jamais mettre true sans l'accord explicite de la personne pour ce fichier précis."
+        },
+        "niveau_lufs": {
+          "type": "integer",
+          "minimum": -30,
+          "maximum": -6,
+          "description": "Niveau sonore intégré visé pour le fichier, en LUFS (-14 YouTube et réseaux, -16 podcast, -23 télévision). Absent : le son part tel quel."
+        },
+        "sous_titres": {
+          "type": "string",
+          "enum": [
+            "incruster",
+            "sans"
+          ],
+          "description": "incruster (défaut) : les sous-titres de la piste Sous-titres sont dans l'image, comme à l'écran. sans : une version propre, sans sous-titres, sans toucher à la piste (pour livrer le texte à part en .srt, ou une version à sous-titrer ailleurs)."
+        }
+      },
+      "required": [
+        "preset",
+        "chemin"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (lot B) : RenderRequest (loadPresetParams, setBounds, setProxyRendering(false), setLoudnessTarget, setGuideParams pour entre_marqueurs, process()) comme RenderWidget::slotPrepareExport2 mais sans ses boîtes « Output file already exists » (c'est l'outil qui répond fichier_existe) ; koracut_render lancé et suivi par koracutagenttoolsexport.cpp (file, prise locale de progression), la fenêtre Export tenue au courant quand elle est ouverte.",
+    "x_confirmation": true
+  },
+  {
+    "name": "exporter_serie",
+    "description": "Lance plusieurs exports à la suite dans la file de rendu, par exemple le même montage en YouTube 1080p et en audio WAV. Les rendus s'enchaînent un par un pour ne pas étouffer une machine modeste. Mêmes règles que exporter : confirmation de la personne sur la liste complète, refus si un fichier existe déjà, tout est contrôlé avant que le premier parte. Les préréglages KoraCut gardent le format du projet : pour un vrai format vertical, le Monteur doit d'abord préparer une séquence verticale. Renvoie { ok, exports: [ { export_id, chemin, preset, sous_titres, etat } ], temps_estime_total_secondes (null si non mesuré) }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "exports": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 8,
+          "description": "Les exports à enchaîner.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "preset": {
+                "type": "string",
+                "enum": [
+                  "master_4k_prores",
+                  "youtube_1080p",
+                  "reels_tiktok_9x16",
+                  "audio_wav",
+                  "apercu_gif",
+                  "personnalise"
+                ],
+                "description": "Préréglage KoraCut. master_4k_prores : fichier maître pour l'archive. youtube_1080p : MP4 H.264/AAC 1920 x 1080. reels_tiktok_9x16 : MP4 H.264/AAC 1080 x 1920. audio_wav : son seul. apercu_gif : GIF court et léger. personnalise : donner alors nom_preset_kdenlive."
+              },
+              "nom_preset_kdenlive": {
+                "type": "string",
+                "maxLength": 80,
+                "description": "Nom exact d'un préréglage de rendu lu dans lister_prereglages, requis si preset = personnalise. Exemple : \"MP4-H264/AAC\"."
+              },
+              "chemin": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Chemin absolu du fichier de sortie."
+              },
+              "plage": {
+                "type": "object",
+                "description": "Partie de la timeline à exporter. Défaut : tout le projet.",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "projet_entier",
+                      "zone",
+                      "entre_marqueurs"
+                    ],
+                    "description": "zone : de debut à fin (fin comprise) ; sans debut ni fin, la zone posée sur le moniteur. entre_marqueurs : un fichier par section entre deux marqueurs, nommé d'après le marqueur."
+                  },
+                  "debut": {
+                    "description": "Début de la zone, si type = zone. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+                      }
+                    ]
+                  },
+                  "fin": {
+                    "description": "Fin de la zone, si type = zone, dernière image comprise. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "type"
+                ],
+                "additionalProperties": false
+              },
+              "niveau_lufs": {
+                "type": "integer",
+                "minimum": -30,
+                "maximum": -6,
+                "description": "Niveau sonore visé pour ce fichier, en LUFS. Absent : tel quel."
+              },
+              "sous_titres": {
+                "type": "string",
+                "enum": [
+                  "incruster",
+                  "sans"
+                ],
+                "description": "incruster (défaut) : les sous-titres de la piste Sous-titres sont dans l'image, comme à l'écran. sans : une version propre, sans sous-titres, sans toucher à la piste (pour livrer le texte à part en .srt, ou une version à sous-titrer ailleurs)."
+              }
+            },
+            "required": [
+              "preset",
+              "chemin"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "ecraser": {
+          "type": "boolean",
+          "description": "true : remplace les fichiers existants. Défaut : false. Même règle que pour exporter."
+        },
+        "sous_titres": {
+          "type": "string",
+          "enum": [
+            "incruster",
+            "sans"
+          ],
+          "description": "Vaut pour chaque export de la série qui ne le précise pas. incruster (défaut) ou sans : par exemple une version avec sous-titres pour les réseaux et une sans pour la télévision."
+        }
+      },
+      "required": [
+        "exports"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (lot B) : une RenderRequest par export, la file de koracutagenttoolsexport.cpp les lance un par un.",
+    "x_confirmation": true
+  },
+  {
+    "name": "etat_exports",
+    "description": "Donne l'état de la file de rendu : ce qui tourne, ce qui attend, ce qui est fini ou a échoué. À appeler après exporter pour suivre, sans boucler : une fois par demande de la personne suffit, l'application affiche déjà la progression. Renvoie { ok, exports: [ { export_id, tache_id, chemin, preset, preset_kdenlive, etat: \"en_attente\" | \"en_cours\" | \"termine\" | \"echec\" | \"annule\", progression_pourcent, image_courante, temps_restant_secondes (si connu), taille_mo et taille_ko et duree_rendu_secondes (si terminé), erreur (si échec) } ] }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "export_id": {
+          "type": "string",
+          "description": "Pour ne suivre qu'un export : son export_id, ou son chemin (tache_id). Défaut : toute la file."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (lot B) : la file de koracutagenttoolsexport.cpp, progression reçue de koracut_render par une prise locale (le même protocole JSON que RenderServer).",
+    "x_confirmation": false
+  },
+  {
+    "name": "annuler_export",
+    "description": "Arrête un rendu en cours ou le retire de la file d'attente. Demande une confirmation : un rendu arrêté est du temps perdu. À l'arrêt, KoraCut retire le fichier partiel du disque (c'est le programme de rendu qui l'efface) : fichier_partiel est donc null, et la personne doit le savoir. Renvoie { ok, export_id, chemin, etat: \"annule\", fichier_partiel (null) }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "export_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identifiant renvoyé par exporter ou lu dans etat_exports."
+        }
+      },
+      "required": [
+        "export_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (lot B) : un ordre « abort » sur la prise du rendu (comme RenderServer::abortJob) ; en attente, l'entrée est simplement marquée annulée.",
+    "x_confirmation": true
+  },
+  {
+    "name": "exporter_image",
+    "description": "Enregistre une image fixe de la timeline en PNG, à la résolution du projet, effets compris. À utiliser pour une vignette YouTube, une image de validation à montrer à un client. Refuse si le fichier existe déjà (fichier_existe) ou s'il s'agit d'un média du projet (fichier_protege). Peut ajouter l'image au chutier (elle devient alors un média protégé). Renvoie { ok, chemin, position {i, tc}, largeur_px, hauteur_px, media_id (si ajoutée au chutier) }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "position": {
+          "description": "Image à enregistrer, sur la timeline. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "chemin": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Chemin absolu du fichier PNG de sortie."
+        },
+        "ajouter_au_chutier": {
+          "type": "boolean",
+          "description": "true : l'image devient un média du projet. Défaut : false."
+        }
+      },
+      "required": [
+        "position",
+        "chemin"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (lot B) : KThumb::getFrame sur une copie XML de la timeline, à la taille du projet ; importer_media pour le chutier.",
+    "x_confirmation": false
+  },
+  {
+    "name": "modeles_export",
+    "description": "Les modèles du module Export, comme les tuiles de la page (document 23) : YouTube 1080p, YouTube 4K, YouTube Shorts, TikTok, Instagram Reels, fil 4:5, carré, Stories, Facebook, Facebook Reels, X, LinkedIn, Snapchat, Vimeo, Statut WhatsApp, Twitch, et les fichiers techniques (Master H.264, Master H.265, ProRes 422 HQ, ProRes 4444, Audio WAV, AAC, MP3, GIF animé, Image PNG). Chaque modèle règle le format, le codec, le débit plafond, le son et le niveau sonore de la plateforme ; la taille suit la séquence (un vrai 9:16 demande une séquence verticale). Le projet garde le modèle choisi par séquence ; à la création, il est réglé d'après le type de vidéo. action lister : les modèles, le modèle recommandé et les réglages actuels. lire : les réglages actuels. appliquer : pose un modèle (et des réglages changés) sans rien rendre. ajouter : le met dans la file de rendu, retenu, sans le lancer. exporter : le lance tout de suite (accord de la personne). lancer_file : lance tous les exports retenus, comme « Tout exporter » (accord de la personne). Jamais par-dessus un fichier : le nom prend v2, v3. Renvoie { ok, modeles?, recommande?, reglages (avec fichier_prevu), attention?, chemin?, export_id?, tache_id?, etat?, duree_exportee?, sous_titres_srt? }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "lister",
+            "lire",
+            "appliquer",
+            "ajouter",
+            "exporter",
+            "lancer_file"
+          ],
+          "description": "Défaut : lister."
+        },
+        "modele": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "Identifiant lu dans lister (tiktok, youtube_1080p, youtube_shorts, instagram_reels, master_h264, audio_wav…). Absent : le modèle déjà choisi pour la séquence."
+        },
+        "reglages": {
+          "type": "object",
+          "description": "Réglages changés à la main, mêmes clés que reglages dans lister : debit_kbps (0 = Automatique), largeur et hauteur (0 = comme la séquence), materiel (encodeur matériel), normaliser, lufs (-30 à -6), sous_titres (incruster, fichier, sans), dossier, nom (jetons {projet} {sequence} {date} {heure} {format} {modele} {version}), entree_sortie (true : la zone Entrée/Sortie), codec, conteneur, profil, images_cles, reorganisation, codec_audio, audio_kbps, frequence, canaux, video, audio."
+        },
+        "chemin": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Chemin absolu du fichier, pour ajouter ou exporter. Absent : dossier et nom des réglages (par défaut Exports/ à côté du projet, « {projet} - {modele} »)."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (document 23, 28 septembre 2026) : KoraCutExport (data/koracut-export-models.json), Settings::params vers RenderRequest::setPresetParams, file partagée KoraCutExportQueue ; exporter et lancer_file demandent l'accord (KoraCutAgentSession, startsRender).",
+    "x_confirmation": false
+  }
+]

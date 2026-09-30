@@ -1,0 +1,206 @@
+[
+  {
+    "name": "animer_entree",
+    "description": "Anime l'arrivée d'un clip avec l'application seule, sans HyperFrames ni rendu : l'effet Transformer du clip (qtblend, posé ou réveillé) reçoit deux images clés au début du clip, de la place hors champ (ou réduite, ou transparente) à sa place, avec la bonne courbe. Le plan garde son cadrage (le rect du Transformer à la fin du geste). Styles : fondu, glisse_gauche, glisse_droite, glisse_haut, glisse_bas (arrive de ce côté, hors champ), glisse_court (petit pas et fondu, pour un titre ou un bandeau), monte (monte un peu en apparaissant), zoom_avant (de 80 % à 100 %), zoom_arriere (de 120 % à 100 %), rebond (tombe du bas et rebondit), pop (jaillit en élastique). À préférer à HyperFrames quand un plan, une image ou un titre de KoraCut doit simplement entrer : plus léger, rien à rendre. Annulable en une étape. Renvoie { ok, clip_id, style, duree, effet }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le clip vidéo, titre ou image (etat_timeline)."
+        },
+        "style": {
+          "type": "string",
+          "enum": [
+            "fondu",
+            "glisse_gauche",
+            "glisse_droite",
+            "glisse_haut",
+            "glisse_bas",
+            "glisse_court",
+            "monte",
+            "zoom_avant",
+            "zoom_arriere",
+            "rebond",
+            "pop"
+          ],
+          "description": "Le geste (glisse_court par défaut)."
+        },
+        "duree": {
+          "description": "La durée du geste depuis le début du clip. Absent : 0,5 s.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "clip_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/koracutagenttoolsanimation.cpp:animerEntree (qtblend rect, KeyframeModelList::duplicateKeyframeWithUndo, KeyframeModel::updateKeyframe, updateKeyframeType).",
+    "x_confirmation": false
+  },
+  {
+    "name": "animer_sortie",
+    "description": "Anime le départ d'un clip avec l'application seule, sans rendu : deux images clés de l'effet Transformer à la fin du clip, de sa place vers la sortie du style (fondu, glisse_gauche : part vers la gauche, glisse_droite, glisse_haut, glisse_bas, glisse_court, monte, zoom_avant : grossit en s'effaçant, zoom_arriere : rapetisse en s'effaçant, rebond : tombe, pop : se replie). Annulable en une étape. Renvoie { ok, clip_id, style, duree, effet }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le clip vidéo, titre ou image."
+        },
+        "style": {
+          "type": "string",
+          "enum": [
+            "fondu",
+            "glisse_gauche",
+            "glisse_droite",
+            "glisse_haut",
+            "glisse_bas",
+            "glisse_court",
+            "monte",
+            "zoom_avant",
+            "zoom_arriere",
+            "rebond",
+            "pop"
+          ],
+          "description": "Le geste (fondu par défaut)."
+        },
+        "duree": {
+          "description": "La durée du geste, jusqu'à la fin du clip. Absent : 0,5 s.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "clip_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/koracutagenttoolsanimation.cpp:animerSortie",
+    "x_confirmation": false
+  },
+  {
+    "name": "animer_texte",
+    "description": "Anime un titre de KoraCut (posé par ajouter_titre) sans HyperFrames : machine_a_ecrire (lettre par lettre), mot_a_mot, ligne_a_ligne (l'effet machine à écrire du titreur, réglé pour que tout le texte soit là à la fin de duree), ou un geste d'entrée (monte, fondu, glisse_court, zoom_avant, pop… comme animer_entree). Pour du texte cinétique plus riche (mots qui tombent, masques, tracés), passe par motion_element_seul. Le titre du chutier change : les autres clips du même titre aussi. Annulable en une étape. Renvoie { ok, clip_id, style, pas_images?, duree }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le clip de titre."
+        },
+        "style": {
+          "type": "string",
+          "enum": [
+            "machine_a_ecrire",
+            "mot_a_mot",
+            "ligne_a_ligne",
+            "fondu",
+            "glisse_gauche",
+            "glisse_droite",
+            "glisse_haut",
+            "glisse_bas",
+            "glisse_court",
+            "monte",
+            "zoom_avant",
+            "zoom_arriere",
+            "rebond",
+            "pop"
+          ],
+          "description": "L'animation (machine_a_ecrire par défaut)."
+        },
+        "duree": {
+          "description": "Le temps pour que tout le texte soit écrit (machine à écrire), ou la durée du geste. Absent : la moitié du clip, 2 s au plus (0,5 s pour un geste).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "clip_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/koracutagenttoolsanimation.cpp:animerTexte (attribut typewriter du <content> de xmldata, producteur kdenlivetitle).",
+    "x_confirmation": false
+  },
+  {
+    "name": "transition_app",
+    "description": "Une transition entre deux plans collés, faite par l'application seule (sans HyperFrames, sans rendu). fondu_enchaine, volet, glissement : les fondus enchaînés de Kdenlive (ils demandent de la matière en réserve des deux côtés, comme ajouter_transition). fondu_noir (le premier plan s'éteint, le second s'allume), zoom (le premier plonge en avant, le second arrive de trop près), pousse (le premier part à gauche, le second arrive de droite), secousse (les deux plans tremblent autour de la coupe) : des images clés de l'effet Transformer sur les bords des deux plans, sans réserve. Elles suivent les plans si on les déplace. À préférer à motion_transition quand il n'y a rien à dessiner. Annulable en une étape. Renvoie { ok, style, clip_avant, clip_apres, coupe, duree }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_avant": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le plan qui finit à la coupe."
+        },
+        "clip_apres": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le plan qui commence à la coupe. Absent : celui qui suit clip_avant."
+        },
+        "style": {
+          "type": "string",
+          "enum": [
+            "fondu_enchaine",
+            "volet",
+            "glissement",
+            "fondu_noir",
+            "zoom",
+            "pousse",
+            "secousse"
+          ],
+          "description": "La transition (fondu_enchaine par défaut)."
+        },
+        "duree": {
+          "description": "La durée totale, moitié de chaque côté de la coupe. Absent : 0,5 s.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "clip_avant"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/koracutagenttoolsanimation.cpp:transitionApp (TimelineModel::requestClipMix par ajouter_transition, ou qtblend rect sur les deux plans).",
+    "x_confirmation": false
+  }
+]

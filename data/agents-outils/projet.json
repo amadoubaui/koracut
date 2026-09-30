@@ -1,0 +1,499 @@
+[
+  {
+    "name": "etat_timeline",
+    "description": "Renvoie l'état de la timeline en JSON compact : le projet (nom, largeur et hauteur en pixels, images par seconde, durée), les pistes de haut en bas, et pour chaque piste ses clips avec id, média, position, in, out, durée et effets. C'est la vue de l'agent sur le montage : l'appeler au début de chaque demande, puis après chaque action qui modifie la timeline, pour vérifier que le résultat est bien celui attendu. Ne jamais agir sur un id de mémoire : les id changent après une coupe, une annulation ou un redémarrage. Tous les temps sont en images (le champ ips du projet donne la conversion) ; avec_timecodes = true ajoute les timecodes. Sur un long projet, limiter avec debut, fin ou piste_ids pour économiser des tokens. Le format complet est décrit dans SCHEMA-ETAT-TIMELINE.md. Lecture seule.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "detail": {
+          "type": "string",
+          "enum": [
+            "resume",
+            "normal",
+            "complet"
+          ],
+          "description": "resume : pistes et nombre de clips, sans la liste. normal (défaut) : clips avec le nom de leurs effets. complet : ajoute les paramètres et les images clés de chaque effet, à réserver à un clip ou une courte plage."
+        },
+        "debut": {
+          "description": "Ne renvoyer que les clips qui touchent la plage à partir de cette position. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "fin": {
+          "description": "Fin de la plage : dernière image de la plage, comprise. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "piste_ids": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "maxItems": 32,
+          "description": "Ne renvoyer que ces pistes. Défaut : toutes."
+        },
+        "avec_timecodes": {
+          "type": "boolean",
+          "description": "true : ajoute pos_tc à chaque clip. Défaut : false."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "à créer (sérialiseur JSON). S'appuie sur des lectures existantes de src/timeline2/model/timelinemodel.hpp : getTracksIds, getTrackTagById, getTrackPosition, isAudioTrack, getClipPosition, getClipInOut, getClipPlaytime, getClipBinId, getClipName, getClipSpeed, getClipState, getClipEffectStackModel (puis EffectStackModel::getEffectStackRow et AssetParameterModel::getAllParameters), getGuideModel, TimelineFunctions::getAVTracksIds ; profil : pCore->getCurrentProfile() ; timecodes : src/utils/timecode.h:Timecode::getTimecodeFromFrames.",
+    "x_confirmation": false
+  },
+  {
+    "name": "lister_medias",
+    "description": "Liste les médias du chutier (vidéos, sons, images, titres, séquences) avec leurs propriétés. À appeler avant ajouter_clip pour trouver le bon media_id, et pour répondre à « qu'est-ce que j'ai comme plans ». La recherche porte sur le nom du fichier, le nom du dossier du chutier et les étiquettes : « drone » trouve DJI_0042.MP4 s'il est rangé dans un dossier « Drone » ou étiqueté ainsi. L'outil ne voit pas le contenu des images. Lecture seule. Renvoie { ok, medias: [ { id, nom, type: \"video\" | \"audio\" | \"image\" | \"titre\" | \"couleur\" | \"sequence\", dossier, duree {i, tc}, l, h, ips, a_du_son, proxy: \"aucun\" | \"en_cours\" | \"pret\", utilise (nombre de fois sur la timeline), manquant (true si le fichier a disparu du disque), etiquettes, marqueurs } ], total, tronque, suite }. Quand le chutier a plus de médias que la limite, la réponse dit tronque: true et suite (le debut de la page suivante) : relance avec debut = suite, ou affine avec recherche, type ou dossier, avant de conclure qu'un média manque.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "recherche": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Texte cherché dans le nom, le dossier et les étiquettes. Sans accents ni majuscules obligatoires."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "tous",
+            "video",
+            "audio",
+            "image",
+            "titre",
+            "sequence"
+          ],
+          "description": "Défaut : tous."
+        },
+        "dossier": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Nom d'un dossier du chutier."
+        },
+        "limite": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "description": "Nombre maximal de médias renvoyés. Défaut : 50."
+        },
+        "debut": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Rang du premier média rendu, pour lire la suite d'une liste coupée (champ suite de la réponse précédente). Défaut : 0."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/bin/projectitemmodel.h:ProjectItemModel::getAllClipIds(), getClipByBinID(binId), getFolderByBinId ; propriétés lues sur src/bin/projectclip.h:ProjectClip (durée, taille, codec, état du proxy) ; marqueurs : src/bin/model/markerlistmodel.hpp. La sortie JSON est à créer.",
+    "x_confirmation": false
+  },
+  {
+    "name": "importer_media",
+    "description": "Ajoute au chutier des fichiers déjà présents sur le disque de la personne. Les fichiers ne sont ni copiés, ni déplacés, ni modifiés : le projet garde seulement leur chemin. Si les proxys automatiques sont actifs, un proxy se crée en tâche de fond pour les gros fichiers et le montage peut commencer tout de suite. N'importe pas depuis internet. Un fichier déjà dans le chutier n'est pas ajouté deux fois, son id est renvoyé. Renvoie { ok, medias: [ { id, nom, type, duree {i, tc}, deja_present } ], refuses: [ { chemin, raison } ] }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "chemins": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "maxItems": 100,
+          "description": "Chemins absolus des fichiers, ou d'un dossier (tout son contenu lisible est importé)."
+        },
+        "dossier_chutier": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Nom du dossier du chutier où ranger les médias. Créé s'il n'existe pas. Défaut : la racine."
+        }
+      },
+      "required": [
+        "chemins"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/bin/clipcreator.hpp:ClipCreator::createClipsFromList(list, checkRemovable, parentFolder, model, undo, redo) et createClipFromFile ; dossier : ProjectItemModel::requestAddFolder ; doublons : ProjectItemModel::getClipByUrl. Déjà exposé en D-Bus : MainWindow::addProjectClip(url, folder) dans org.kdenlive.MainWindow.xml. Proxy automatique : src/bin/projectclip.cpp:checkProxy.",
+    "x_confirmation": false
+  },
+  {
+    "name": "retirer_media",
+    "description": "Retire des médias du chutier du projet. Le fichier sur le disque n'est jamais touché : ni supprimé, ni déplacé, ni renommé. Tous les clips de la timeline qui utilisent ces médias partent avec eux : c'est pour cela que l'outil demande une confirmation et annonce d'abord combien de clips seraient retirés. Annulable. C'est le seul outil de retrait de médias : aucun outil ne supprime un fichier du disque, et si la personne le demande, il faut lui dire de le faire elle-même dans son explorateur de fichiers. Renvoie { ok, retires: [media_id], clips_timeline_retires }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "media_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "maxItems": 100,
+          "description": "Médias à retirer du projet."
+        }
+      },
+      "required": [
+        "media_ids"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/bin/projectitemmodel.h:ProjectItemModel::requestBinClipDeletion(clip, undo, redo) et requestBinClipDeletionById(id)",
+    "x_confirmation": true
+  },
+  {
+    "name": "ajouter_marqueur",
+    "description": "Pose un marqueur (guide) sur la timeline, ou sur un média du chutier, avec un court commentaire. À utiliser pour repérer un endroit à montrer à la personne, un point de synchro musique, un passage à revoir, les sections d'un export par chapitres. Ne modifie pas le montage. Renvoie { ok, position {i, tc}, commentaire, categorie }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "position": {
+          "description": "Position du marqueur (sur la timeline, ou dans le média si media_id est donné). Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "commentaire": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Texte court affiché à côté du marqueur."
+        },
+        "categorie": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8,
+          "description": "Catégorie de couleur du marqueur, 0 à 8. Défaut : 0. Convention des agents : 1 = à revoir, 2 = synchro musique, 3 = chapitre."
+        },
+        "media_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Pour marquer un média du chutier au lieu de la timeline. Laisser vide pour un guide de timeline."
+        },
+        "supprimer": {
+          "type": "boolean",
+          "description": "true : retire le marqueur situé à cette position. Défaut : false."
+        }
+      },
+      "required": [
+        "position"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/bin/model/markerlistmodel.hpp:MarkerListModel::addMarker(GenTime pos, comment, type), removeMarker(pos), editMarker ; guides de la timeline : TimelineModel::getGuideModel() ; marqueurs de média : Bin::addClipMarker(binId, markersData)",
+    "x_confirmation": false
+  },
+  {
+    "name": "transcrire_media",
+    "description": "Transcrit la parole d'un média avec le moteur de reconnaissance installé sur la machine (Whisper ou Vosk). Rien n'est envoyé sur internet. Renvoie le texte avec le début et la fin de chaque mot, ce qui permet de couper entre les mots et jamais dedans. L'opération est longue (à peu près le tiers de la durée du média sur une machine modeste) : elle demande une confirmation, et le résultat est gardé en cache pour les appels suivants. Langues utiles : fr, wo (wolof, qualité variable selon le modèle), en. Renvoie { ok, langue, segments: [ { debut_i, fin_i, texte, mots: [ { d, f, m } ] } ], depuis_cache } avec les positions en images dans le média source.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "media_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identifiant du média dans le chutier, lu dans lister_medias (champ id)."
+        },
+        "langue": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "fr",
+            "wo",
+            "en",
+            "ar",
+            "pt",
+            "es"
+          ],
+          "description": "Langue parlée. Défaut : auto."
+        },
+        "debut": {
+          "description": "Début de la portion à transcrire, dans le média. Défaut : le début. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "fin": {
+          "description": "Fin de la portion. Défaut : la fin. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "niveau": {
+          "type": "string",
+          "enum": [
+            "segments",
+            "mots"
+          ],
+          "description": "segments : phrases seulement, plus court. mots (défaut) : chaque mot avec ses bornes."
+        }
+      },
+      "required": [
+        "media_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/pythoninterfaces/speechtotextwhisper.h:SpeechToTextWhisper et speechtotextvosk.h:SpeechToTextVosk (scripts Python lancés par AbstractPythonInterface) ; interface actuelle : src/dialogs/textbasededit.cpp (montage par le texte) et src/dialogs/speechdialog.cpp (sous-titres). La sortie JSON mot par mot et le cache sont à créer.",
+    "x_confirmation": true
+  },
+  {
+    "name": "voir_image",
+    "description": "Envoie au modèle une vignette d'une image de la timeline ou d'un média, pour qu'il la regarde : juger un cadrage, reconnaître un plan de drone, vérifier qu'un titre est lisible. C'est le seul outil qui fait sortir un bout de média de la machine (vers le fournisseur du modèle choisi par la personne, sauf modèle local) : il demande donc une confirmation, que la personne peut accorder une fois pour toute la session. La vignette fait 512 pixels de large au plus, jamais la vidéo entière, jamais le son. Pour des chiffres (exposition, dominante), préférer mesurer_image, qui reste sur la machine. Renvoie une image et { ok, position {i, tc}, l, h }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "position": {
+          "description": "Image à regarder (sur la timeline, ou dans le média si media_id est donné). Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "media_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Pour regarder un média du chutier. Laisser vide pour regarder la timeline, effets compris."
+        },
+        "largeur_px": {
+          "type": "integer",
+          "minimum": 128,
+          "maximum": 512,
+          "description": "Largeur de la vignette en pixels. Défaut : 384. Plus petit coûte moins de tokens."
+        }
+      },
+      "required": [
+        "position"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "à créer pour l'envoi. Briques existantes : vignettes du chutier par src/utils/thumbnailcache.hpp:ThumbnailCache et ProjectClip, image de la timeline par src/monitor/monitor.h:Monitor::extractFrame(path).",
+    "x_confirmation": true
+  },
+  {
+    "name": "proposer_plan",
+    "description": "Mode brouillon : présente à la personne, dans le panneau des agents, ce que l'agent compte faire, AVANT d'agir. Ne modifie rien. Obligatoire quand la demande est longue (plus de 5 actions prévues), quand elle contient un outil à confirmation, ou quand elle est ambiguë et qu'un choix de l'agent engage la suite. Inutile pour une action simple et claire (« coupe le clip à 6 secondes »). La personne répond par Appliquer, Modifier ou Annuler. Si elle applique, les outils à confirmation listés dans le plan sont approuvés pour ce tour, sauf l'écrasement d'un fichier et le lancement d'un rendu, qui se confirment toujours à part. Renvoie { ok, decision: \"applique\" | \"modifie\" | \"annule\", commentaire (texte libre de la personne, si modifie) }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "resume": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 280,
+          "description": "Une ou deux phrases, en français simple, tutoiement : ce qui va être fait et le résultat attendu."
+        },
+        "etapes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "description": "Les étapes, dans l'ordre. Regrouper les actions répétitives en une seule étape (« couper et retirer les 14 silences »).",
+          "items": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "description": "Ce que fait l'étape, en une phrase courte."
+              },
+              "agent": {
+                "type": "string",
+                "enum": [
+                  "chef",
+                  "monteur",
+                  "coloriste",
+                  "sound_designer",
+                  "mixeur",
+                  "retoucheur",
+                  "compositeur",
+                  "motion_designer"
+                ],
+                "description": "L'agent qui s'en charge."
+              },
+              "outils": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 8,
+                "description": "Noms exacts des outils prévus. Un outil à confirmation n'est approuvé par le plan que s'il est nommé ici : sans ce champ, l'accord sera redemandé à chaque appel."
+              },
+              "a_confirmer": {
+                "type": "boolean",
+                "description": "true si l'étape utilise un outil marqué x_confirmation."
+              }
+            },
+            "required": [
+              "action",
+              "agent"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "hypotheses": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "maxItems": 5,
+          "description": "Les choix faits à la place de la personne, qu'elle peut corriger : « je prends les 3 plans du dossier Drone », « musique : kora_theme.wav »."
+        },
+        "duree_resultat": {
+          "description": "Durée attendue du montage après le plan, si elle change. Nombre d'images (entier, au moins 1) ou timecode \"HH:MM:SS:II\".",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "tours_estimes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "description": "Nombre d'appels d'outils prévus, à comparer au budget de la session."
+        }
+      },
+      "required": [
+        "resume",
+        "etapes"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "à créer (panneau des agents, src/agents/). Rien d'équivalent dans Kdenlive.",
+    "x_confirmation": false
+  },
+  {
+    "name": "annuler_dernier_tour",
+    "description": "Annule d'un coup tout ce que les agents ont fait pendant le dernier tour (une demande de la personne = un tour = une seule entrée dans l'historique). À utiliser quand la personne dit « annule », « reviens en arrière », « non, c'était mieux avant », ou quand une vérification montre que le tour a abîmé le montage. N'annule jamais les actions faites à la main par la personne après le tour : dans ce cas l'outil refuse et l'explique. Ne concerne pas les fichiers exportés, qui restent sur le disque. Renvoie { ok, tour_annule: { intitule, actions }, retablir_possible }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "retablir": {
+          "type": "boolean",
+          "description": "true : rétablit le tour qui vient d'être annulé. Défaut : false."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "à créer. Les actions de Kdenlive sont des lambdas Fun (src/undohelper.hpp) accumulées par UPDATE_UNDO_REDO et poussées par PUSH_UNDO (src/macros.hpp) sous forme de FunctionalUndoCommand dans src/doc/docundostack.hpp:DocUndoStack (un QUndoStack), ou par Core::pushUndo(undo, redo, text). Le tour d'agent passera toutes ses actions avec les variantes (Fun &undo, Fun &redo) et poussera un seul FunctionalUndoCommand à la fin du tour, avec un intitulé du type « Le Monteur : teaser 15 s ». QUndoStack::beginMacro/endMacro existe dans Qt mais n'est utilisé nulle part dans Kdenlive.",
+    "x_confirmation": false
+  },
+  {
+    "name": "deleguer",
+    "description": "Réservé au Chef. Confie une sous-tâche à un agent de métier et attend son compte rendu. L'agent reçoit la consigne, son propre prompt et ses propres outils, travaille dans le même tour annulable, puis renvoie trois lignes : ce qu'il a fait, ce qu'il a vérifié, ce qui reste. Donner une consigne complète : l'agent ne voit pas la conversation. Une délégation à la fois, dans l'ordre du métier : montage, puis image, puis son, puis export. Renvoie { ok, agent, compte_rendu, outils_appeles, tours_utilises, a_reussi }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "agent": {
+          "type": "string",
+          "enum": [
+            "monteur",
+            "coloriste",
+            "sound_designer",
+            "mixeur",
+            "retoucheur",
+            "compositeur",
+            "motion_designer"
+          ],
+          "description": "L'agent de métier."
+        },
+        "consigne": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1200,
+          "description": "Ce qu'il doit faire, avec les id utiles (pistes, clips, médias), les durées, les valeurs, et ce que la personne a déjà accepté."
+        },
+        "plan_accepte": {
+          "type": "boolean",
+          "description": "true si la personne a déjà accepté un plan qui couvre cette sous-tâche : l'agent n'a pas à en reproposer un."
+        },
+        "budget_tours": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60,
+          "description": "Nombre maximal d'appels d'outils accordés à l'agent pour cette sous-tâche. Défaut : 20."
+        }
+      },
+      "required": [
+        "agent",
+        "consigne"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "à créer, dans le processus compagnon (pas dans Kdenlive) : c'est une boucle d'agent lancée avec le prompt de prompts/<agent>.md et la liste d'outils de l'agent.",
+    "x_confirmation": false
+  },
+  {
+    "name": "lire_competence",
+    "description": "Lit une fiche de compétence : le savoir-faire d'un geste de métier (étapes, critères, erreurs à éviter, outils exacts). L'index de tes fiches est dans ton prompt, section « Tes fiches de compétence ». Lis la fiche AVANT de faire ce qu'elle couvre, une fois par conversation : son texte reste plus haut, ne la relis pas. Ne touche pas au projet. Renvoie { ok, nom, texte } ; si la fiche a déjà été lue dans cette conversation, { ok, nom, deja_lue: true } sans le texte.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "nom": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "Le nom de la fiche tel que l'index l'écrit, par exemple \"derushage\" ou \"organiser-nommage\"."
+        }
+      },
+      "required": [
+        "nom"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "rien à écrire dans l'application : outil du service. Le service lit competences/<nom>.md et répond lui-même, l'appel ne traverse jamais la liaison (PROTOCOLE.md, « Les outils du service »).",
+    "x_confirmation": false
+  }
+]

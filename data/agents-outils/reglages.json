@@ -1,0 +1,218 @@
+[
+ {
+  "name": "theme_lister",
+  "description": "Les thèmes de l'interface : ceux livrés avec KoraCut (sombre, clair, tres-sombre, gris, contraste-eleve, matrix, spider-man, punk, ocean, sable, nuit-violette) et ceux qui ont été créés. Pour chacun : nom court (à passer à theme_appliquer), titre, base (sombre ou clair), livre, cree (modifiable et supprimable), actif, apercu (fond, surface, texte, accent). Rend aussi le mode (system, light, dark ou l'identifiant d'un thème), le thème précédent (pour « reviens comme avant ») et la liste des jetons de couleur avec leur rôle. avec_palette: true ajoute la palette complète du thème actif et son contrôle de contraste. Lecture seule.",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "avec_palette": {
+     "type": "boolean",
+     "description": "Ajoute la palette complète du thème actif (tous les jetons) et le contrôle de contraste. Défaut : false."
+    }
+   },
+   "required": [],
+   "additionalProperties": false
+  },
+  "x_kdenlive": "fait : src/koracut/koracutagenttoolsreglages.cpp, moteur src/koracut/koracutthemes.cpp (data/koracut-themes.json).",
+  "x_confirmation": false
+ },
+ {
+  "name": "theme_appliquer",
+  "description": "Change le thème de l'interface, tout de suite, sans relancer, et le garde pour les prochains lancements. nom : « clair », « sombre », « systeme » (suit le mode clair ou sombre de l'ordinateur), « precedent » (revient au thème d'avant le dernier changement), ou le nom d'un thème (theme_lister) ; la casse, les accents, les espaces et les tirets ne comptent pas (« Spider Man » = « spider-man »). Rend { ok, actif, titre, mode, precedent }. Réversible : theme_appliquer { nom: \"precedent\" }. Ne touche pas au projet (pas d'étape d'annulation).",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "nom": {
+     "type": "string",
+     "description": "clair, sombre, systeme, precedent, ou le nom d'un thème."
+    }
+   },
+   "required": [
+    "nom"
+   ],
+   "additionalProperties": false
+  },
+  "x_kdenlive": "fait : src/koracut/koracutagenttoolsreglages.cpp (KoraCutThemes::apply).",
+  "x_confirmation": false
+ },
+ {
+  "name": "theme_creer",
+  "description": "Crée un thème à partir de quelques couleurs, le vérifie et l'applique. couleurs : au moins fond ou accent, en « #RRGGBB » ; le reste est dérivé (surfaces, champs, bordures, survols, textes secondaires). Jetons possibles (theme_lister les explique) : fond, panneau, contenu, surface, champ, saisie, champ_survol, poignee, poignee_survol, bordure, bordure_survol, voile, texte, encre, texte_secondaire, texte_desactive, texte_sur_accent, accent, accent_survol, accent_vif, accent_presse, accent_doux, selection, rouge, vert, jaune, piste_video, piste_titre, piste_voix, piste_musique (les piste_* changent la couleur des clips de la timeline). Le contraste est contrôlé (texte 4,5:1 sur tous les fonds, contours et accent 3:1) et corrigé automatiquement si besoin : corrections dit chaque jeton déplacé, avant et après, à dire à la personne. police : vide (celle du système), « mono » (chasse fixe du système) ou une famille installée. rayon : 0 (coins droits) à 12, 4 = la charte. Un nom déjà pris par un thème livré devient « <nom> perso » ; un nom pris par un thème créé le remplace. Rend { ok, nom, id, titre, corrections, controles: { passes, total }, palette }. Réversible : theme_appliquer { nom: \"precedent\" }.",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "nom": {
+     "type": "string",
+     "description": "Le nom du thème, tel qu'il apparaîtra dans le menu Affichage > Thème."
+    },
+    "couleurs": {
+     "type": "object",
+     "description": "Jeton vers couleur « #RRGGBB » (ou « #RRGGBBAA » pour une couleur translucide). Au moins fond ou accent.",
+     "additionalProperties": {
+      "type": "string"
+     }
+    },
+    "inspiration": {
+     "type": "string",
+     "description": "La demande d'origine, en une phrase (« style Spider-Man : rouge, bleu profond, noir »). Gardée avec le thème."
+    },
+    "police": {
+     "type": "string",
+     "description": "Vide, « mono » ou une famille de police installée."
+    },
+    "rayon": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 12,
+     "description": "Rayon des coins des contrôles : 0 droit, 4 charte, 12 très arrondi."
+    }
+   },
+   "required": [
+    "nom",
+    "couleurs"
+   ],
+   "additionalProperties": false
+  },
+  "x_kdenlive": "fait : src/koracut/koracutagenttoolsreglages.cpp (KoraCutThemes::create) ; le thème va dans le dossier des thèmes de l'utilisateur (color-schemes/KoraCutPerso<Nom>.colors).",
+  "x_confirmation": false
+ },
+ {
+  "name": "theme_modifier",
+  "description": "Change un ou plusieurs jetons d'un thème (« mets l'accent en orange », « un fond un peu plus clair »), ou sa police, son rayon, et l'applique. Sur un thème créé, il est modifié en place ; sur un thème livré (sombre, matrix…), une copie « <nom> perso » est créée et appliquée, l'original ne bouge pas. Même contrôle et mêmes corrections que theme_creer. Sans nom : le thème actif. Rend comme theme_creer. Réversible : theme_appliquer { nom: \"precedent\" } revient au thème d'avant (pas à la version d'avant d'un thème créé : pour ça, remodifier).",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "nom": {
+     "type": "string",
+     "description": "Le thème à modifier ; absent : le thème actif."
+    },
+    "couleurs": {
+     "type": "object",
+     "description": "Les jetons à changer, « #RRGGBB ».",
+     "additionalProperties": {
+      "type": "string"
+     }
+    },
+    "police": {
+     "type": "string",
+     "description": "Nouvelle police : vide pour celle du système, « mono », ou une famille installée."
+    },
+    "rayon": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 12,
+     "description": "Nouveau rayon des coins."
+    }
+   },
+   "required": [],
+   "additionalProperties": false
+  },
+  "x_kdenlive": "fait : src/koracut/koracutagenttoolsreglages.cpp (KoraCutThemes::modify).",
+  "x_confirmation": false
+ },
+ {
+  "name": "theme_supprimer",
+  "description": "Supprime un thème créé (jamais un thème livré ni installé). S'il était à l'écran, KoraCut revient au thème précédent. Le fichier du thème est effacé : pas d'annulation. Rend { ok, supprime, actif }.",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "nom": {
+     "type": "string",
+     "description": "Le nom du thème créé."
+    }
+   },
+   "required": [
+    "nom"
+   ],
+   "additionalProperties": false
+  },
+  "x_kdenlive": "fait : src/koracut/koracutagenttoolsreglages.cpp (KoraCutThemes::remove).",
+  "x_confirmation": true
+ },
+ {
+  "name": "reglages_lister",
+  "description": "Les réglages de l'application qu'un agent peut lire et changer, par section : sauvegarde (sauvegarde automatique), timeline (magnétisme, défilement, vignettes, formes d'onde), durees (durée par défaut des images, titres, fondus, transitions), lecture, proxy (fichiers d'aperçu légers), nouveau_projet (pistes par défaut), agents (montage visible), apercu (cache de rendu). Pour chacun : cle, section, libelle, type (booleen, entier, duree, choix), valeur, defaut, min, max, choix, et quand il s'applique. Le thème se règle avec les outils theme_*. Les chemins, les programmes externes et la porte de commande ne sont pas accessibles. Lecture seule.",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "section": {
+     "type": "string",
+     "enum": [
+      "sauvegarde",
+      "timeline",
+      "durees",
+      "lecture",
+      "proxy",
+      "nouveau_projet",
+      "agents",
+      "apercu"
+     ],
+     "description": "Une seule section ; absent : toutes."
+    }
+   },
+   "required": [],
+   "additionalProperties": false
+  },
+  "x_kdenlive": "fait : src/koracut/koracutagenttoolsreglages.cpp (liste blanche, KdenliveSettings et koracutrc [KoraCut]).",
+  "x_confirmation": false
+ },
+ {
+  "name": "reglages_lire",
+  "description": "La valeur d'un ou de plusieurs réglages de la liste blanche (reglages_lister). Rend { reglages: [{ cle, libelle, valeur, defaut }] }. Lecture seule.",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "cle": {
+     "type": "string",
+     "description": "Un réglage."
+    },
+    "cles": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "maxItems": 50,
+     "description": "Plusieurs réglages."
+    }
+   },
+   "required": [],
+   "additionalProperties": false
+  },
+  "x_kdenlive": "fait : src/koracut/koracutagenttoolsreglages.cpp.",
+  "x_confirmation": false
+ },
+ {
+  "name": "reglages_ecrire",
+  "description": "Change un réglage de la liste blanche (reglages_lister), enregistré tout de suite dans koracutrc et appliqué quand KoraCut le permet (le champ applique dit quand : tout_de_suite, nouveaux_clips, nouveau_projet). La valeur est contrôlée (type, bornes, choix, durée en « HH:MM:SS:II »). Rend { ok, cle, avant, apres, applique }. Réversible : réécrire la valeur « avant ». Ne touche pas au projet (pas d'étape d'annulation).",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "cle": {
+     "type": "string",
+     "description": "Le réglage (reglages_lister)."
+    },
+    "valeur": {
+     "description": "La nouvelle valeur : booléen, entier, durée « HH:MM:SS:II », ou un des choix.",
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "number"
+      }
+     ]
+    }
+   },
+   "required": [
+    "cle",
+    "valeur"
+   ],
+   "additionalProperties": false
+  },
+  "x_kdenlive": "fait : src/koracut/koracutagenttoolsreglages.cpp.",
+  "x_confirmation": false
+ }
+]

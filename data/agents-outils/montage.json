@@ -1,0 +1,1128 @@
+[
+  {
+    "name": "ajouter_clip",
+    "description": "Pose un média du chutier sur une piste de la timeline. À utiliser pour construire ou compléter un montage. Sans entree ni sortie, le média entier est posé ; avec entree et sortie, seule cette portion de la source est posée (entree et sortie se comptent dans le média source, pas dans la timeline). Mode \"libre\" (défaut) : échoue si la place est déjà occupée. Mode \"ecraser\" : remplace ce qui se trouve à cet endroit sur la piste. Mode \"inserer\" : pousse vers la droite tout ce qui suit, sur toutes les pistes non verrouillées. Un média vidéo avec son pose aussi sa partie audio sur la piste audio associée, et les deux clips sont groupés. Ne pas utiliser pour un titre (ajouter_titre) ni pour bouger un clip déjà posé (deplacer_clip). Renvoie { ok, clip_id, clip_audio_id (ou null), piste_id, position {i, tc}, duree {i, tc} }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "media_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identifiant du média dans le chutier, lu dans lister_medias (champ id)."
+        },
+        "piste_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Piste de destination. Une piste vidéo pour de l'image, une piste audio pour du son seul."
+        },
+        "position": {
+          "description": "Début du clip sur la timeline. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "entree": {
+          "description": "Point d'entrée dans le média source. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "sortie": {
+          "description": "Point de sortie dans le média source : la première image qui n'est PAS posée (sortie - entree = durée du clip). Strictement après entree. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "partie": {
+          "type": "string",
+          "enum": [
+            "video_et_audio",
+            "video",
+            "audio"
+          ],
+          "description": "Quelle partie du média poser. Défaut : video_et_audio. \"audio\" pour ne garder que le son d'une vidéo (voix off, ambiance), \"video\" pour un plan de coupe muet."
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "libre",
+            "ecraser",
+            "inserer"
+          ],
+          "description": "Comportement si la place est occupée. Défaut : libre."
+        }
+      },
+      "required": [
+        "media_id",
+        "piste_id",
+        "position"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/timeline2/model/timelinemodel.hpp:TimelineModel::requestClipInsertion (mode libre ; le préfixe A ou V devant l'id du chutier donne audio seul ou vidéo seule) ; src/timeline2/model/timelinefunctions.hpp:TimelineFunctions::insertZone (entree/sortie, modes ecraser et inserer via le booléen overwrite). Déjà exposé en D-Bus sous une forme pauvre : MainWindow::addTimelineClip(url).",
+    "x_confirmation": false
+  },
+  {
+    "name": "couper_clip",
+    "description": "Coupe un clip en deux à une position de la timeline (outil rasoir). À utiliser pour retirer un passage, raccourcir un plan par le milieu, préparer un J-cut. La position doit tomber strictement à l'intérieur du clip. Si le clip est groupé avec son audio, les deux sont coupés au même endroit. Ne supprime rien : les deux morceaux restent en place. Ne pas utiliser pour raccourcir un clip par un bout (rogner_clip est plus simple). Renvoie { ok, clip_gauche_id, clip_droit_id, position {i, tc} }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant du clip sur la timeline, lu dans etat_timeline (champ id). Valable pour la session en cours seulement."
+        },
+        "position": {
+          "description": "Endroit de la coupe sur la timeline (pas dans le média source). Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "clip_id",
+        "position"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/timeline2/model/timelinefunctions.hpp:TimelineFunctions::requestClipCut(timeline, clipId, position)",
+    "x_confirmation": false
+  },
+  {
+    "name": "couper_toutes_pistes",
+    "description": "Coupe tous les clips de toutes les pistes non verrouillées à une position de la timeline. À utiliser avant de retirer un passage entier du montage (image, voix et musique ensemble). Ne pas utiliser si une seule piste est concernée (couper_clip). Renvoie { ok, position {i, tc}, clips_coupes: [ { clip_gauche_id, clip_droit_id, piste_id } ] }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "position": {
+          "description": "Endroit de la coupe sur la timeline. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "position"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/timeline2/model/timelinefunctions.hpp:TimelineFunctions::requestClipCutAll(timeline, position)",
+    "x_confirmation": false
+  },
+  {
+    "name": "supprimer_clip",
+    "description": "Retire un ou plusieurs clips de la timeline. Le média reste dans le chutier et le fichier reste sur le disque : seul le clip posé disparaît. Avec refermer = true, le vide laissé est refermé (suppression en ripple) et tout ce qui suit avance. Un clip groupé avec son audio part avec lui, sauf si garder_groupe = true. À utiliser pour retirer un passage, un silence, un plan refusé. Ne pas utiliser pour raccourcir un clip (rogner_clip). Demande une confirmation de la personne, sauf si la suppression figurait dans un plan qu'elle a accepté pendant ce tour. Renvoie { ok, supprimes: [clip_id], duree_retiree {i, tc} }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_ids": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minItems": 1,
+          "maxItems": 200,
+          "description": "Clips à retirer, lus dans etat_timeline."
+        },
+        "refermer": {
+          "type": "boolean",
+          "description": "true : referme le vide sur toutes les pistes non verrouillées. Défaut : false (le vide reste)."
+        },
+        "garder_groupe": {
+          "type": "boolean",
+          "description": "true : ne retire que le clip nommé, pas ses partenaires de groupe (son audio lié). Défaut : false."
+        }
+      },
+      "required": [
+        "clip_ids"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/timeline2/model/timelinemodel.hpp:TimelineModel::requestItemDeletion(itemId) et requestGroupDeletion ; refermer = true s'appuie sur src/timeline2/model/timelinefunctions.hpp:TimelineFunctions::requestDeleteBlankAt ou removeSpace",
+    "x_confirmation": true
+  },
+  {
+    "name": "deplacer_clip",
+    "description": "Déplace un clip vers une autre position ou une autre piste. La piste d'arrivée doit être du même type (vidéo vers vidéo, audio vers audio) et la place doit être libre, sinon l'outil échoue sans rien changer. Un clip groupé emmène son groupe, sauf si seul = true. À utiliser pour réordonner des plans, caler un son sur l'image, décaler une musique. Ne pas utiliser pour changer la durée (rogner_clip). Renvoie { ok, clip_id, piste_id, position {i, tc} }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant du clip sur la timeline, lu dans etat_timeline (champ id). Valable pour la session en cours seulement."
+        },
+        "piste_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Piste d'arrivée. Donner la piste actuelle pour un simple décalage dans le temps."
+        },
+        "position": {
+          "description": "Nouveau début du clip sur la timeline. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "seul": {
+          "type": "boolean",
+          "description": "true : déplace ce clip sans son groupe (décaler le son par rapport à l'image, par exemple). Défaut : false."
+        }
+      },
+      "required": [
+        "clip_id",
+        "piste_id",
+        "position"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/timeline2/model/timelinemodel.hpp:TimelineModel::requestClipMove(clipId, trackId, position, moveMirrorTracks) ; groupe : requestGroupMove",
+    "x_confirmation": false
+  },
+  {
+    "name": "rogner_clip",
+    "description": "Change la durée d'un clip en tirant son début ou sa fin (trim). cote = \"fin\" garde le début en place, cote = \"debut\" garde la fin en place. On ne peut pas allonger un clip au-delà de son média source (sauf titres et images fixes). Avec refermer = true, ce qui suit avance ou recule d'autant (ripple). Avec seul = true, seul ce clip est rogné même s'il est groupé avec son audio : c'est ce qui permet un J-cut (le son du plan suivant commence avant son image) ou un L-cut (le son du plan continue sous l'image suivante). Renvoie { ok, clip_id, position {i, tc}, duree {i, tc}, entree {i, tc}, sortie {i, tc} }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant du clip sur la timeline, lu dans etat_timeline (champ id). Valable pour la session en cours seulement."
+        },
+        "cote": {
+          "type": "string",
+          "enum": [
+            "debut",
+            "fin"
+          ],
+          "description": "Le bout du clip que l'on tire."
+        },
+        "duree": {
+          "description": "Nouvelle durée totale du clip. Nombre d'images (entier, au moins 1) ou timecode \"HH:MM:SS:II\".",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "refermer": {
+          "type": "boolean",
+          "description": "true : rognage en ripple, la suite du montage suit. Défaut : false."
+        },
+        "seul": {
+          "type": "boolean",
+          "description": "true : ne rogne que ce clip, pas son partenaire de groupe. Défaut : false."
+        }
+      },
+      "required": [
+        "clip_id",
+        "cote",
+        "duree"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/timeline2/model/timelinemodel.hpp:TimelineModel::requestItemResize(itemId, size, right, logUndo, snapDistance, allowSingleResize) ; ripple : TimelineModel::requestItemRippleResize",
+    "x_confirmation": false
+  },
+  {
+    "name": "changer_vitesse_clip",
+    "description": "Accélère ou ralentit un clip. 100 = vitesse normale, 50 = ralenti deux fois, 200 = accéléré deux fois, valeur négative = lecture à l'envers. La durée du clip sur la timeline change en proportion : vérifier la place disponible avant un ralenti. À utiliser pour un ralenti de drone, un accéléré de trajet. Ne pas utiliser sur une voix sans conserver_hauteur. Renvoie { ok, clip_id, vitesse_pourcent, duree {i, tc} }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant du clip sur la timeline, lu dans etat_timeline (champ id). Valable pour la session en cours seulement."
+        },
+        "vitesse_pourcent": {
+          "type": "number",
+          "minimum": -1000,
+          "maximum": 1000,
+          "description": "Vitesse en pourcentage de la vitesse normale. 0 est interdit."
+        },
+        "conserver_hauteur": {
+          "type": "boolean",
+          "description": "true : le son garde sa hauteur (pas de voix de canard). Défaut : true."
+        }
+      },
+      "required": [
+        "clip_id",
+        "vitesse_pourcent"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/timeline2/model/timelinemodel.hpp:TimelineModel::requestClipTimeWarp(clipId, speed, pitchCompensate, changeDuration)",
+    "x_confirmation": false
+  },
+  {
+    "name": "supprimer_espace",
+    "description": "Referme le vide qui se trouve à une position donnée sur une piste : tout ce qui suit avance jusqu'à toucher le clip précédent. Avec toutes_pistes = true, le même vide est refermé sur toutes les pistes (il faut alors que chaque piste ait un vide au moins aussi grand à cet endroit, sinon l'outil échoue). À utiliser après des suppressions faites sans refermer. Aucun clip n'est supprimé. Renvoie { ok, duree_refermee {i, tc} }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "piste_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant de la piste, lu dans etat_timeline (champ id de la piste)."
+        },
+        "position": {
+          "description": "Une position située à l'intérieur du vide à refermer. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "toutes_pistes": {
+          "type": "boolean",
+          "description": "true : referme sur toutes les pistes pour garder la synchro. Défaut : false."
+        }
+      },
+      "required": [
+        "piste_id",
+        "position"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/timeline2/model/timelinefunctions.hpp:TimelineFunctions::requestDeleteBlankAt(timeline, trackId, position, affectAllTracks)",
+    "x_confirmation": false
+  },
+  {
+    "name": "ajouter_piste",
+    "description": "Ajoute une piste vidéo ou audio à la timeline. À utiliser quand il manque une piste pour un titre, un plan de coupe, une musique ou des bruitages. Ne pas créer de piste si une piste libre du bon type existe déjà. Renvoie { ok, piste_id, nom, type, rang }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "video",
+            "audio"
+          ],
+          "description": "Type de piste."
+        },
+        "nom": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "Nom affiché dans l'en-tête de piste, par exemple \"Titres\", \"Voix\", \"Musique\", \"Bruitages\"."
+        },
+        "rang": {
+          "type": "integer",
+          "minimum": -1,
+          "description": "Rang d'insertion dans la pile des pistes, tel que donné par etat_timeline. -1 (défaut) : au-dessus des pistes vidéo pour une piste vidéo, en dessous des pistes audio pour une piste audio."
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/timeline2/model/timelinemodel.hpp:TimelineModel::requestTrackInsertion(pos, id, trackName, audioTrack)",
+    "x_confirmation": false
+  },
+  {
+    "name": "regler_piste",
+    "description": "Renomme une piste, la verrouille, ou la masque (piste vidéo cachée, piste audio muette). Verrouiller une piste la protège des coupes et des insertions en ripple. Ne donne que les champs à changer. Renvoie { ok, piste_id, nom, verrouillee, masquee }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "piste_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant de la piste, lu dans etat_timeline (champ id de la piste)."
+        },
+        "nom": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "Nouveau nom de la piste."
+        },
+        "verrouillee": {
+          "type": "boolean",
+          "description": "true : plus rien ne peut modifier cette piste."
+        },
+        "masquee": {
+          "type": "boolean",
+          "description": "true : image cachée (piste vidéo) ou son coupé (piste audio), à la lecture comme à l'export."
+        }
+      },
+      "required": [
+        "piste_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/timeline2/model/timelineitemmodel.hpp:TimelineItemModel::setTrackName et setTrackProperty(tid, \"hide\", valeur) ; src/timeline2/model/timelinemodel.hpp:TimelineModel::setTrackLockedState(trackId, lock)",
+    "x_confirmation": false
+  },
+  {
+    "name": "ajouter_transition",
+    "description": "Crée un fondu enchaîné (mix) entre deux clips qui se touchent sur la même piste. Les deux clips doivent avoir de la matière en réserve au-delà de leur point de coupe, sinon l'outil échoue et le dit. À utiliser avec retenue : la coupe franche reste la règle, le fondu enchaîné marque un passage de temps ou de lieu. Ne pas utiliser pour une entrée ou une sortie au noir (ajouter_fondu). Renvoie { ok, clip_gauche_id, clip_droit_id, duree {i, tc} }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le clip de gauche (celui qui sort). Le clip de droite est celui qui le touche sur la même piste."
+        },
+        "duree": {
+          "description": "Durée du fondu enchaîné. 12 images est une bonne base à 25 i/s. Nombre d'images (entier, au moins 1) ou timecode \"HH:MM:SS:II\".",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "fondu",
+            "volet",
+            "glissement"
+          ],
+          "description": "Défaut : fondu (luma). volet = wipe, glissement = slide."
+        }
+      },
+      "required": [
+        "clip_id",
+        "duree"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/timeline2/model/timelinemodel.hpp:TimelineModel::mixClip(idToMove, mixId, delta) et requestClipMix(mixId, clipIds, mixDurations, trackId, position, ...) ; les types viennent de data/transitions (luma.xml, wipe.xml, slide.xml)",
+    "x_confirmation": false
+  },
+  {
+    "name": "ajouter_fondu",
+    "description": "Pose un fondu d'entrée ou de sortie sur un clip. Sur un clip vidéo : depuis le noir ou vers le noir. Sur un clip audio : montée ou descente du volume. Si le fondu existe déjà, sa durée est remplacée. duree = 0 retire le fondu. Renvoie { ok, clip_id, cote, duree {i, tc} }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant du clip sur la timeline, lu dans etat_timeline (champ id). Valable pour la session en cours seulement."
+        },
+        "cote": {
+          "type": "string",
+          "enum": [
+            "entree",
+            "sortie"
+          ],
+          "description": "entree : au début du clip. sortie : à la fin."
+        },
+        "duree": {
+          "description": "Durée du fondu. 0 retire le fondu. Repères à 25 i/s : 6 images pour adoucir une coupe son, 25 pour une entrée de musique, 50 pour une sortie de film. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "clip_id",
+        "cote",
+        "duree"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/effects/effectstack/model/effectstackmodel.hpp:EffectStackModel::adjustFadeLength(duration, fromStart, audioFade, videoFade, logUndo) et removeFade(fromStart) ; effets data/effects/fadein.xml, fadeout.xml, fade_from_black.xml, fade_to_black.xml",
+    "x_confirmation": false
+  },
+  {
+    "name": "ajouter_titre",
+    "description": "Crée un clip de titre (texte sur fond transparent) dans le chutier et le pose sur une piste vidéo, au-dessus de l'image. À utiliser pour un titre d'ouverture, un nom en bas d'écran, un carton de fin. Le texte est écrit tel quel : pas de faute, pas de guillemets ajoutés, 40 caractères par ligne au plus. Positions et tailles en pixels du projet (voir le champ projet de etat_timeline). Ne pas utiliser pour des sous-titres de dialogue. Renvoie { ok, clip_id, media_id, piste_id, position {i, tc}, duree {i, tc} }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "texte": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Le texte affiché. Retour à la ligne avec \\n."
+        },
+        "piste_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Piste vidéo située au-dessus de l'image à titrer."
+        },
+        "position": {
+          "description": "Début du titre sur la timeline. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "duree": {
+          "description": "Durée du titre. Compter le temps de lire le texte deux fois : rarement moins de 2 secondes. Nombre d'images (entier, au moins 1) ou timecode \"HH:MM:SS:II\".",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "style": {
+          "type": "string",
+          "enum": [
+            "ouverture",
+            "bas_ecran",
+            "carton",
+            "sous_titre_simple"
+          ],
+          "description": "ouverture : grand, centré. bas_ecran : nom et fonction en bas à gauche. carton : texte centré sur fond plein. sous_titre_simple : petit, centré en bas. Défaut : ouverture."
+        },
+        "police": {
+          "type": "string",
+          "maxLength": 60,
+          "description": "Nom d'une police installée sur la machine. Défaut : celle du projet."
+        },
+        "taille_px": {
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 600,
+          "description": "Hauteur du texte en pixels du projet. Défaut selon le style."
+        },
+        "couleur": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "description": "Couleur du texte en hexadécimal. Défaut : #FFFFFF."
+        },
+        "x_px": {
+          "type": "integer",
+          "description": "Position horizontale du bloc de texte, en pixels du projet depuis la gauche. Défaut selon le style."
+        },
+        "y_px": {
+          "type": "integer",
+          "description": "Position verticale du bloc de texte, en pixels du projet depuis le haut. Défaut selon le style."
+        }
+      },
+      "required": [
+        "texte",
+        "piste_id",
+        "position",
+        "duree"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/bin/clipcreator.hpp:ClipCreator::createTitleClip(properties, duration, name, parentFolder, model) puis src/timeline2/model/timelinemodel.hpp:TimelineModel::requestClipInsertion ; le XML du titre (propriété xmldata) est produit par src/titler/titledocument.h:TitleDocument. Les styles nommés sont à créer (modèles dans data/titles).",
+    "x_confirmation": false
+  },
+  {
+    "name": "ajouter_effet",
+    "description": "Ajoute un effet de la bibliothèque à un clip ou à une piste entière. effet_id est l'identifiant technique de l'effet (exemples : \"qtblend\" pour transformer, \"avfilter.gblur\" pour un flou, \"vignette\", \"freeze\"). Pour l'étalonnage, le son et le recadrage, préférer les outils dédiés (lift_gamma_gain, balance_blancs, regler_gain_clip, transformer_clip) : ils posent le bon effet avec les bonnes unités. Les paramètres sont donnés par leur nom technique, en valeurs texte. Donner clip_id ou piste_id, jamais les deux. Renvoie { ok, effet_index, effet_id, parametres: { nom: valeur } } avec tous les paramètres de l'effet et leurs valeurs, pour pouvoir les régler ensuite.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Clip qui reçoit l'effet. Laisser vide si piste_id est donné."
+        },
+        "piste_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Piste qui reçoit l'effet (il s'applique à tous ses clips). Laisser vide si clip_id est donné."
+        },
+        "effet_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Identifiant technique de l'effet, tel que dans la bibliothèque d'effets."
+        },
+        "parametres": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Paramètres à régler dès la pose, nom technique vers valeur texte. Les autres gardent leur valeur par défaut."
+        }
+      },
+      "required": [
+        "effet_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/timeline2/model/timelinemodel.hpp:TimelineModel::addClipEffect(clipId, effectId) et addTrackEffect(trackId, effectId) ; src/effects/effectstack/model/effectstackmodel.hpp:EffectStackModel::appendEffect(effectId, makeCurrent, params). Un équivalent pauvre existe en D-Bus : MainWindow::addEffect(effectId), sur la sélection courante.",
+    "x_confirmation": false
+  },
+  {
+    "name": "regler_effet",
+    "description": "Change les paramètres d'un effet déjà posé, ou l'active et le désactive sans le retirer. effet_index est le rang de l'effet dans la pile du clip, lu dans etat_timeline (0 = le premier appliqué). Ne touche pas aux keyframes : pour une valeur qui change dans le temps, utiliser poser_keyframe. Renvoie { ok, effet_index, parametres: { nom: valeur } }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Clip qui porte l'effet. Laisser vide si piste_id est donné."
+        },
+        "piste_id": {
+          "type": "integer",
+          "minimum": -1,
+          "description": "Piste qui porte l'effet, ou -1 pour le master (les effets listés dans master_fx). Laisser vide si clip_id est donné."
+        },
+        "effet_index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Rang de l'effet dans la pile."
+        },
+        "parametres": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Paramètres à changer, nom technique vers valeur texte."
+        },
+        "actif": {
+          "type": "boolean",
+          "description": "false : l'effet reste dans la pile mais ne s'applique plus."
+        }
+      },
+      "required": [
+        "effet_index"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/assets/model/assetparametermodel.hpp:AssetParameterModel::setParameter, enveloppé dans src/assets/model/assetcommand.hpp:AssetUpdateCommand (QUndoCommand) ; accès par src/effects/effectstack/model/effectstackmodel.hpp:EffectStackModel::getEffectStackRow(row)",
+    "x_confirmation": false
+  },
+  {
+    "name": "supprimer_effet",
+    "description": "Retire un effet de la pile d'un clip ou d'une piste. L'action est annulable et ne touche ni au clip ni au média. Après l'appel, les rangs des effets suivants baissent de 1 : relire etat_timeline avant d'en retirer un autre. Pour comparer avec et sans, préférer regler_effet avec actif = false. Renvoie { ok, effet_id_retire, effets_restants: [effet_id] }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Clip qui porte l'effet. Laisser vide si piste_id est donné."
+        },
+        "piste_id": {
+          "type": "integer",
+          "minimum": -1,
+          "description": "Piste qui porte l'effet, ou -1 pour le master (les effets listés dans master_fx). Laisser vide si clip_id est donné."
+        },
+        "effet_index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Rang de l'effet dans la pile."
+        }
+      },
+      "required": [
+        "effet_index"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/effects/effectstack/model/effectstackmodel.hpp:EffectStackModel::removeEffectWithUndo(assetId, effectName, assetRow, undo, redo)",
+    "x_confirmation": false
+  },
+  {
+    "name": "poser_keyframe",
+    "description": "Pose ou met à jour une image clé sur un paramètre animable d'un effet. La position se compte depuis le début du clip (0 = première image du clip), pas depuis le début de la timeline. S'il existe déjà une image clé à cette position, sa valeur est remplacée. À utiliser pour un zoom lent, une baisse de volume progressive, un déplacement de titre. Poser au moins deux images clés pour obtenir un mouvement. Renvoie { ok, parametre, keyframes: [ { i, valeur, interpolation } ] } avec toutes les images clés du paramètre après l'appel.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant du clip sur la timeline, lu dans etat_timeline (champ id). Valable pour la session en cours seulement."
+        },
+        "effet_index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Rang de l'effet dans la pile du clip."
+        },
+        "parametre": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "Nom technique du paramètre animable, par exemple \"level\" (volume, en dB) ou \"rect\" (transformer : \"x y largeur hauteur opacite\", en pixels du projet, opacité de 0 à 1)."
+        },
+        "position_dans_clip": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Position de l'image clé, en images depuis le début du clip."
+        },
+        "valeur": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Valeur au format du paramètre, en texte. Exemples : \"-6\" pour level, \"0 0 1920 1080 1\" pour rect."
+        },
+        "interpolation": {
+          "type": "string",
+          "enum": [
+            "lineaire",
+            "discrete",
+            "courbe",
+            "courbe_douce",
+            "cubique_entree",
+            "cubique_sortie",
+            "exponentielle_entree",
+            "exponentielle_sortie",
+            "circulaire_entree",
+            "circulaire_sortie",
+            "rebond_entree",
+            "rebond_sortie",
+            "elastique_entree",
+            "elastique_sortie"
+          ],
+          "description": "Façon d'aller vers l'image clé suivante (les 14 interpolations de Kdenlive). Défaut : lineaire. courbe_douce convient aux mouvements de caméra."
+        },
+        "supprimer": {
+          "type": "boolean",
+          "description": "true : retire l'image clé à cette position au lieu d'en poser une. Défaut : false."
+        }
+      },
+      "required": [
+        "clip_id",
+        "effet_index",
+        "parametre",
+        "position_dans_clip",
+        "valeur"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/assets/keyframes/model/keyframemodel.hpp:KeyframeModel::addKeyframe(GenTime, KeyframeType::KeyframeEnum, QVariant), updateKeyframe, removeKeyframe ; regroupés par src/assets/keyframes/model/keyframemodellist.hpp:KeyframeModelList ; types d'interpolation : src/definitions.h:KeyframeType::KeyframeEnum",
+    "x_confirmation": false
+  },
+  {
+    "name": "transformer_clip",
+    "description": "Règle la position, la taille, la rotation et l'opacité d'un clip vidéo, d'une image ou d'un titre, en posant ou en mettant à jour l'effet Transformer. Tout est en pixels du projet : x_px et y_px donnent le coin haut gauche de l'image, largeur_px et hauteur_px sa taille à l'écran. À utiliser pour recadrer un plan 16:9 dans un projet 9:16, faire une incrustation dans un coin, zoomer dans une photo. Valeurs fixes sur toute la durée du clip : pour un mouvement, enchaîner avec poser_keyframe sur le paramètre \"rect\". Renvoie { ok, effet_index, rect: { x_px, y_px, largeur_px, hauteur_px, opacite }, rotation_degres }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant du clip sur la timeline, lu dans etat_timeline (champ id). Valable pour la session en cours seulement."
+        },
+        "x_px": {
+          "type": "integer",
+          "description": "Position horizontale du coin haut gauche, en pixels du projet. Négatif possible (image qui déborde)."
+        },
+        "y_px": {
+          "type": "integer",
+          "description": "Position verticale du coin haut gauche, en pixels du projet."
+        },
+        "largeur_px": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Largeur affichée, en pixels du projet."
+        },
+        "hauteur_px": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Hauteur affichée, en pixels du projet. Garder le rapport largeur/hauteur de la source pour ne pas déformer."
+        },
+        "rotation_degres": {
+          "type": "number",
+          "minimum": -360,
+          "maximum": 360,
+          "description": "Rotation en degrés, sens horaire. Défaut : 0."
+        },
+        "opacite": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "0 = invisible, 1 = opaque. Défaut : 1."
+        }
+      },
+      "required": [
+        "clip_id",
+        "x_px",
+        "y_px",
+        "largeur_px",
+        "hauteur_px"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "effet data/effects/qtblend.xml (filtre MLT qtblend, paramètres rect, rotation, compositing, distort) posé par src/effects/effectstack/model/effectstackmodel.hpp:EffectStackModel::appendEffect puis réglé par AssetParameterModel::setParameter",
+    "x_confirmation": false
+  },
+  {
+    "name": "stabiliser",
+    "description": "Stabilise un plan filmé à la main, comme le bouton « Stabiliser » de la section Outils. leger : lisse les petites secousses, image à peine recadrée. moyen (conseillé) : image posée. fort : la plus stable, comme sur un rail, recadre davantage les bords. aucun : remet le média d'origine. La première fois, le mouvement du média est analysé en arrière-plan (quelques secondes par minute de vidéo) : la réponse dit etat en_cours et pourcent ; rappeler l'outil avec le même niveau pour savoir où il en est. Ensuite, changer de niveau est immédiat (etat fait). Le plan garde sa place, son entrée, sa sortie et ses effets ; seule l'image est touchée, pas le son. Vitesse du plan à 100 % seulement. Renvoie { ok, clip_id (le clip vidéo), niveau, etat (en_cours, fait ou retire), pourcent? }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le plan : son clip vidéo, ou son clip audio (l'image groupée avec lui est prise)."
+        },
+        "niveau": {
+          "type": "string",
+          "enum": [
+            "leger",
+            "moyen",
+            "fort",
+            "aucun"
+          ],
+          "description": "Défaut : moyen."
+        }
+      },
+      "required": [
+        "clip_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/koracutstabilizer.cpp : analyse vid.stab (melt, filtre vidstab, shakiness 6, accuracy 10) une fois par média, puis un .mlt par niveau (smoothing 8/15/30, optzoom 2/1/1) ; TimelineItemModel::processTimelineReplacement repointe le plan (une étape d'annulation).",
+    "x_confirmation": false
+  },
+  {
+    "name": "sous_titres_poser",
+    "description": "Pose des sous-titres de dialogue sur la piste de sous-titres de la séquence ouverte (la piste native, rendue par libass et incrustée à l'export). À utiliser pour sous-titrer une interview, un podcast, une vidéo verticale : cartons courts et rythmés, mots clés en couleur. Chaque carton a debut, fin (temps de la timeline) et texte ; un retour à la ligne avec \\n (deux lignes au plus) ; un mot entre *étoiles* prend la couleur accent de son style. Les styles sont nommés (Default existe toujours) et se règlent en pixels du projet ; la taille et la marge par défaut suivent l'orientation (en vertical, au-dessus de la zone des boutons). remplacer (vrai par défaut) retire d'abord les sous-titres de la séquence. Relis et corrige l'orthographe avant : le texte est posé tel quel. Pour ajouter un titre ou un nom en bas d'écran, utiliser ajouter_titre ou motion_element_seul. Annulable (le retrait et la pose sont deux étapes). Renvoie { ok, cartons, retires, styles, format, premier, dernier, fichier }.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cartons"
+      ],
+      "properties": {
+        "cartons": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2000,
+          "description": "Les cartons, dans l'ordre, sans chevauchement.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "debut",
+              "fin",
+              "texte"
+            ],
+            "properties": {
+              "debut": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+                  }
+                ],
+                "description": "Début du carton sur la timeline, en images ou timecode HH:MM:SS:II."
+              },
+              "fin": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+                  }
+                ],
+                "description": "Fin du carton (exclue)."
+              },
+              "texte": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "description": "Le texte, tel qu'il s'affiche. *mot* : en couleur accent. \\n : nouvelle ligne."
+              },
+              "style": {
+                "type": "string",
+                "maxLength": 30,
+                "description": "Nom du style (styles). Défaut : Default."
+              }
+            }
+          }
+        },
+        "styles": {
+          "type": "object",
+          "description": "Nom du style vers ses réglages. Default est posé d'office s'il n'est pas donné.",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "police": {
+                "type": "string",
+                "maxLength": 60,
+                "description": "Police installée sur la machine. Défaut : Avenir Next."
+              },
+              "taille_px": {
+                "type": "integer",
+                "minimum": 12,
+                "maximum": 300,
+                "description": "Hauteur du texte en pixels du projet. Défaut : 3,4 % de la hauteur en vertical, 5,2 % en horizontal."
+              },
+              "gras": {
+                "type": "boolean",
+                "description": "Défaut : vrai."
+              },
+              "couleur": {
+                "type": "string",
+                "pattern": "^#[0-9A-Fa-f]{6}$",
+                "description": "Couleur du texte. Défaut #FFFFFF."
+              },
+              "accent": {
+                "type": "string",
+                "pattern": "^#[0-9A-Fa-f]{6}$",
+                "description": "Couleur des mots écrits entre *étoiles*. Défaut #FFD166."
+              },
+              "contour_couleur": {
+                "type": "string",
+                "pattern": "^#[0-9A-Fa-f]{6}$",
+                "description": "Couleur du contour. Défaut #000000."
+              },
+              "contour_px": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 20,
+                "description": "Épaisseur du contour. Défaut 6 en vertical, 5 en horizontal."
+              },
+              "ombre_px": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 20,
+                "description": "Ombre portée. Défaut 0."
+              },
+              "fond_couleur": {
+                "type": "string",
+                "pattern": "^#[0-9A-Fa-f]{6}$",
+                "description": "Si donné : un bandeau plein derrière le texte, au lieu du contour."
+              },
+              "position": {
+                "type": "string",
+                "enum": [
+                  "bas",
+                  "milieu",
+                  "haut"
+                ],
+                "description": "Ancrage vertical. Défaut bas."
+              },
+              "marge_v_px": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2000,
+                "description": "Distance au bord (bas ou haut). Défaut : 30 % de la hauteur en vertical (au-dessus des boutons des réseaux), 7 % en horizontal."
+              },
+              "marge_h_px": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000,
+                "description": "Marges gauche et droite. Défaut 8 % de la largeur."
+              },
+              "entree": {
+                "type": "string",
+                "enum": [
+                  "pop",
+                  "fondu",
+                  "monte",
+                  "aucune"
+                ],
+                "description": "Comment chaque carton arrive. pop (défaut) : il jaillit en 0,2 s ; fondu ; monte ; aucune."
+              },
+              "majuscules": {
+                "type": "boolean",
+                "description": "Tout en capitales. Défaut faux."
+              }
+            }
+          }
+        },
+        "remplacer": {
+          "type": "boolean",
+          "description": "Vrai (défaut) : retire les sous-titres déjà posés dans la séquence avant de poser les nouveaux."
+        }
+      }
+    },
+    "x_kdenlive": "src/koracut/koracutagenttoolsmontage.cpp:sousTitresPoser : écrit un fichier ASS (styles, PlayRes au format de la séquence) puis SubtitleModel::importSubtitle ; la séquence reçoit sa piste de sous-titres par MainWindow::showSubtitleTrack",
+    "x_confirmation": false
+  },
+  {
+    "name": "rendre_apercu",
+    "description": "Rend à l'avance un passage de la séquence ouverte (le bouton « Rendu » de la timeline) pour que les effets, l'étalonnage, les compositions et le Motion se lisent sans saccade. Le rendu tourne en tâche de fond, en priorité basse, et se met en pause pendant la lecture. Il ne change pas le montage et ne s'exporte pas : c'est un cache, effacé et refait à chaque changement du passage. À appeler après un étalonnage ou des effets lourds, avant de faire lire la personne. Sans in/out : zone vaut « zone » (la zone du moniteur Programme, ou toute la séquence s'il n'y en a pas), « selection » (les clips sélectionnés) ou « tout ». Renvoie l'état comme etat_apercu, plus demande { mode, in, out } et, avec attendre, termine.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "zone": {
+          "type": "string",
+          "enum": [
+            "zone",
+            "selection",
+            "tout"
+          ],
+          "description": "Le passage à rendre quand in et out ne sont pas donnés. Par défaut : zone."
+        },
+        "in": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ],
+          "description": "Début du passage, en images ou en timecode HH:MM:SS:II. Avec out."
+        },
+        "out": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ],
+          "description": "Fin du passage, exclue. Avec in."
+        },
+        "attendre": {
+          "type": "boolean",
+          "description": "true : l'outil rend la main quand le rendu est fini (10 minutes au plus). Par défaut false : le rendu continue pendant que tu travailles."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "etat_apercu",
+    "description": "Lit l'état du rendu d'aperçu de la séquence ouverte : les passages rendus (lecture fluide), ceux qui restent à rendre, le rendu en cours et son avancement, si le rendu automatique est actif, la taille du cache et son plafond. Ne change rien. Renvoie { automatique, en_cours, progression, morceau_en_cours?, rendues: [{ in, out }], a_rendre: [{ in, out }], secondes_rendues, secondes_a_rendre, cache: { mo, plafond_mo, dossier }, profil }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "couleur_clip",
+    "description": "Change la couleur d'un ou plusieurs clips dans la timeline, comme les couleurs de clip de DaVinci Resolve ou les étiquettes de Premiere Pro. Sert à repérer d'un coup d'œil : les plans d'interview, les plans de coupe, les passages à revoir. La couleur ne change rien à l'image ni au son. « defaut » rend au clip la couleur de sa piste. Annulable en une étape. Renvoie { ok, clip_ids, couleur }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_ids": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minItems": 1,
+          "maxItems": 500,
+          "description": "Les clips à colorer, lus dans etat_timeline."
+        },
+        "couleur": {
+          "type": "string",
+          "pattern": "^(bleu|violet|vert|orange|rouge|jaune|rose|turquoise|olive|brun|bleu_nuit|gris|defaut|#[0-9A-Fa-f]{6})$",
+          "description": "Un nom de la palette (bleu, violet, vert, orange, rouge, jaune, rose, turquoise, olive, brun, bleu_nuit, gris), une couleur « #RRGGBB », ou « defaut ». « defaut » : le clip reprend la couleur de sa piste."
+        }
+      },
+      "required": [
+        "clip_ids",
+        "couleur"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/timeline2/model/timelinefunctions.hpp:TimelineFunctions::koraCutSetClipsColor (propriété kdenlive:koracut_color du clip de la timeline)",
+    "x_confirmation": false
+  },
+  {
+    "name": "couleur_piste",
+    "description": "Change la couleur d'une piste : un filet dans sa tête de piste, et la couleur de tous ses clips qui n'ont pas leur propre couleur (couleur_clip). Sert à ranger une timeline chargée : les voix en vert, la musique en orange, les plans de coupe en violet. Ne change rien à l'image ni au son. « defaut » rend la couleur du type de piste. Annulable en une étape. Renvoie { ok, piste_id, couleur }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "piste_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant de la piste, lu dans etat_timeline (champ id de la piste)."
+        },
+        "couleur": {
+          "type": "string",
+          "pattern": "^(bleu|violet|vert|orange|rouge|jaune|rose|turquoise|olive|brun|bleu_nuit|gris|defaut|#[0-9A-Fa-f]{6})$",
+          "description": "Un nom de la palette (bleu, violet, vert, orange, rouge, jaune, rose, turquoise, olive, brun, bleu_nuit, gris), une couleur « #RRGGBB », ou « defaut ». « defaut » : la couleur du type de piste."
+        }
+      },
+      "required": [
+        "piste_id",
+        "couleur"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/timeline2/model/timelinefunctions.hpp:TimelineFunctions::koraCutSetTrackColor (propriété de piste kdenlive:koracut_color)",
+    "x_confirmation": false
+  }
+]

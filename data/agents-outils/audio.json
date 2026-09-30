@@ -1,0 +1,667 @@
+[
+  {
+    "name": "mesurer_audio",
+    "description": "Mesure le niveau sonore d'un clip, d'une piste ou du mixage complet, sans rien modifier. À appeler avant et après tout réglage de niveau. Renvoie { ok, lufs_integre, lufs_court_terme_max, plage_dynamique_lu, crete_vraie_dbtp, rms_db, duree {i, tc} }. Repères : -14 LUFS pour YouTube et les réseaux, -23 LUFS pour la télévision (EBU R128), crête vraie sous -1 dBTP dans tous les cas.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "cible": {
+          "type": "string",
+          "enum": [
+            "clip",
+            "piste",
+            "mixage"
+          ],
+          "description": "Ce qu'on mesure. mixage = la sortie finale, toutes pistes ensemble."
+        },
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Requis si cible = clip."
+        },
+        "piste_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Requis si cible = piste."
+        },
+        "debut": {
+          "description": "Début de la plage mesurée sur la timeline. Défaut : le début. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "fin": {
+          "description": "Fin de la plage mesurée : dernière image mesurée, comprise. Défaut : la fin. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "cible"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "à créer. Kdenlive affiche des VU-mètres (src/audiomixer/mixerwidget.hpp, filtre MLT audiolevel) mais ne renvoie aucune mesure LUFS. S'appuiera sur l'analyse de l'effet data/effects/loudness.xml (tâche src/jobs/filtertask.h:FilterTask::start, résultat dans le paramètre results) ou sur le filtre MLT loudness_meter.",
+    "x_confirmation": false
+  },
+  {
+    "name": "regler_gain_clip",
+    "description": "Règle le volume d'un clip audio, en décibels. 0 dB = inchangé, -6 dB = deux fois moins fort à l'oreille, +6 dB = deux fois plus fort. Pose l'effet Volume s'il n'existe pas, le met à jour sinon. Valeur fixe sur tout le clip : pour une variation dans le temps, utiliser appliquer_ducking ou poser_keyframe sur le paramètre \"level\". Ne pas dépasser +12 dB : au-delà, c'est la prise de son qu'il faut revoir. Renvoie { ok, clip_id, effet_index, gain_db }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant du clip sur la timeline, lu dans etat_timeline (champ id). Valable pour la session en cours seulement."
+        },
+        "gain_db": {
+          "type": "number",
+          "minimum": -60,
+          "maximum": 24,
+          "description": "Gain en décibels. Négatif pour baisser."
+        },
+        "relatif": {
+          "type": "boolean",
+          "description": "true : gain_db s'ajoute au gain actuel (\"6 dB plus bas\"). false (défaut) : gain_db remplace le gain actuel."
+        }
+      },
+      "required": [
+        "clip_id",
+        "gain_db"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "effet data/effects/volume.xml (filtre MLT volume, paramètre level en dB, animable) posé par src/effects/effectstack/model/effectstackmodel.hpp:EffectStackModel::appendEffect",
+    "x_confirmation": false
+  },
+  {
+    "name": "regler_piste_audio",
+    "description": "Règle une piste audio entière, comme sur une tranche de table de mixage : gain en dB, panoramique, muet, solo. À utiliser pour équilibrer les familles entre elles (voix, musique, bruitages). Pour un seul clip, utiliser regler_gain_clip. Ne donner que les champs à changer. Renvoie { ok, piste_id, gain_db, panoramique, muet, solo }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "piste_id": {
+          "type": "integer",
+          "minimum": -1,
+          "description": "Piste audio, ou -1 pour la tranche master (seul gain_db s'applique alors)."
+        },
+        "gain_db": {
+          "type": "number",
+          "minimum": -60,
+          "maximum": 24,
+          "description": "Gain de la piste en décibels. 0 = inchangé."
+        },
+        "panoramique": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "-1 = tout à gauche, 0 = centre, 1 = tout à droite. Une voix reste au centre."
+        },
+        "muet": {
+          "type": "boolean",
+          "description": "true : la piste ne sonne plus, à la lecture comme à l'export."
+        },
+        "solo": {
+          "type": "boolean",
+          "description": "true : seule cette piste sonne, pour l'écoute. À remettre à false avant de rendre la main."
+        }
+      },
+      "required": [
+        "piste_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/audiomixer/mixerwidget.hpp:MixerWidget (pose sur la piste les filtres MLT volume et panner, gère mute et solo) et src/audiomixer/mixermanager.hpp:MixerManager ; l'interface est pilotée par les curseurs, une entrée par programme est à créer. Muet : TimelineItemModel::setTrackProperty(tid, \"hide\", valeur).",
+    "x_confirmation": false
+  },
+  {
+    "name": "appliquer_ducking",
+    "description": "Baisse automatiquement une piste de musique chaque fois qu'il y a de la voix sur une autre piste, puis la remonte dans les silences. Pose des images clés de volume sur les clips de musique. Repères : musique 6 à 12 dB sous la voix, descente en 8 à 12 images, remontée en 20 à 30 images, pas de remontée pour un silence de moins d'une seconde. Relancer l'outil remplace le ducking précédent. Renvoie { ok, zones: [ { debut {i, tc}, fin {i, tc} } ], keyframes_poses, clips_modifies: [clip_id] }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "piste_musique_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "La piste qui baisse."
+        },
+        "piste_voix_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "La piste qui commande (voix, interview, voix off)."
+        },
+        "reduction_db": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 30,
+          "description": "De combien de décibels la musique baisse sous la voix. Défaut : 9."
+        },
+        "seuil_db": {
+          "type": "number",
+          "minimum": -70,
+          "maximum": -10,
+          "description": "Niveau au-dessus duquel on considère qu'il y a de la voix. Défaut : -35."
+        },
+        "descente_images": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Durée de la baisse, en images. Défaut : 10."
+        },
+        "remontee_images": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "description": "Durée de la remontée, en images. Défaut : 25."
+        },
+        "silence_mini_images": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "description": "En dessous de cette durée de silence, la musique reste basse. Défaut : une seconde de projet."
+        }
+      },
+      "required": [
+        "piste_musique_id",
+        "piste_voix_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "à créer. Kdenlive n'a pas de ducking (l'effet acompressor ne reçoit pas de signal externe dans MLT). Composé de la détection de voix (niveaux mis en cache par src/jobs/audiolevels/audiolevelstask.h:AudioLevelsTask::getLevelsFromCache) et d'images clés sur le paramètre level de l'effet volume (KeyframeModel::addKeyframe).",
+    "x_confirmation": false
+  },
+  {
+    "name": "normaliser_loudness",
+    "description": "Amène un clip ou le mixage complet à un niveau cible en LUFS. -14 pour YouTube, Instagram, TikTok et les podcasts, -23 pour la télévision, -16 pour un podcast parlé écouté au casque. L'analyse lit tout l'audio concerné : compter quelques secondes par minute. À faire en dernier, quand l'équilibre entre voix, musique et bruitages est réglé. Ne remplace pas cet équilibre. Sur le mixage, si le gain fait passer la crête au-dessus de crete_max_dbtp, un limiteur est posé juste après sur le master (relancer l'outil le remplace). Renvoie { ok, lufs_avant, lufs_apres, gain_applique_db, crete_vraie_dbtp, limiteur (vrai si posé), effet_index }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "cible": {
+          "type": "string",
+          "enum": [
+            "clip",
+            "mixage"
+          ],
+          "description": "clip : un seul clip. mixage : la sortie finale (effet posé sur le master)."
+        },
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Requis si cible = clip."
+        },
+        "lufs_cible": {
+          "type": "number",
+          "minimum": -50,
+          "maximum": -10,
+          "description": "Niveau visé en LUFS."
+        },
+        "crete_max_dbtp": {
+          "type": "number",
+          "minimum": -9,
+          "maximum": 0,
+          "description": "Plafond de crête vraie en dBTP. Défaut : -1."
+        }
+      },
+      "required": [
+        "cible",
+        "lufs_cible"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "effet data/effects/loudness.xml (filtre MLT loudness, paramètre program de -50 à -10 LUFS, analyse en deux passes lancée par src/jobs/filtertask.h:FilterTask::start) ; variante une passe : data/effects/avfilter/avfilter_loudnorm.xml (av.l, av.TP, av.LRA). Pose sur le master : TimelineModel::getMasterEffectStackModel.",
+    "x_confirmation": false
+  },
+  {
+    "name": "detecter_silences",
+    "description": "Repère les silences d'une piste ou d'un clip, sans rien modifier. À utiliser avant de resserrer une interview ou de poser un ducking. Renvoie { ok, silences: [ { debut {i, tc}, fin {i, tc}, duree {i, tc} } ], total_silence {i, tc} }, 200 zones au plus, les plus longues d'abord si la liste est tronquée. L'outil entend un niveau, pas des mots : un souffle, une respiration ou une fin de mot douce peuvent passer sous le seuil. Après une coupe, il doit rester environ 12 images de silence entre deux phrases (6 de chaque côté de la coupe, à 25 i/s). Croiser avec transcrire_media pour ne jamais couper un mot.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "piste_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Piste à analyser. Laisser vide si clip_id est donné."
+        },
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Clip à analyser. Laisser vide si piste_id est donné."
+        },
+        "seuil_db": {
+          "type": "number",
+          "minimum": -80,
+          "maximum": -10,
+          "description": "En dessous de ce niveau, c'est un silence. Défaut : -40. Monter à -30 si le lieu est bruyant."
+        },
+        "duree_mini": {
+          "description": "Durée minimale pour compter comme silence. Défaut : 20 images. Nombre d'images (entier, au moins 1) ou timecode \"HH:MM:SS:II\".",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "à créer. Kdenlive ne détecte les zones sans parole que par la transcription (src/dialogs/textbasededit.cpp:VideoTextEdit::slotRemoveSilence). La version par niveau s'appuiera sur les niveaux déjà calculés pour les formes d'onde : src/jobs/audiolevels/audiolevelstask.h:AudioLevelsTask::getLevelsFromCache.",
+    "x_confirmation": false
+  },
+  {
+    "name": "ajouter_effet_audio",
+    "description": "Pose un traitement sonore courant sur un clip ou une piste, avec des réglages en unités de métier. passe_haut : coupe les graves sous frequence_hz (80 à 100 Hz sur une voix retire le ronflement). passe_bas : coupe les aigus au-dessus. egaliseur : creuse ou pousse une bande autour de frequence_hz. compresseur : resserre les écarts de niveau d'une voix. limiteur : plafonne les crêtes. porte : ferme le son sous un seuil. de_esseur : adoucit les sifflantes. echo : pour un effet, pas pour corriger. Pour le bruit de fond, prendre reduire_bruit. Donner clip_id ou piste_id. Renvoie { ok, effet_index, effet_id, parametres }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Clip traité. Laisser vide si piste_id est donné."
+        },
+        "piste_id": {
+          "type": "integer",
+          "minimum": -1,
+          "description": "Piste traitée, ou -1 pour le master (la sortie générale : c'est là que va le limiteur final). Laisser vide si clip_id est donné."
+        },
+        "traitement": {
+          "type": "string",
+          "enum": [
+            "passe_haut",
+            "passe_bas",
+            "egaliseur",
+            "compresseur",
+            "limiteur",
+            "porte",
+            "de_esseur",
+            "echo"
+          ],
+          "description": "Le traitement à poser."
+        },
+        "frequence_hz": {
+          "type": "number",
+          "minimum": 20,
+          "maximum": 20000,
+          "description": "Fréquence de coupure ou fréquence centrale, en hertz. Pour passe_haut, passe_bas, egaliseur."
+        },
+        "gain_db": {
+          "type": "number",
+          "minimum": -24,
+          "maximum": 24,
+          "description": "Pour egaliseur : négatif creuse, positif pousse. Rester entre -6 et +4."
+        },
+        "largeur_hz": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 24000,
+          "description": "Pour egaliseur : largeur de la bande en hertz."
+        },
+        "seuil_db": {
+          "type": "number",
+          "minimum": -60,
+          "maximum": 0,
+          "description": "Pour compresseur, limiteur, porte : niveau de déclenchement en dB."
+        },
+        "ratio": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Pour compresseur : 2 à 4 sur une voix."
+        },
+        "attaque_ms": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 2000,
+          "description": "Temps d'attaque en millisecondes."
+        },
+        "relachement_ms": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 9000,
+          "description": "Temps de relâchement en millisecondes."
+        }
+      },
+      "required": [
+        "traitement"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "effets data/effects/avfilter/ : avfilter_highpass.xml, avfilter_lowpass.xml, avfilter_equalizer.xml (av.f, av.w, av.g), acompressor.xml (av.threshold, av.ratio, av.attack, av.release, seuil en valeur linéaire de 0 à 1 : la conversion depuis les dB est à créer), avfilter_alimiter.xml, agate.xml, avfilter_deesser.xml, aecho.xml ; posés par src/effects/effectstack/model/effectstackmodel.hpp:EffectStackModel::appendEffect. Aucun réducteur de bruit audio dans data/effects.",
+    "x_confirmation": false
+  },
+  {
+    "name": "reduire_bruit",
+    "description": "Réduit le bruit de fond d'un son (ventilateur, rue, souffle, ronflement), en un appel, comme le bouton « Réduire le bruit » de la section Outils de l'inspecteur. leger : coupe le ronflement grave et baisse de 12 dB le bruit entre les mots, garde l'ambiance de la pièce. moyen (conseillé pour une voix) : le suppresseur de bruit RNNoise enlève le bruit sous la voix (-23 dB mesurés entre les mots). fort : pareil, et ferme aussi le son entre les phrases. aucun : retire la réduction posée par cet outil. Rappeler l'outil remplace le niveau. Les effets posés restent réglables (regler_effet). Pour une voix, pas pour une musique. Renvoie { ok, clip_id (le clip audio traité), niveau, effets (identifiants posés, dans l'ordre), effets_sautes? }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le plan à traiter : son clip audio, ou son clip vidéo (le son groupé avec lui est pris)."
+        },
+        "niveau": {
+          "type": "string",
+          "enum": [
+            "leger",
+            "moyen",
+            "fort",
+            "aucun"
+          ],
+          "description": "Défaut : moyen."
+        }
+      },
+      "required": [
+        "clip_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/koracutcliptools.cpp, recette Denoise : avfilter.highpass + avfilter.agate (leger), avfilter.highpass + ladspa.9354877 (RNNoise, moyen), + avfilter.agate (fort). Effets marqués kdenlive:koracut_outil=bruit. Une étape d'annulation.",
+    "x_confirmation": false
+  },
+  {
+    "name": "ameliorer_voix",
+    "description": "Rend une voix plus claire et plus pleine en un appel, comme le bouton « Améliorer la voix » de la section Outils : passe-haut 80 Hz, boue creusée à 300 Hz, présence poussée à 3,5 kHz, sifflantes adoucies, compresseur, limiteur à -1 dB. À poser après reduire_bruit s'il y a du bruit (l'outil range la chaîne dans le bon ordre). actif false : retire ce que l'outil a posé. Renvoie { ok, clip_id, actif, effets, effets_sautes? }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le plan à traiter : son clip audio, ou son clip vidéo (le son groupé avec lui est pris)."
+        },
+        "actif": {
+          "type": "boolean",
+          "description": "Défaut : true."
+        }
+      },
+      "required": [
+        "clip_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/koracutcliptools.cpp, recette Enhance : avfilter.highpass, avfilter.equalizer x2, avfilter.deesser, avfilter.acompressor, avfilter.alimiter. Marqués kdenlive:koracut_outil=voix.",
+    "x_confirmation": false
+  },
+  {
+    "name": "effet_voix",
+    "description": "Donne un caractère à une voix, comme les cartes « Effets de voix » de la section Outils. megaphone, micro (micro ancien), telephone, radio, echo (la voix revient deux fois), salle (grande salle), grotte, grave (4 demi-tons plus bas), aigue (5 demi-tons plus haut), robot. aucun : retire l'effet. Un seul effet de voix à la fois : en poser un autre remplace le premier. Pour un effet de style (flashback, personnage, appel téléphonique), pas pour corriger une voix. Renvoie { ok, clip_id, effet, effets, effets_sautes? }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le plan à traiter : son clip audio, ou son clip vidéo (le son groupé avec lui est pris)."
+        },
+        "effet": {
+          "type": "string",
+          "enum": [
+            "megaphone",
+            "micro",
+            "telephone",
+            "radio",
+            "echo",
+            "salle",
+            "grotte",
+            "grave",
+            "aigue",
+            "robot",
+            "aucun"
+          ],
+          "description": "L'effet à poser, ou aucun."
+        }
+      },
+      "required": [
+        "clip_id",
+        "effet"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/koracutcliptools.cpp, recette VoiceEffect (filtres avfilter, rbpitch pour grave et aigue). Marqués kdenlive:koracut_outil=effet_voix.",
+    "x_confirmation": false
+  },
+  {
+    "name": "creer_pattern",
+    "description": "Crée un pattern musical vide dans le module Audio : tempo, mesure, tonalité, longueur. C'est la première étape d'une composition, avant poser_notes. Repères de tempo : lo-fi 70 à 90 BPM, afrobeat 95 à 115, amapiano 108 à 115, mbalax 120 à 140, trap 130 à 150 (ressenti à la moitié). Renvoie { ok, pattern_id, bpm, mesure, tonalite, mesures, duree {i, tc} } avec la durée convertie à la cadence du projet vidéo.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "nom": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "Nom du pattern, par exemple \"Teaser kora 92\"."
+        },
+        "bpm": {
+          "type": "number",
+          "minimum": 40,
+          "maximum": 240,
+          "description": "Tempo en battements par minute."
+        },
+        "mesure": {
+          "type": "string",
+          "enum": [
+            "4/4",
+            "3/4",
+            "6/8",
+            "12/8"
+          ],
+          "description": "Chiffrage de la mesure. 12/8 et 6/8 pour les rythmes ternaires (mbalax, beaucoup de rythmes de sabar)."
+        },
+        "tonique": {
+          "type": "string",
+          "enum": [
+            "do",
+            "do#",
+            "re",
+            "re#",
+            "mi",
+            "fa",
+            "fa#",
+            "sol",
+            "sol#",
+            "la",
+            "la#",
+            "si"
+          ],
+          "description": "Note de base de la tonalité."
+        },
+        "gamme": {
+          "type": "string",
+          "enum": [
+            "majeure",
+            "mineure",
+            "pentatonique_majeure",
+            "pentatonique_mineure",
+            "dorien",
+            "mixolydien",
+            "blues"
+          ],
+          "description": "Gamme utilisée. La kora sonne bien en majeure et en pentatonique."
+        },
+        "mesures": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64,
+          "description": "Longueur du pattern en mesures. 4 ou 8 pour une boucle."
+        }
+      },
+      "required": [
+        "nom",
+        "bpm",
+        "mesure",
+        "tonique",
+        "gamme",
+        "mesures"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "à créer. Rien dans Kdenlive : pas de séquenceur ni de piano roll. Dépend du moteur du module Audio (chantier 5, LMMS en priorité, voir 3 - Architecture et moteurs open source.md).",
+    "x_confirmation": false
+  },
+  {
+    "name": "poser_notes",
+    "description": "Écrit les notes d'une voie instrumentale dans un pattern. Chaque appel remplace le contenu de la voie nommée. Les positions et durées se comptent en temps (noires) depuis le début du pattern : 0 = premier temps, 0.5 = croche suivante, 0.25 = double croche. Hauteur en numéro MIDI (60 = do central). Pour une batterie : 36 grosse caisse, 38 caisse claire, 42 charleston fermé, 46 charleston ouvert. Rester dans la gamme du pattern, sauf note de passage voulue. Varier la vélocité : un jeu à vélocité constante sonne comme une machine. Renvoie { ok, pattern_id, voie, notes_posees, hors_gamme: [index] }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "pattern_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identifiant renvoyé par creer_pattern."
+        },
+        "voie": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "description": "Nom de la voie, par exemple \"Kora lead\", \"Basse\", \"Kick\", \"Sabar\"."
+        },
+        "instrument": {
+          "type": "string",
+          "enum": [
+            "kora",
+            "balafon",
+            "sabar",
+            "tama",
+            "djembe",
+            "calebasse",
+            "shaker",
+            "batterie",
+            "basse",
+            "log_drum",
+            "808",
+            "piano",
+            "piano_electrique",
+            "guitare",
+            "nappe",
+            "cuivres",
+            "echantillon"
+          ],
+          "description": "Instrument de la voie. echantillon : joue le fichier donné dans fichier_son."
+        },
+        "fichier_son": {
+          "type": "string",
+          "description": "Chemin absolu d'un fichier son déjà présent sur le disque, requis si instrument = echantillon."
+        },
+        "notes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 512,
+          "description": "Les notes de la voie.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "temps": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Position en temps (noires) depuis le début du pattern."
+              },
+              "duree": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Durée en temps (noires)."
+              },
+              "hauteur": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 127,
+                "description": "Note MIDI."
+              },
+              "velocite": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 127,
+                "description": "Force de la note. Défaut : 96."
+              }
+            },
+            "required": [
+              "temps",
+              "duree",
+              "hauteur"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "pattern_id",
+        "voie",
+        "instrument",
+        "notes"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "à créer. Rien dans Kdenlive. Dépend du moteur du module Audio (chantier 5). Les banques d'instruments (kora, sabar, tama, balafon) sont à constituer et à licencier.",
+    "x_confirmation": false
+  },
+  {
+    "name": "rendre_pattern",
+    "description": "Rend un pattern en fichier WAV dans le dossier audio du projet, l'ajoute au chutier, et peut le poser sur une piste audio en le répétant jusqu'à la durée voulue. Le rendu prend quelques secondes. N'écrase jamais un fichier : le nom reçoit un numéro s'il existe déjà. Renvoie { ok, fichier, media_id, clip_ids (si posé), duree {i, tc}, lufs_integre }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "pattern_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identifiant renvoyé par creer_pattern."
+        },
+        "repetitions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128,
+          "description": "Nombre de fois que le pattern est joué dans le fichier. Défaut : 1."
+        },
+        "piste_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Piste audio où poser le résultat. Laisser vide pour l'ajouter seulement au chutier."
+        },
+        "position": {
+          "description": "Début sur la timeline, si piste_id est donné. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "fin_en_fondu": {
+          "type": "boolean",
+          "description": "true : la dernière mesure sort en fondu. Défaut : false."
+        }
+      },
+      "required": [
+        "pattern_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "à créer pour le rendu (moteur du module Audio). L'ajout au chutier et la pose existent : src/bin/clipcreator.hpp:ClipCreator::createClipFromFile puis TimelineModel::requestClipInsertion.",
+    "x_confirmation": false
+  }
+]

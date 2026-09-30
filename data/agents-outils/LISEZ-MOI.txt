@@ -1,0 +1,2 @@
+Copie des définitions d'agents, faite par Sources/outils-multiplateforme/synchroniser-outils.sh.
+Ne pas modifier ici : la source est « Agents in-app/outils/ » dans le dossier KoraCut.

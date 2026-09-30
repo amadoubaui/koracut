@@ -1,0 +1,1708 @@
+[
+  {
+    "name": "mesurer_image",
+    "description": "Mesure une image d'un clip, effets compris, sans rien modifier et sans rien envoyer hors de la machine. À appeler avant tout réglage et après chaque réglage : c'est le seul moyen de savoir ce qu'on a fait. Renvoie { ok, position {i, tc} (sur la timeline), position_dans_clip, luma: { min, max, moyenne, noirs_ecrases_pourcent, blancs_brules_pourcent } (échelle 0 à 255, Rec.709 ; min et max sont les percentiles 1 et 99, un pixel isolé ne compte pas), saturation_moyenne (0 à 1), dominante: { r, v, b } (écart de chaque canal à la moyenne, en points sur 255), peau: { detectee, teinte_degres, ecart_ligne_peau_degres } (angle sur le vecteurscope, ligne de peau à 123 degrés ; détection approximative : au moins 3 % de pixels de teinte et de chroma de peau). Repères : noirs entre 8 et 20, blancs sous 240, moins de 1 % de pixels écrasés ou brûlés, peau à moins de 5 degrés de la ligne de peau. Avec sans_effets, l'image source est mesurée par le même chemin (tous les filtres coupés), les deux mesures se comparent donc.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant du clip sur la timeline, lu dans etat_timeline (champ id). Valable pour la session en cours seulement."
+        },
+        "position_dans_clip": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Image à mesurer, en images depuis le début du clip. Défaut : le milieu du clip."
+        },
+        "sans_effets": {
+          "type": "boolean",
+          "description": "true : mesure l'image source, avant étalonnage, pour comparer. Défaut : false."
+        }
+      },
+      "required": [
+        "clip_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (lot B, 24 septembre 2026) : koracutagenttoolsetalonnage.cpp, une copie XML de la timeline (les autres pistes cachées) lue par KThumb::getFrame à 480 px de large, les chiffres calculés en C++ ; les scopes de src/scopes/ ne sont pas appelés (ils dessinent).",
+    "x_confirmation": false
+  },
+  {
+    "name": "lift_gamma_gain",
+    "description": "Règle les trois roues chromatiques d'un clip : ombres (lift), tons moyens (gamma), hautes lumières (gain). C'est l'outil principal de l'étalonnage primaire. Pose l'effet s'il n'existe pas, le met à jour sinon. Valeurs neutres : ombres 0, tons moyens 1, hautes lumières 1. Avancer par petits pas (0,02 à 0,05 sur les ombres, 0,05 à 0,1 ailleurs) et mesurer après chaque appel. Ne jamais descendre les ombres au point d'écraser les noirs. Ne donner que les roues à changer. Renvoie { ok, effet_index, ombres, tons_moyens, hautes_lumieres }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant du clip sur la timeline, lu dans etat_timeline (champ id). Valable pour la session en cours seulement."
+        },
+        "ombres": {
+          "type": "object",
+          "description": "Lift. Neutre : 0, 0, 0. Trois facteurs rouge, vert, bleu. Les monter ensemble éclaircit, les écarter teinte.",
+          "properties": {
+            "r": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5,
+              "description": "Rouge."
+            },
+            "v": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5,
+              "description": "Vert."
+            },
+            "b": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5,
+              "description": "Bleu."
+            }
+          },
+          "required": [
+            "r",
+            "v",
+            "b"
+          ],
+          "additionalProperties": false
+        },
+        "tons_moyens": {
+          "type": "object",
+          "description": "Gamma. Neutre : 1, 1, 1. Trois facteurs rouge, vert, bleu. Les monter ensemble éclaircit, les écarter teinte.",
+          "properties": {
+            "r": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5,
+              "description": "Rouge."
+            },
+            "v": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5,
+              "description": "Vert."
+            },
+            "b": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5,
+              "description": "Bleu."
+            }
+          },
+          "required": [
+            "r",
+            "v",
+            "b"
+          ],
+          "additionalProperties": false
+        },
+        "hautes_lumieres": {
+          "type": "object",
+          "description": "Gain. Neutre : 1, 1, 1. Trois facteurs rouge, vert, bleu. Les monter ensemble éclaircit, les écarter teinte.",
+          "properties": {
+            "r": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5,
+              "description": "Rouge."
+            },
+            "v": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5,
+              "description": "Vert."
+            },
+            "b": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5,
+              "description": "Bleu."
+            }
+          },
+          "required": [
+            "r",
+            "v",
+            "b"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "clip_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (lot B) : effet lift_gamma_gain (lift_r/g/b, gamma_r/g/b, gain_r/g/b, de 0 à 5), un seul par clip.",
+    "x_confirmation": false
+  },
+  {
+    "name": "balance_blancs",
+    "description": "Corrige la température de couleur d'un clip, en kelvins. 6500 K est neutre (rien ne change). Une valeur plus haute rend l'image plus froide, plus bleue : c'est ce qui corrige un plan trop orange ou trop jaune, tourné sous ampoule. Une valeur plus basse rend l'image plus chaude : c'est ce qui corrige un plan trop bleu, tourné à l'ombre. Le sens est celui du filtre, pas celui de la lumière du tournage (vérifié par la mesure le 24 septembre 2026 : à 8000 K la dominante bleue monte, à 4500 K la rouge). La teinte corrige l'axe vert-magenta (effet Balance des couleurs, posé seulement si elle sert). Pose les effets s'ils n'existent pas, les met à jour sinon. À faire avant lift_gamma_gain. Renvoie { ok, effet_index, temperature_k, teinte, intensite }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant du clip sur la timeline, lu dans etat_timeline (champ id). Valable pour la session en cours seulement."
+        },
+        "temperature_k": {
+          "type": "number",
+          "minimum": 1000,
+          "maximum": 40000,
+          "description": "Température en kelvins. Neutre : 6500. Plus haut = plus froid, plus bas = plus chaud. Rester entre 4500 et 9500 pour une correction courante."
+        },
+        "teinte": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "Axe vert-magenta. Négatif : vers le vert. Positif : vers le magenta. Neutre : 0."
+        },
+        "intensite": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Dosage de la correction, 0 à 1. Défaut : 1."
+        }
+      },
+      "required": [
+        "clip_id",
+        "temperature_k"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (lot B) : avfilter.colortemperature (av.temperature, av.mix) et avfilter.colorbalance (av.gm) pour la teinte, un seul de chaque par clip, une étape d'annulation.",
+    "x_confirmation": false
+  },
+  {
+    "name": "regler_exposition",
+    "description": "Règle l'exposition, le contraste et la saturation d'un clip. exposition en diaphragmes (0 = inchangé, +1 = deux fois plus de lumière). À utiliser pour rattraper un plan sous-exposé ou surexposé avant de travailler la couleur. Ne donner que les champs à changer. Renvoie { ok, effets: [ { effet_index, effet_id } ], exposition_ev, niveau_noir, contraste, saturation }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant du clip sur la timeline, lu dans etat_timeline (champ id). Valable pour la session en cours seulement."
+        },
+        "exposition_ev": {
+          "type": "number",
+          "minimum": -3,
+          "maximum": 3,
+          "description": "Exposition en diaphragmes (EV). Neutre : 0."
+        },
+        "niveau_noir": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "Décalage du point noir. Neutre : 0. Rester entre -0,1 et 0,1."
+        },
+        "contraste": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3,
+          "description": "Neutre : 1. Rester entre 0,8 et 1,3."
+        },
+        "saturation": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3,
+          "description": "Neutre : 1. 0 = noir et blanc. Au-delà de 1,3 les peaux virent à l'orange."
+        }
+      },
+      "required": [
+        "clip_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (lot B) : avfilter.exposure (av.exposure, av.black) et avfilter.eq (av.contrast, av.saturation), un seul de chaque par clip, posés ou réglés dans la même étape.",
+    "x_confirmation": false
+  },
+  {
+    "name": "regler_courbes",
+    "description": "Règle la courbe d'un canal par des points de contrôle. Chaque point donne une entrée et une sortie entre 0 et 1. Une courbe en S (0,25 vers 0,20 et 0,75 vers 0,80) ajoute du contraste sans toucher aux extrêmes. À utiliser après les roues, pour finir. Ne pas déplacer le point 0 vers le bas ni le point 1 vers le haut. Renvoie { ok, effet_index, canal, points }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant du clip sur la timeline, lu dans etat_timeline (champ id). Valable pour la session en cours seulement."
+        },
+        "canal": {
+          "type": "string",
+          "enum": [
+            "luma",
+            "rouge",
+            "vert",
+            "bleu"
+          ],
+          "description": "Canal réglé. luma agit sur les trois couleurs ensemble."
+        },
+        "points": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 8,
+          "description": "Points de la courbe, triés par entrée croissante.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "entree": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "sortie": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "entree",
+              "sortie"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "clip_id",
+        "canal",
+        "points"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (lot B) : avfilter.curves, le canal dans av.master, av.r, av.g ou av.b, les points « entree/sortie » séparés par « ; » dans le modèle (des espaces pour le filtre), un seul effet par clip.",
+    "x_confirmation": false
+  },
+  {
+    "name": "appliquer_lut",
+    "description": "Applique une LUT 3D (fichier .cube, .3dl, .dat ou .m3d) à un clip. À utiliser pour convertir un plan tourné en log vers Rec.709 (LUT technique, à placer avant les autres réglages) ou pour donner un rendu (LUT créative, à placer après). Le fichier doit déjà exister sur le disque : l'outil ne télécharge rien. Un simple nom de fichier est cherché dans les LUT livrées avec KoraCut (BLUE_TINT, CINEMATIC, GREEN_TINT, TEAL_ORANGE) puis dans le dossier « luts » à côté du projet. Chaque appel pose une nouvelle LUT (une technique et une créative peuvent coexister). Renvoie { ok, effet_index, fichier, interpolation, place }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant du clip sur la timeline, lu dans etat_timeline (champ id). Valable pour la session en cours seulement."
+        },
+        "fichier": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Chemin absolu du fichier LUT sur la machine, ou le seul nom d'une LUT des dossiers de LUT (par exemple TEAL_ORANGE.cube)."
+        },
+        "interpolation": {
+          "type": "string",
+          "enum": [
+            "tetraedrique",
+            "trilineaire",
+            "plus_proche"
+          ],
+          "description": "Défaut : tetraedrique (la plus fidèle). trilineaire est plus légère sur une machine modeste."
+        },
+        "place": {
+          "type": "string",
+          "enum": [
+            "debut_de_pile",
+            "fin_de_pile"
+          ],
+          "description": "debut_de_pile pour une LUT technique, fin_de_pile pour une LUT créative. Défaut : fin_de_pile."
+        }
+      },
+      "required": [
+        "clip_id",
+        "fichier"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (lot B) : avfilter.lut3d (av.file, av.interp), moveEffectWithUndo(0) pour debut_de_pile ; dossiers de LUT : QStandardPaths AppLocalDataLocation/luts et <projet>/luts.",
+    "x_confirmation": false
+  },
+  {
+    "name": "copier_etalonnage",
+    "description": "Copie tous les effets de couleur d'un clip de référence vers un ou plusieurs autres clips. À utiliser pour les plans d'une même scène, tournés avec la même caméra et la même lumière. Les effets de couleur déjà présents sur les clips cibles sont remplacés, les autres effets (transformer, fondus, son) ne sont pas touchés. Mesurer ensuite chaque cible : une copie est un point de départ. Renvoie { ok, source_id, cibles: [ { clip_id, effets_copies } ] }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_source_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le clip déjà étalonné, qui sert de référence."
+        },
+        "clip_cible_ids": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minItems": 1,
+          "maxItems": 100,
+          "description": "Les clips qui reçoivent l'étalonnage."
+        }
+      },
+      "required": [
+        "clip_source_id",
+        "clip_cible_ids"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (lot B) : les effets de couleur (liste isColourEffect de koracutagenttools_p.h) retirés des cibles puis EffectStackModel::copyEffectWithUndo pour chacun de la source, dans l'ordre, une étape d'annulation pour toutes les cibles.",
+    "x_confirmation": false
+  },
+  {
+    "name": "matcher_plans",
+    "description": "Rapproche un clip cible d'un clip de référence : mesure les deux, puis pose sur la cible une exposition (en diaphragmes, pour la luma moyenne) et une balance des tons moyens (pour la dominante), dosées par force. À utiliser entre deux caméras ou deux lumières différentes dans la même scène. Le résultat est un point de départ honnête, pas un miracle : vérifier les peaux avec mesurer_image et regarder avec voir_image. Si les deux plans se ressemblent déjà, rien n'est posé (remarque). Renvoie { ok, reference: { mesure }, avant: { mesure de la cible }, apres: { mesure de la cible }, reglages_poses: [ { effet_id, parametres } ], force }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_reference_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le clip dont on veut retrouver le rendu."
+        },
+        "clip_cible_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le clip à corriger."
+        },
+        "force": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Dosage du rapprochement. Défaut : 0,8."
+        }
+      },
+      "required": [
+        "clip_reference_id",
+        "clip_cible_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (lot B) : mesure des deux clips, puis avfilter.exposure (av.exposure = force × log2 du rapport des lumas moyennes, borné à ±2) et avfilter.colorbalance (av.rm, av.gm, av.bm, luminosité préservée) sur la cible, une étape.",
+    "x_confirmation": false
+  },
+  {
+    "name": "activer_etalonnage",
+    "description": "Active ou désactive d'un coup toute la pile d'effets d'un clip, sans rien supprimer. À utiliser pour montrer l'avant et l'après à la personne, puis toujours remettre actif = true. Renvoie { ok, clip_id, actif }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant du clip sur la timeline, lu dans etat_timeline (champ id). Valable pour la session en cours seulement."
+        },
+        "actif": {
+          "type": "boolean",
+          "description": "false : le clip s'affiche sans aucun effet."
+        }
+      },
+      "required": [
+        "clip_id",
+        "actif"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (lot B) : EffectStackModel::setEffectStackEnabled dans une étape d'annulation propre ; etat_timeline montre fx_off.",
+    "x_confirmation": false
+  },
+  {
+    "name": "reinitialiser_etalonnage",
+    "description": "Retire tous les effets de couleur d'un clip pour repartir de l'image source. Les réglages faits à la main par la personne partent aussi : c'est pour cela que l'outil demande une confirmation. Les autres effets (transformer, fondus, son) restent. Annulable. Renvoie { ok, clip_id, effets_retires: [effet_id] }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant du clip sur la timeline, lu dans etat_timeline (champ id). Valable pour la session en cours seulement."
+        }
+      },
+      "required": [
+        "clip_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (lot B) : removeEffectWithUndo pour chaque effet de couleur dans l'ordre de la pile (un effet intégré est désactivé), une étape.",
+    "x_confirmation": true
+  },
+  {
+    "name": "etal_lire",
+    "description": "Lit le grade d'un plan (ou de la séquence) comme l'éditeur de nœuds de DaVinci Resolve : les nœuds dans l'ordre, leur numéro affiché (01, 02…), type (correcteur, parallele, calque, separateur, combineur, melangeur_cles), étiquette, entrées, palettes utilisées et tous leurs réglages. À appeler avant tout réglage d'étalonnage. Renvoie { ok, clip_id?, sequence, actif, sortie, noeuds: [{ id, numero, type, etiquette, actif, entree, entrees, outils, ...réglages }] }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le plan à étalonner (champ id de etat_timeline). Absent : donne sequence = true."
+        },
+        "sequence": {
+          "type": "boolean",
+          "description": "true : le grade de toute la séquence (les nœuds « Timeline » de Resolve, appliqués après ceux des plans) au lieu d'un plan."
+        }
+      },
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (document 22, lot 3) : koracutagenttoolsgrade.cpp, le filtre koracut_grade du plan.",
+    "x_confirmation": false
+  },
+  {
+    "name": "etal_noeud_ajouter",
+    "description": "Ajoute un nœud comme les raccourcis de Resolve : serie (Option-S, après noeud_id), serie_avant (Shift-S), fin (Option-K, à la fin de l'arbre), parallele (Option-P, une branche qui lit la même image que noeud_id, mélangée par la somme des écarts), calque (Option-L, l'entrée du bas l'emporte), outside (Option-O, reçoit la clé de noeud_id inversée : corrige tout le reste), separateur (Option-Y, trois nœuds R, V, B). Méthode conseillée : un nœud par intention (CST, balance, exposition, peau, look), avec une étiquette. Une étape d'annulation. Renvoie { ok, noeud_id, numero, noeuds }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le plan à étalonner (champ id de etat_timeline). Absent : donne sequence = true."
+        },
+        "sequence": {
+          "type": "boolean",
+          "description": "true : le grade de toute la séquence (les nœuds « Timeline » de Resolve, appliqués après ceux des plans) au lieu d'un plan."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "serie",
+            "serie_avant",
+            "fin",
+            "parallele",
+            "calque",
+            "outside",
+            "separateur"
+          ],
+          "description": "Le geste."
+        },
+        "noeud_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Le nœud de départ. Défaut : le dernier nœud (la sortie)."
+        },
+        "etiquette": {
+          "type": "string",
+          "maxLength": 24,
+          "description": "Nom court du nœud, affiché au-dessus (CST, Balance, Expo, Peau, Look…)."
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (document 22, lot 3) : KoraCutNodeGraph.",
+    "x_confirmation": false
+  },
+  {
+    "name": "etal_noeud_regler",
+    "description": "Règle un nœud : chaque section donnée remplace ou complète celle du nœud (primaires, log, courbes, courbes_teinte, qualificateur, fenetres, flou, cle, cst, lut), valeurs AFFICHÉES par Resolve. Ne donner que ce qui change. Mesurer avant et après (mesurer_image). Une étape d'annulation par appel. Renvoie { ok, noeud_id, numero, noeud } avec le nœud complet.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le plan à étalonner (champ id de etat_timeline). Absent : donne sequence = true."
+        },
+        "sequence": {
+          "type": "boolean",
+          "description": "true : le grade de toute la séquence (les nœuds « Timeline » de Resolve, appliqués après ceux des plans) au lieu d'un plan."
+        },
+        "noeud_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Le nœud (id lu par etal_lire)."
+        },
+        "actif": {
+          "type": "boolean",
+          "description": "false : coupe le nœud (Command-D)."
+        },
+        "etiquette": {
+          "type": "string",
+          "maxLength": 24,
+          "description": "Renomme le nœud."
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "normal",
+            "addition",
+            "soustraction",
+            "difference",
+            "multiplication",
+            "ecran",
+            "incrustation",
+            "lumiere_douce",
+            "lumiere_forte",
+            "assombrir",
+            "eclaircir",
+            "luminosite",
+            "couleur"
+          ],
+          "description": "Mode de composite d'un nœud calque."
+        },
+        "primaires": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Les primaires, en valeurs AFFICHÉES par DaVinci Resolve. Ne donner que ce qui change : les autres réglages du nœud restent.",
+          "properties": {
+            "lift": {
+              "type": "array",
+              "description": "Lift [Y, R, V, B]. Neutre 0. Monte les noirs, le blanc ne bouge pas. Pas de 0,01 à 0,03 ; rarement au-delà de ±0,1.",
+              "items": {
+                "type": "number",
+                "minimum": -1,
+                "maximum": 1
+              },
+              "minItems": 4,
+              "maxItems": 4
+            },
+            "gamma": {
+              "type": "array",
+              "description": "Gamma [Y, R, V, B]. Neutre 0. Positif éclaircit les tons moyens, noir et blanc fixes. Pas de 0,02 à 0,05.",
+              "items": {
+                "type": "number",
+                "minimum": -1,
+                "maximum": 1
+              },
+              "minItems": 4,
+              "maxItems": 4
+            },
+            "gain": {
+              "type": "array",
+              "description": "Gain [Y, R, V, B]. Neutre 1. Multiplie, le noir ne bouge pas. Pas de 0,02 à 0,05.",
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 4
+              },
+              "minItems": 4,
+              "maxItems": 4
+            },
+            "offset": {
+              "type": "array",
+              "description": "Offset (Décalage) [R, V, B]. Neutre 25. Décale toute l'image (1 unité = 0,0073). Pour une balance d'ensemble et pour les images log.",
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "contraste": {
+              "type": "number",
+              "description": "Contraste autour du pivot. Neutre 1, jusqu'à 2 (courbe en S mesurée sur Resolve au-dessus de 1).",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "pivot": {
+              "type": "number",
+              "description": "Pivot du contraste. Neutre 0,435.",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "saturation": {
+              "type": "number",
+              "description": "Saturation. Neutre 50 ; 0 = noir et blanc, 100 = double.",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "teinte": {
+              "type": "number",
+              "description": "Teinte (Hue). Neutre 50 ; 50 ± 50 = ±180°.",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "lum_mix": {
+              "type": "number",
+              "description": "Lum Mix. Neutre 100 : les réglages d'un seul canal gardent la luma ; 0 : les réglages Y sont ignorés.",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "temp": {
+              "type": "number",
+              "description": "Temp. Neutre 0. Positif réchauffe (vers l'orange), négatif refroidit. Pas de 200 à 500.",
+              "minimum": -4000,
+              "maximum": 4000
+            },
+            "tint": {
+              "type": "number",
+              "description": "Tons (Tint). Neutre 0. Positif vers le magenta, négatif vers le vert (contre un néon vert : positif).",
+              "minimum": -100,
+              "maximum": 100
+            },
+            "boost": {
+              "type": "number",
+              "description": "Color Boost. Neutre 0. Sature surtout ce qui l'est peu (les peaux bougent moins qu'avec la saturation).",
+              "minimum": -100,
+              "maximum": 100
+            },
+            "mid_detail": {
+              "type": "number",
+              "description": "Mid/Détail : contraste local des tons moyens. Neutre 0. Négatif adoucit (peau).",
+              "minimum": -100,
+              "maximum": 100
+            },
+            "ombres": {
+              "type": "number",
+              "description": "Ombres : éclaircit les ombres sans toucher au milieu. Neutre 0.",
+              "minimum": -100,
+              "maximum": 100
+            },
+            "hautes_lumieres": {
+              "type": "number",
+              "description": "Hautes lumières : négatif récupère le ciel et les blancs. Neutre 0.",
+              "minimum": -100,
+              "maximum": 100
+            }
+          }
+        },
+        "log": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Les roues Log de Resolve (réglages fins par zone, après Lift/Gamma/Gain).",
+          "properties": {
+            "ombres": {
+              "type": "array",
+              "description": "Ombres [R, V, B], neutre 0 : sous la plage basse.",
+              "items": {
+                "type": "number",
+                "minimum": -1,
+                "maximum": 1
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "tons_moyens": {
+              "type": "array",
+              "description": "Tons moyens [R, V, B], neutre 0.",
+              "items": {
+                "type": "number",
+                "minimum": -1,
+                "maximum": 1
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "hautes_lumieres": {
+              "type": "array",
+              "description": "Hautes lumières [R, V, B], neutre 0 : au-dessus de la plage haute.",
+              "items": {
+                "type": "number",
+                "minimum": -1,
+                "maximum": 1
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "plage_basse": {
+              "type": "number",
+              "description": "Plage basse. Défaut 0,333.",
+              "minimum": 0.01,
+              "maximum": 0.99
+            },
+            "plage_haute": {
+              "type": "number",
+              "description": "Plage haute. Défaut 0,550.",
+              "minimum": 0.01,
+              "maximum": 0.99
+            }
+          }
+        },
+        "courbes": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Courbes personnalisées : points [entrée, sortie] entre 0 et 1, extrémités (0,0) et (1,1) comprises. Une courbe absente reste droite.",
+          "properties": {
+            "y": {
+              "type": "array",
+              "description": "Courbe de luma (agit comme les réglages Y, dosée par Lum Mix).",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "maxItems": 24
+            },
+            "r": {
+              "type": "array",
+              "description": "Rouge.",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "maxItems": 24
+            },
+            "v": {
+              "type": "array",
+              "description": "Vert.",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "maxItems": 24
+            },
+            "b": {
+              "type": "array",
+              "description": "Bleu.",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "maxItems": 24
+            },
+            "intensite": {
+              "type": "array",
+              "description": "Intensité [Y, R, V, B], défaut 100.",
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "minItems": 4,
+              "maxItems": 4
+            }
+          }
+        },
+        "courbes_teinte": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Courbes de teinte : points [x, y]. Teinte en abscisse en degrés 0 à 360 (rouge 0, jaune 60, vert 120, cyan 180, bleu 240, magenta 300). Liste vide : courbe plate.",
+          "properties": {
+            "teinte_teinte": {
+              "type": "array",
+              "description": "y = décalage de teinte en degrés (neutre 0).",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "maxItems": 24
+            },
+            "teinte_sat": {
+              "type": "array",
+              "description": "y = facteur de saturation (neutre 1).",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "maxItems": 24
+            },
+            "teinte_lum": {
+              "type": "array",
+              "description": "y = facteur de luma (neutre 1).",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "maxItems": 24
+            },
+            "lum_sat": {
+              "type": "array",
+              "description": "x = luma 0..1, y = facteur de saturation (neutre 1). Désature les noirs et les blancs.",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "maxItems": 24
+            },
+            "sat_sat": {
+              "type": "array",
+              "description": "x = saturation 0..1, y = facteur (neutre 1).",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "maxItems": 24
+            },
+            "sat_lum": {
+              "type": "array",
+              "description": "x = saturation, y = facteur de luma (neutre 1).",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "maxItems": 24
+            }
+          }
+        },
+        "qualificateur": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Le qualificateur : la clé qui limite le nœud à une couleur. Échelle de teinte de Resolve : magenta 0, rouge 16,7, jaune 33,3, vert 50, cyan 66,7, bleu 83,3. Peau : centre vers 22 à 26, largeur 10 à 16.",
+          "properties": {
+            "actif": {
+              "type": "boolean",
+              "description": "true pour que la clé agisse."
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "hsl",
+                "rvb",
+                "lum"
+              ],
+              "description": "HSL (défaut), RVB ou luma seule."
+            },
+            "teinte": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Teinte.",
+              "properties": {
+                "centre": {
+                  "type": "number",
+                  "description": "Centre 0 à 100.",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "largeur": {
+                  "type": "number",
+                  "description": "Largeur 0 à 100.",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "doux": {
+                  "type": "number",
+                  "description": "Adoucissement.",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "sym": {
+                  "type": "number",
+                  "description": "Symétrie, neutre 50.",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "actif": {
+                  "type": "boolean",
+                  "description": "false : la teinte ne compte pas."
+                }
+              }
+            },
+            "sat": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Saturation.",
+              "properties": {
+                "bas": {
+                  "type": "number",
+                  "description": "Bas, 0 à 100.",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "haut": {
+                  "type": "number",
+                  "description": "Haut, 0 à 100.",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "doux_bas": {
+                  "type": "number",
+                  "description": "Adoucissement du bas.",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "doux_haut": {
+                  "type": "number",
+                  "description": "Adoucissement du haut.",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "actif": {
+                  "type": "boolean",
+                  "description": "false : ce critère ne compte pas."
+                }
+              }
+            },
+            "lum": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Luminance.",
+              "properties": {
+                "bas": {
+                  "type": "number",
+                  "description": "Bas, 0 à 100.",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "haut": {
+                  "type": "number",
+                  "description": "Haut, 0 à 100.",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "doux_bas": {
+                  "type": "number",
+                  "description": "Adoucissement du bas.",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "doux_haut": {
+                  "type": "number",
+                  "description": "Adoucissement du haut.",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "actif": {
+                  "type": "boolean",
+                  "description": "false : ce critère ne compte pas."
+                }
+              }
+            },
+            "noir": {
+              "type": "number",
+              "description": "Clip noir de la clé, 0 à 100.",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "blanc": {
+              "type": "number",
+              "description": "Clip blanc de la clé, défaut 100.",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "flou": {
+              "type": "number",
+              "description": "Flou de la clé (0 à 100) : adoucit les bords, conseillé 5 à 15 sur une peau.",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "inverser": {
+              "type": "boolean",
+              "description": "Inverse la clé."
+            }
+          }
+        },
+        "fenetres": {
+          "type": "array",
+          "maxItems": 8,
+          "description": "Les fenêtres (Power Windows) du nœud : remplace la liste entière. Coordonnées 0 à 1, origine en haut à gauche. Liste vide : aucune fenêtre.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "cercle",
+                  "rectangle",
+                  "polygone",
+                  "degrade"
+                ],
+                "description": "Forme."
+              },
+              "x": {
+                "type": "number",
+                "description": "Centre horizontal.",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "y": {
+                "type": "number",
+                "description": "Centre vertical.",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "taille": {
+                "type": "number",
+                "description": "Taille (demi-hauteur).",
+                "minimum": 0.01,
+                "maximum": 2
+              },
+              "aspect": {
+                "type": "number",
+                "description": "Largeur / hauteur de la forme.",
+                "minimum": 0.05,
+                "maximum": 20
+              },
+              "rotation": {
+                "type": "number",
+                "description": "Degrés.",
+                "minimum": -180,
+                "maximum": 180
+              },
+              "doux": {
+                "type": "number",
+                "description": "Adoucissement du bord, en hauteur d'image (0,05 à 0,15 courant).",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "opacite": {
+                "type": "number",
+                "description": "0 à 1.",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "inverser": {
+                "type": "boolean",
+                "description": "Agit hors de la forme."
+              },
+              "soustraire": {
+                "type": "boolean",
+                "description": "Retire cette forme des autres."
+              },
+              "points": {
+                "type": "array",
+                "description": "Polygone : les sommets [x, y].",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "maxItems": 32
+              },
+              "actif": {
+                "type": "boolean",
+                "description": "false : fenêtre ignorée."
+              }
+            }
+          }
+        },
+        "flou": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Flou ou netteté : rayon 0,5 = neutre, au-dessus floute, en dessous renforce la netteté.",
+          "properties": {
+            "rayon": {
+              "type": "number",
+              "description": "Rayon, 0 à 1, neutre 0,5.",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "hv": {
+              "type": "number",
+              "description": "Rapport horizontal / vertical, neutre 0,5.",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        },
+        "cle": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "La palette Clé du nœud.",
+          "properties": {
+            "entree_inverser": {
+              "type": "boolean",
+              "description": "Inverse la clé reçue (nœud outside)."
+            },
+            "entree_gain": {
+              "type": "number",
+              "description": "Gain de la clé reçue.",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "entree_decalage": {
+              "type": "number",
+              "description": "Décalage de la clé reçue.",
+              "minimum": -1,
+              "maximum": 1
+            },
+            "sortie_inverser": {
+              "type": "boolean",
+              "description": "Inverse la clé du nœud."
+            },
+            "sortie_gain": {
+              "type": "number",
+              "description": "Dosage du nœud entier : 1 = plein, 0,5 = moitié, 0 = sans effet.",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "sortie_decalage": {
+              "type": "number",
+              "description": "Décalage de la clé de sortie.",
+              "minimum": -1,
+              "maximum": 1
+            }
+          }
+        },
+        "cst": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Color Space Transform (comme l'effet de Resolve). Préférer l'outil etal_cst pour un plan log.",
+          "properties": {
+            "actif": {
+              "type": "boolean",
+              "description": "false : coupé."
+            },
+            "entree_gamut": {
+              "type": "string",
+              "enum": [
+                "rec709",
+                "rec2020",
+                "p3d65",
+                "dcip3",
+                "sgamut3",
+                "sgamut3cine",
+                "vgamut",
+                "cinemagamut",
+                "awg3",
+                "awg4",
+                "bmdwg5",
+                "dwg",
+                "rwg",
+                "dgamut",
+                "fgamutc",
+                "protune",
+                "ap0",
+                "ap1"
+              ],
+              "description": "Espace d'entrée."
+            },
+            "entree_gamma": {
+              "type": "string",
+              "enum": [
+                "gamma24",
+                "rec709",
+                "srgb",
+                "gamma22",
+                "gamma26",
+                "lineaire",
+                "hlg",
+                "pq",
+                "davinci_intermediate",
+                "acescct",
+                "slog3",
+                "slog2",
+                "vlog",
+                "clog",
+                "clog2",
+                "clog3",
+                "logc3",
+                "logc4",
+                "bmdfilm5",
+                "log3g10",
+                "applelog",
+                "dlog",
+                "nlog",
+                "flog",
+                "flog2",
+                "llog",
+                "gplog2",
+                "protune"
+              ],
+              "description": "Courbe d'entrée."
+            },
+            "sortie_gamut": {
+              "type": "string",
+              "enum": [
+                "rec709",
+                "rec2020",
+                "p3d65",
+                "dcip3",
+                "sgamut3",
+                "sgamut3cine",
+                "vgamut",
+                "cinemagamut",
+                "awg3",
+                "awg4",
+                "bmdwg5",
+                "dwg",
+                "rwg",
+                "dgamut",
+                "fgamutc",
+                "protune",
+                "ap0",
+                "ap1"
+              ],
+              "description": "Espace de sortie."
+            },
+            "sortie_gamma": {
+              "type": "string",
+              "enum": [
+                "gamma24",
+                "rec709",
+                "srgb",
+                "gamma22",
+                "gamma26",
+                "lineaire",
+                "hlg",
+                "pq",
+                "davinci_intermediate",
+                "acescct",
+                "slog3",
+                "slog2",
+                "vlog",
+                "clog",
+                "clog2",
+                "clog3",
+                "logc3",
+                "logc4",
+                "bmdfilm5",
+                "log3g10",
+                "applelog",
+                "dlog",
+                "nlog",
+                "flog",
+                "flog2",
+                "llog",
+                "gplog2",
+                "protune"
+              ],
+              "description": "Courbe de sortie."
+            },
+            "tone_mapping": {
+              "type": "string",
+              "enum": [
+                "aucun",
+                "simple",
+                "davinci",
+                "luminance"
+              ],
+              "description": "Défaut davinci."
+            },
+            "gamut_mapping": {
+              "type": "string",
+              "enum": [
+                "aucun",
+                "ecreter",
+                "compression"
+              ],
+              "description": "Défaut compression."
+            },
+            "nits_entree": {
+              "type": "number",
+              "description": "0 = automatique.",
+              "minimum": 0,
+              "maximum": 10000
+            },
+            "nits_sortie": {
+              "type": "number",
+              "description": "Défaut 100.",
+              "minimum": 48,
+              "maximum": 10000
+            }
+          }
+        },
+        "lut": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "La LUT du nœud (appliquée après les primaires).",
+          "properties": {
+            "fichier": {
+              "type": "string",
+              "description": "Chemin absolu d'un .cube, ou un nom cherché dans les dossiers de LUT de KoraCut et du projet. Vide : retire la LUT."
+            },
+            "melange": {
+              "type": "number",
+              "description": "0 à 100, défaut 100.",
+              "minimum": 0,
+              "maximum": 100
+            }
+          }
+        }
+      },
+      "required": [
+        "noeud_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (document 22, lot 3).",
+    "x_confirmation": false
+  },
+  {
+    "name": "etal_noeud_supprimer",
+    "description": "Supprime un nœud en reconnectant ses voisins (un mélangeur réduit à une branche disparaît). Une étape d'annulation. Renvoie { ok, noeuds }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le plan à étalonner (champ id de etat_timeline). Absent : donne sequence = true."
+        },
+        "sequence": {
+          "type": "boolean",
+          "description": "true : le grade de toute la séquence (les nœuds « Timeline » de Resolve, appliqués après ceux des plans) au lieu d'un plan."
+        },
+        "noeud_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Le nœud à supprimer."
+        }
+      },
+      "required": [
+        "noeud_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (document 22, lot 3).",
+    "x_confirmation": false
+  },
+  {
+    "name": "etal_cst",
+    "description": "Pose une transformation d'espace couleur (Color Space Transform de Resolve) pour convertir un plan log ou HDR en Rec.709 : c'est le premier geste sur un plan log, avant toute correction. Par défaut, dans un nœud « CST » placé en tête de l'arbre (créé s'il n'existe pas). camera choisit l'entrée d'après la caméra ; sinon donner entree_gamut et entree_gamma. Sortie par défaut Rec.709 gamma 2,4, tone mapping DaVinci, compression de gamut. Ne jamais deviner le log : le demander, ou le lire dans les métadonnées. Renvoie { ok, noeud_id, cst }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le plan à étalonner (champ id de etat_timeline). Absent : donne sequence = true."
+        },
+        "sequence": {
+          "type": "boolean",
+          "description": "true : le grade de toute la séquence (les nœuds « Timeline » de Resolve, appliqués après ceux des plans) au lieu d'un plan."
+        },
+        "camera": {
+          "type": "string",
+          "enum": [
+            "sony_slog3_sgamut3cine",
+            "sony_slog3_sgamut3",
+            "sony_slog2",
+            "panasonic_vlog",
+            "canon_log3",
+            "canon_log2",
+            "canon_log",
+            "arri_logc3",
+            "arri_logc4",
+            "blackmagic_film_gen5",
+            "red_log3g10",
+            "apple_log",
+            "iphone_hdr_hlg",
+            "dji_dlog",
+            "nikon_nlog",
+            "fujifilm_flog2",
+            "fujifilm_flog",
+            "leica_llog",
+            "gopro_gplog2",
+            "davinci_intermediate"
+          ],
+          "description": "La caméra et son profil log."
+        },
+        "entree_gamut": {
+          "type": "string",
+          "enum": [
+            "rec709",
+            "rec2020",
+            "p3d65",
+            "dcip3",
+            "sgamut3",
+            "sgamut3cine",
+            "vgamut",
+            "cinemagamut",
+            "awg3",
+            "awg4",
+            "bmdwg5",
+            "dwg",
+            "rwg",
+            "dgamut",
+            "fgamutc",
+            "protune",
+            "ap0",
+            "ap1"
+          ],
+          "description": "Sans camera : l'espace d'entrée."
+        },
+        "entree_gamma": {
+          "type": "string",
+          "enum": [
+            "gamma24",
+            "rec709",
+            "srgb",
+            "gamma22",
+            "gamma26",
+            "lineaire",
+            "hlg",
+            "pq",
+            "davinci_intermediate",
+            "acescct",
+            "slog3",
+            "slog2",
+            "vlog",
+            "clog",
+            "clog2",
+            "clog3",
+            "logc3",
+            "logc4",
+            "bmdfilm5",
+            "log3g10",
+            "applelog",
+            "dlog",
+            "nlog",
+            "flog",
+            "flog2",
+            "llog",
+            "gplog2",
+            "protune"
+          ],
+          "description": "Sans camera : la courbe d'entrée."
+        },
+        "sortie_gamut": {
+          "type": "string",
+          "enum": [
+            "rec709",
+            "rec2020",
+            "p3d65",
+            "dcip3",
+            "sgamut3",
+            "sgamut3cine",
+            "vgamut",
+            "cinemagamut",
+            "awg3",
+            "awg4",
+            "bmdwg5",
+            "dwg",
+            "rwg",
+            "dgamut",
+            "fgamutc",
+            "protune",
+            "ap0",
+            "ap1"
+          ],
+          "description": "Défaut rec709."
+        },
+        "sortie_gamma": {
+          "type": "string",
+          "enum": [
+            "gamma24",
+            "rec709",
+            "srgb",
+            "gamma22",
+            "gamma26",
+            "lineaire",
+            "hlg",
+            "pq",
+            "davinci_intermediate",
+            "acescct",
+            "slog3",
+            "slog2",
+            "vlog",
+            "clog",
+            "clog2",
+            "clog3",
+            "logc3",
+            "logc4",
+            "bmdfilm5",
+            "log3g10",
+            "applelog",
+            "dlog",
+            "nlog",
+            "flog",
+            "flog2",
+            "llog",
+            "gplog2",
+            "protune"
+          ],
+          "description": "Défaut gamma24."
+        },
+        "tone_mapping": {
+          "type": "string",
+          "enum": [
+            "aucun",
+            "simple",
+            "davinci",
+            "luminance"
+          ],
+          "description": "Défaut davinci."
+        },
+        "gamut_mapping": {
+          "type": "string",
+          "enum": [
+            "aucun",
+            "ecreter",
+            "compression"
+          ],
+          "description": "Défaut compression."
+        },
+        "noeud_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Un nœud précis au lieu du nœud CST de tête."
+        }
+      },
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (document 22, lot 3) : kcgrade::Cst.",
+    "x_confirmation": false
+  },
+  {
+    "name": "etal_lut",
+    "description": "Pose une LUT (.cube) dans un nœud : une LUT constructeur (log vers Rec.709) dans le nœud de tête, une LUT créative dans un nœud « Look » en fin d'arbre, dosée par melange. Défaut : un nouveau nœud en fin d'arbre, étiqueté d'après le fichier. Rien n'est téléchargé : le fichier doit exister. Renvoie { ok, noeud_id, fichier }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le plan à étalonner (champ id de etat_timeline). Absent : donne sequence = true."
+        },
+        "sequence": {
+          "type": "boolean",
+          "description": "true : le grade de toute la séquence (les nœuds « Timeline » de Resolve, appliqués après ceux des plans) au lieu d'un plan."
+        },
+        "fichier": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Chemin absolu, ou nom cherché dans les dossiers de LUT."
+        },
+        "melange": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Dosage, défaut 100 (un look se dose souvent entre 30 et 70)."
+        },
+        "noeud_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Un nœud existant au lieu d'un nouveau."
+        }
+      },
+      "required": [
+        "fichier"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (document 22, lot 3).",
+    "x_confirmation": false
+  },
+  {
+    "name": "etal_copier",
+    "description": "Copie le grade d'un plan vers d'autres (le clic milieu de Resolve) : remplacer (défaut) ou ajouter à la suite (Append Node Graph). Pour les plans d'une même scène et d'une même caméra ; vérifier chaque plan par une mesure ensuite. Une étape d'annulation. Renvoie { ok, source, cibles, copies }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "source_clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le plan de référence."
+        },
+        "clip_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 200,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "description": "Les plans qui reçoivent le grade."
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "remplacer",
+            "ajouter"
+          ],
+          "description": "Défaut remplacer."
+        }
+      },
+      "required": [
+        "source_clip_id",
+        "clip_ids"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (document 22, lot 3).",
+    "x_confirmation": false
+  },
+  {
+    "name": "etal_reinitialiser",
+    "description": "Remet le grade d'un plan (ou de la séquence) à zéro : tous les nœuds (Command-Home) ou seulement leurs réglages en gardant la structure (garder_noeuds, Shift-Command-Home). Le travail fait à la main par la personne part aussi : demande confirmation. Une étape d'annulation. Renvoie { ok, noeuds }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le plan à étalonner (champ id de etat_timeline). Absent : donne sequence = true."
+        },
+        "sequence": {
+          "type": "boolean",
+          "description": "true : le grade de toute la séquence (les nœuds « Timeline » de Resolve, appliqués après ceux des plans) au lieu d'un plan."
+        },
+        "garder_noeuds": {
+          "type": "boolean",
+          "description": "true : garde les nœuds, remet leurs réglages à zéro."
+        }
+      },
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (document 22, lot 3).",
+    "x_confirmation": true
+  },
+  {
+    "name": "etal_exporter_lut",
+    "description": "Exporte le grade d'un plan en LUT .cube (Generate LUT de Resolve), pour l'appliquer ailleurs ou sur un tournage. Refusé si le grade a des fenêtres, du flou ou du contraste local (une LUT ne les porte pas) et si le fichier existe déjà. Renvoie { ok, fichier, taille }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le plan."
+        },
+        "fichier": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Chemin absolu du .cube à écrire (nouveau fichier)."
+        },
+        "taille": {
+          "type": "integer",
+          "enum": [
+            17,
+            33,
+            65
+          ],
+          "description": "Points par côté, défaut 33."
+        }
+      },
+      "required": [
+        "clip_id",
+        "fichier"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (document 22, lot 3) : Grade::exportCube.",
+    "x_confirmation": false
+  }
+]

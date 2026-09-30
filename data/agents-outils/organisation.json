@@ -1,0 +1,424 @@
+[
+  {
+    "name": "lister_dossiers_chutier",
+    "description": "Donne l'arborescence des dossiers du chutier : pour chaque dossier son id, son nom, son chemin complet (« 01 Rushs/Jour 1 »), l'id de son parent, le nombre de médias et de sous-dossiers, plus le nombre de médias restés à la racine. À lire avant de ranger, pour ne pas créer un dossier qui existe déjà. Lecture seule. Renvoie { ok, dossiers: [ { id, nom, chemin, parent_id, medias, sous_dossiers } ], racine_medias, dossier_projet }. dossier_projet est le dossier du fichier .koracut sur le disque, null tant que le projet n'est pas enregistré.",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/bin/projectitemmodel.h:ProjectItemModel::getFolders, getRootFolder ; AbstractProjectItem::parent, childCount, child.",
+    "x_confirmation": false
+  },
+  {
+    "name": "creer_dossier_chutier",
+    "description": "Crée un dossier dans le chutier (pas sur le disque). Si un dossier du même nom existe déjà au même endroit, il est rendu tel quel avec existait = true et rien ne change. Une étape d'annulation. Renvoie { ok, dossier_id, nom, chemin, existait }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "nom": {
+          "type": "string",
+          "description": "Nom du dossier, par exemple « 01 Rushs ». Sans « / ».",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "parent": {
+          "type": "string",
+          "description": "Nom, chemin (« 01 Rushs/Jour 1 ») ou id du dossier qui le contient. Défaut : la racine du chutier.",
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "nom"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "ProjectItemModel::requestAddFolder(id, name, parentId, undo, redo)",
+    "x_confirmation": false
+  },
+  {
+    "name": "renommer_dossier_chutier",
+    "description": "Renomme un dossier du chutier (pas sur le disque). Refusé si un autre dossier porte déjà ce nom au même endroit (existe_deja). Une étape d'annulation. Renvoie { ok, dossier_id, avant, apres, chemin }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "dossier": {
+          "type": "string",
+          "description": "Nom, chemin ou id du dossier à renommer.",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "nom": {
+          "type": "string",
+          "description": "Le nouveau nom. Sans « / ».",
+          "minLength": 1,
+          "maxLength": 80
+        }
+      },
+      "required": [
+        "dossier",
+        "nom"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "ProjectItemModel::requestRenameFolder(folder, name, undo, redo)",
+    "x_confirmation": false
+  },
+  {
+    "name": "ranger_media",
+    "description": "Range un ou plusieurs médias dans un dossier du chutier, créé s'il manque. Avec disque = true, et seulement pour les fichiers qui sont dans le dossier du projet, le fichier est aussi déplacé dans le sous-dossier du même nom du dossier du projet (créé s'il manque) ; les fichiers hors du dossier du projet ne bougent pas sur le disque et sont listés dans hors_projet. Le chutier et les clips de la timeline suivent. Tout l'appel tient dans une étape d'annulation, qui remet aussi les fichiers. N'utiliser disque = true que si la personne a accepté de ranger les fichiers. Renvoie { ok, dossier_id, dossier, ranges: [media_id], deja_la: [media_id], fichiers_deplaces, hors_projet: [media_id] }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "media_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "maxItems": 200,
+          "description": "Les médias à ranger."
+        },
+        "dossier": {
+          "type": "string",
+          "description": "Nom, chemin (« 01 Rushs/Drone ») ou id du dossier d'arrivée. « racine » : la racine du chutier.",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "disque": {
+          "type": "boolean",
+          "description": "true : déplace aussi les fichiers dans le dossier du projet. Défaut : false (le chutier seul)."
+        }
+      },
+      "required": [
+        "media_ids",
+        "dossier"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "ProjectClip::changeParent(folder) dans undo/redo ; disque : QFile::rename dans le dossier du projet puis ClipController::koraCutRelocate et TimelineFunctions::koraCutRelocateMedia.",
+    "x_confirmation": false
+  },
+  {
+    "name": "renommer_media",
+    "description": "Renomme un média dans le chutier : le nom affiché dans le chutier et sur les clips de la timeline. Le fichier sur le disque ne change pas (renommer_fichier_media pour ça). Marche aussi pour une séquence et un titre. Refusé si un autre média du même dossier du chutier porte déjà ce nom (existe_deja). Une étape d'annulation. Renvoie { ok, media_id, avant, apres }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "media_id": {
+          "type": "string",
+          "description": "Identifiant du média dans le chutier (champ id de lister_medias).",
+          "minLength": 1,
+          "maxLength": 20
+        },
+        "nom": {
+          "type": "string",
+          "description": "Le nouveau nom, par exemple « 03 - Plan large boutique.mp4 ».",
+          "minLength": 1,
+          "maxLength": 120
+        }
+      },
+      "required": [
+        "media_id",
+        "nom"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "ProjectClip::setProperties({ kdenlive:clipname }) dans undo/redo.",
+    "x_confirmation": false
+  },
+  {
+    "name": "renommer_fichier_media",
+    "description": "Renomme le fichier d'un média sur le disque, dans son dossier, et le chutier garde le lien : le média, ses clips dans la timeline et son proxy continuent de marcher. Seulement pour un fichier qui est dans le dossier du projet (hors_projet sinon, projet_absent si le projet n'est pas enregistré) : jamais sur une carte, un disque externe ou dans Téléchargements. L'extension est gardée si le nouveau nom n'en a pas. Refusé si un fichier porte déjà ce nom (fichier_existe). Par défaut le nom du chutier suit. Une étape d'annulation, qui remet le fichier. Ne l'utiliser que si la personne a accepté qu'on renomme ses fichiers. Renvoie { ok, media_id, avant, apres, nom_chutier }, chemins relatifs au dossier du projet.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "media_id": {
+          "type": "string",
+          "description": "Identifiant du média dans le chutier (champ id de lister_medias).",
+          "minLength": 1,
+          "maxLength": 20
+        },
+        "nom": {
+          "type": "string",
+          "description": "Le nouveau nom du fichier, sans dossier, par exemple « 03 - Plan large boutique » ou « 03 - Plan large boutique.mp4 ».",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "chutier_suit": {
+          "type": "boolean",
+          "description": "true (défaut) : le nom dans le chutier devient le nom du fichier."
+        }
+      },
+      "required": [
+        "media_id",
+        "nom"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "QFile::rename, ClipController::koraCutRelocate, TimelineFunctions::koraCutRelocateMedia (les producteurs des pistes), comme fichiers.renommer de la porte.",
+    "x_confirmation": false
+  },
+  {
+    "name": "organiser_rushs",
+    "description": "Range et renomme tout un lot de médias en un seul appel, d'après un plan que tu donnes : pour chaque média, sa description et son dossier. Les noms suivent la convention « NN - Description.ext » : numérotés dans l'ordre du plan (numeroter), avec deux chiffres (trois au-delà de 99), un préfixe au besoin (« M » pour la musique : « M01 - … »). L'extension du fichier est gardée. disque dit ce qui arrive aux fichiers : non (défaut, le chutier seul), renommer (le fichier prend le même nom, dans son dossier) ou ranger (renommé et déplacé dans le sous-dossier du même nom du dossier du projet). Les fichiers hors du dossier du projet ne bougent jamais sur le disque (listés dans hors_projet). Tout est vérifié avant de commencer : si deux médias du plan finiraient avec le même nom au même endroit, ou si un nom est déjà pris (dans le chutier ou sur le disque), rien n'est fait et l'erreur liste les conflits. Tout l'appel tient dans une seule étape d'annulation. Renvoie { ok, ranges: [ { media_id, avant, nom, dossier, fichier } ], dossiers_crees: [nom], fichiers_renommes, hors_projet: [media_id] }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "plan": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 300,
+          "description": "Les médias, dans l'ordre de leur numéro.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "media_id"
+            ],
+            "properties": {
+              "media_id": {
+                "type": "string",
+                "description": "Identifiant du média dans le chutier (champ id de lister_medias).",
+                "minLength": 1,
+                "maxLength": 20
+              },
+              "nom": {
+                "type": "string",
+                "description": "La description courte, sans numéro ni extension : « Interview Awa - Cam A ». Absente : le nom actuel, sans son ancien numéro.",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "dossier": {
+                "type": "string",
+                "description": "Nom, chemin ou id du dossier du chutier (créé s'il manque). Absent : le dossier actuel.",
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "numero": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9999,
+                "description": "Numéro imposé, par exemple le même pour la caméra A, la caméra B et le son d'une même prise. Absent : le numéro suivant."
+              }
+            }
+          }
+        },
+        "numeroter": {
+          "type": "boolean",
+          "description": "true (défaut) : préfixe « NN - ». false : le nom seul."
+        },
+        "premier_numero": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9999,
+          "description": "Le premier numéro. Défaut : 1."
+        },
+        "prefixe": {
+          "type": "string",
+          "description": "Lettres devant le numéro : « M » pour les musiques, « G » pour les graphismes. Défaut : aucune.",
+          "maxLength": 3,
+          "pattern": "^[A-Za-z]*$"
+        },
+        "disque": {
+          "type": "string",
+          "enum": [
+            "non",
+            "renommer",
+            "ranger"
+          ],
+          "description": "non (défaut) : le chutier seul. renommer : le fichier prend le même nom. ranger : renommé et déplacé dans le sous-dossier du projet. Seulement si la personne l'a accepté."
+        }
+      },
+      "required": [
+        "plan"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "Les gestes de ranger_media, renommer_media et renommer_fichier_media réunis dans une seule étape d'annulation, après une vérification complète des collisions.",
+    "x_confirmation": false
+  },
+  {
+    "name": "creer_sequence",
+    "description": "Crée une séquence (une timeline de plus dans le projet), avec ses pistes, et l'affiche par défaut. Refusé si une séquence porte déjà ce nom (existe_deja). Le projet n'a qu'un profil d'image : lis note dans la réponse et dis-la à la personne si le format diffère. Une étape d'annulation. Renvoie { ok, sequence: { uuid, nom, media_id }, orientation, active, note }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "nom": {
+          "type": "string",
+          "description": "Nom de la séquence, par exemple « Boutique Awa - 9x16 - v1 ». Défaut : « Séquence N ».",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "pistes_video": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20,
+          "description": "Nombre de pistes vidéo. Absent (et pistes_audio absent) : la séquence reprend les pistes de la séquence en cours, avec leurs noms."
+        },
+        "pistes_audio": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20,
+          "description": "Nombre de pistes audio. Absent (et pistes_video absent) : la séquence reprend les pistes de la séquence en cours, avec leurs noms."
+        },
+        "orientation": {
+          "type": "string",
+          "enum": [
+            "horizontale",
+            "verticale"
+          ],
+          "description": "horizontale (16:9, 1920 × 1080) ou verticale (9:16, 1080 × 1920). Le projet garde un seul profil : la séquence verticale retourne le profil quand elle est affichée. Défaut : l'orientation du projet."
+        },
+        "activer": {
+          "type": "boolean",
+          "description": "true (défaut) : la séquence est affichée et devient celle que les outils modifient."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "ClipCreator::createPlaylistClipWithUndo, ProjectManager::openTimeline, TimelineTabs::setSequenceOrientation.",
+    "x_confirmation": false
+  },
+  {
+    "name": "renommer_sequence",
+    "description": "Renomme une séquence (son onglet et son média dans le chutier). Refusé si une autre séquence porte déjà ce nom (existe_deja). Une étape d'annulation. Renvoie { ok, sequence: { uuid, nom, media_id }, avant }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "sequence": {
+          "type": "string",
+          "description": "La séquence : son nom, son uuid, ou l'id de son média dans le chutier (lister_medias avec type « sequence »). Absent : la séquence affichée.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "nom": {
+          "type": "string",
+          "description": "Le nouveau nom, par exemple « Boutique Awa - 16x9 - v1 ».",
+          "minLength": 1,
+          "maxLength": 120
+        }
+      },
+      "required": [
+        "nom"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "ProjectClip::setProperties({ kdenlive:clipname }) sur le clip de séquence, comme projet.sequence renommer de la porte.",
+    "x_confirmation": false
+  },
+  {
+    "name": "activer_sequence",
+    "description": "Affiche une séquence et en fait celle que les outils modifient (etat_timeline, couper_clip… travaillent ensuite sur elle). Une séquence fermée s'ouvre. Rien d'annulable : c'est l'affichage. À appeler avant de monter dans une autre séquence que celle qui est à l'écran. Renvoie { ok, sequence: { uuid, nom, media_id }, orientation }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "sequence": {
+          "type": "string",
+          "description": "La séquence : son nom, son uuid, ou l'id de son média dans le chutier.",
+          "minLength": 1,
+          "maxLength": 120
+        }
+      },
+      "required": [
+        "sequence"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "ProjectManager::openTimeline(binId, -1, uuid), TimelineTabs::activateSequence.",
+    "x_confirmation": false
+  },
+  {
+    "name": "dupliquer_sequence",
+    "description": "Copie une séquence entière (clips, effets, pistes) sous un nouveau nom : pour garder une version avant un gros changement (v1 → v2) ou partir d'un montage horizontal pour faire la version verticale (orientation). La copie est affichée par défaut. Refusé si le nom est déjà pris (existe_deja). Une étape d'annulation. Renvoie { ok, sequence: { uuid, nom, media_id }, source, orientation, active, note }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "sequence": {
+          "type": "string",
+          "description": "La séquence : son nom, son uuid, ou l'id de son média dans le chutier (lister_medias avec type « sequence »). Absent : la séquence affichée.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "nom": {
+          "type": "string",
+          "description": "Nom de la copie. Défaut : « <nom> (copie) ».",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "orientation": {
+          "type": "string",
+          "enum": [
+            "horizontale",
+            "verticale"
+          ],
+          "description": "horizontale ou verticale pour la copie. Défaut : celle de la source. Les plans ne sont pas recadrés : après une copie verticale, recadre-les (transformer_clip)."
+        },
+        "activer": {
+          "type": "boolean",
+          "description": "true (défaut) : la copie est affichée."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "Comme Bin::slotDuplicateClip pour un clip de séquence : cloneProducerToFile, requestAddBinClip, openTimeline.",
+    "x_confirmation": false
+  },
+  {
+    "name": "renommer_piste",
+    "description": "Renomme une piste de la timeline (« Plans », « B-roll », « Voix », « Musique »). Même effet que regler_piste avec nom, qui reste valable. Une étape d'annulation. Renvoie { ok, piste_id, avant, nom }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "piste_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant de la piste, lu dans etat_timeline (champ id de la piste)."
+        },
+        "nom": {
+          "type": "string",
+          "description": "Le nouveau nom de la piste.",
+          "minLength": 1,
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "piste_id",
+        "nom"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "TimelineItemModel::setTrackName (annulable).",
+    "x_confirmation": false
+  },
+  {
+    "name": "renommer_clip",
+    "description": "Donne un nom à un clip de la timeline, sans toucher au média ni aux autres clips du même média : « Accroche », « Réponse 3 », « B-roll atelier ». Le nom s'affiche sur le clip et dans etat_timeline (nom), et suit les deux morceaux d'une coupe. Un nom vide rend au clip le nom de son média. Une étape d'annulation. Renvoie { ok, clip_id, avant, nom, media_nom }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant du clip, lu dans etat_timeline."
+        },
+        "nom": {
+          "type": "string",
+          "description": "Le nom du clip. Vide : le nom du média.",
+          "maxLength": 80
+        }
+      },
+      "required": [
+        "clip_id",
+        "nom"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "Propriété kdenlive:koracut_clipname du clip de la timeline (ClipModel::koraCutName), TimelineFunctions::koraCutSetClipName.",
+    "x_confirmation": false
+  }
+]

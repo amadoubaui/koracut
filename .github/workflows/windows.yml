@@ -1,0 +1,103 @@
+# KoraCut sous Windows : compilation par KDE Craft (MSVC 2022, comme le .dmg sur Mac), tests, paquet et
+# captures d'écran de l'application ouverte, pour comparer avec le Mac (chantier 12, 30 septembre 2026).
+name: Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [koracut]
+    paths-ignore: ['**.md', 'po/**']
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 350
+    env:
+      CRAFT_ROOT: C:\CraftRoot
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: src
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Craft et ses paquets précompilés : gardés d'un passage à l'autre (plusieurs Go, une heure de moins).
+      - name: Cache de Craft
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:\CraftRoot
+            !C:\CraftRoot\build
+          key: craft-windows-v1-${{ hashFiles('src/CMakeLists.txt') }}
+          restore-keys: craft-windows-v1-
+
+      - name: Installer KDE Craft
+        shell: pwsh
+        run: |
+          if (-not (Test-Path C:\CraftRoot\craft\craftenv.ps1)) {
+            Invoke-WebRequest https://raw.githubusercontent.com/KDE/craft/master/setup/CraftBootstrap.py -OutFile CraftBootstrap.py
+            python CraftBootstrap.py --prefix C:\CraftRoot --use-defaults
+          }
+
+      - name: Dépendances (Qt 6, KF6, MLT, FFmpeg, KDDockWidgets, qtkeychain)
+        shell: pwsh
+        run: |
+          . C:\CraftRoot\craft\craftenv.ps1
+          craft --option "kdenlive.srcDir=$env:GITHUB_WORKSPACE\src" --install-deps kdenlive
+          craft qtkeychain
+
+      - name: Compiler KoraCut
+        shell: pwsh
+        run: |
+          . C:\CraftRoot\craft\craftenv.ps1
+          craft --option "kdenlive.srcDir=$env:GITHUB_WORKSPACE\src" --option kdenlive.buildTests=True kdenlive
+
+      - name: Tests
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          . C:\CraftRoot\craft\craftenv.ps1
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          craft --option "kdenlive.srcDir=$env:GITHUB_WORKSPACE\src" --test kdenlive 2>&1 | Tee-Object -FilePath tests-windows.log
+
+      - name: Captures d'écran de KoraCut ouverte
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          . C:\CraftRoot\craft\craftenv.ps1
+          New-Item -ItemType Directory -Force captures | Out-Null
+          $rc = Join-Path $env:LOCALAPPDATA 'koracut-captures-rc'
+          Set-Content $rc "[startup]`nshowWelcome=false`n"
+          $env:KORACUT_SHOT_SIZE = '1440x900'
+          $env:KORACUT_SHOT_DELAY = '15000'
+          # Une capture par module, le nom du module est ajouté au fichier (mainwindow.cpp, KORACUT_SHOT_MODULES).
+          $env:KORACUT_SHOT = "$env:GITHUB_WORKSPACE\captures\windows.png"
+          $env:KORACUT_SHOT_MODULES = 'montage,etalonnage,audio,export'
+          $p = Start-Process -FilePath C:\CraftRoot\bin\koracut.exe -ArgumentList '--config', 'koracut-captures-rc', '--no-welcome' -PassThru -RedirectStandardError captures\koracut.log
+          if (-not $p.WaitForExit(240000)) { $p.Kill() }
+          Get-ChildItem captures
+
+      - name: Paquet (installeur et archive)
+        shell: pwsh
+        run: |
+          . C:\CraftRoot\craft\craftenv.ps1
+          craft --option "kdenlive.srcDir=$env:GITHUB_WORKSPACE\src" --package kdenlive
+          Get-ChildItem C:\CraftRoot\tmp -Include *.exe, *.7z, *.appx -Recurse | Select-Object FullName, Length
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: koracut-windows
+          path: |
+            captures
+            tests-windows.log
+            C:\CraftRoot\tmp\*.exe
+            C:\CraftRoot\tmp\*.7z
+          if-no-files-found: warn

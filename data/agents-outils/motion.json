@@ -1,0 +1,496 @@
+[
+  {
+    "name": "motion_lister",
+    "description": "Liste les compositions Motion (HyperFrames) du projet : pour chacune son nom, son dossier, ses dimensions et sa cadence, ses éléments (id, sorte, nom, texte, fichier, début et durée en secondes, index de piste, état du rendu, et le clip de timeline s'il est posé), le nombre de rendus prêts, en cours et en échec, et les erreurs d'analyse. Dit aussi si HyperFrames est prêt (« pret »), à installer (« a_installer ») ou sans Node (« sans_node »). C'est la vue du Motion designer : l'appeler au début de chaque demande, et après motion_ecrire ou motion_rendre pour vérifier. Les temps des éléments sont en secondes (c'est le HTML qui fait foi), les positions des clips en images. Lecture seule. Renvoie { ok, hyperframes: { etat, version }, dossier, compositions: [ { nom, dossier, fichier, largeur, hauteur, ips, duree, elements: [ { id, sorte: \"bloc\" | \"image\" | \"video\" | \"audio\" | \"composition\" | \"entiere\", nom, texte, fichier, debut, duree, piste_index, rendu: \"pret\" | \"en_cours\" | \"echec\" | \"aucun\" | \"son\", clip_id, piste_id, pos, pos_tc, len } ], rendus, en_cours, echecs, erreurs } ] }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/motion/koracutmotionmirror.h:KoraCutMotionMirror::projects, projectState, elements ; l'état de HyperFrames : koracutmotionrenderer.h:KoraCutMotionHost::state.",
+    "x_confirmation": false
+  },
+  {
+    "name": "motion_creer",
+    "description": "Crée une composition Motion dans le projet : un dossier motion/<nom>/ avec un index.html (le gabarit de KoraCut, un titre animé de 4 s, ou le HTML fourni dans html), assets/gsap.min.js déjà copié, et compositions/. Avec source (un dossier HyperFrames déjà écrit avec son index.html, ou un fichier .html), la composition est importée avec tous ses fichiers : polices, images, feuilles et scripts cités, comme par le panneau Motion. C'est la voie pour une composition qui a sa charte (polices du client, logo). Une racine qui porte data-koracut-fond=\"opaque\" (un plan plein cadre, pas un habillage) est rendue en MP4 plutôt qu'en ProRes 4444 transparent : environ trente fois plus léger sur le disque et deux fois plus rapide. Sans largeur, hauteur ni ips, la composition prend le format et la cadence du projet. Les éléments temporels du HTML (data-start, data-duration, data-track-index, voir la compétence hyperframes-core) deviennent des clips violets sur des pistes « Motion · nom » au-dessus de la vidéo, dès que leur rendu est prêt (motion_rendre). Le nom devient un nom de dossier (lettres, chiffres, tirets). Refuse si une composition du même nom existe (existe_deja) : dans ce cas, motion_ecrire. Annulable en une étape. Renvoie la même fiche que motion_lister pour cette composition, avec ok.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "nom": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "Le nom de la composition, par exemple « bandeau-awa »."
+        },
+        "largeur": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 8192,
+          "description": "Largeur en pixels. Défaut : celle du projet."
+        },
+        "hauteur": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 8192,
+          "description": "Hauteur en pixels. Défaut : celle du projet."
+        },
+        "ips": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 120,
+          "description": "Images par seconde. Défaut : la cadence du projet."
+        },
+        "html": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Le contenu complet de index.html, avec une racine data-composition-id. Absent : le gabarit de KoraCut."
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Chemin absolu d'un dossier qui contient index.html, ou d'un fichier .html, à importer avec ses fichiers. Exclut html."
+        }
+      },
+      "required": [
+        "nom"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/motion/koracutmotionmirror.h:KoraCutMotionMirror::createProject(name, error, width, height, fps, html) ; le gabarit : koracutmotionproject.h:KoraCutMotionProject::create et templateHtml. Avec source : KoraCutMotionMirror::importProject(source, name, error).",
+    "x_confirmation": false
+  },
+  {
+    "name": "motion_lire",
+    "description": "Renvoie le HTML complet (index.html) d'une composition Motion, tel qu'il est sur le disque. À appeler avant motion_ecrire pour modifier une composition existante sans rien perdre, et pour comprendre ce qu'une composition importée contient. Les sous-compositions (compositions/*.html) et les fichiers d'assets ne sont pas renvoyés : leurs chemins sont dans le HTML. Lecture seule. Renvoie { ok, nom, fichier, html }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "nom": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Le nom de la composition (motion_lister, champ nom)."
+        }
+      },
+      "required": [
+        "nom"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/motion/koracutmotionsync.h:KoraCutMotionSync::html.",
+    "x_confirmation": false
+  },
+  {
+    "name": "motion_ecrire",
+    "description": "Remplace tout l'index.html d'une composition Motion par le HTML fourni, puis met la timeline en accord : les éléments nouveaux gagnent un clip (dès que leur rendu est prêt), les éléments disparus perdent le leur, ceux qui ont changé de place ou de durée sont retimés sans nouveau rendu, et ceux dont le contenu a changé (texte, style, animation) sont re-rendus en fond, l'ancien rendu restant affiché en attendant. C'est l'outil normal pour écrire une composition : lire avec motion_lire, modifier, écrire ici, puis motion_verifier, motion_rendre et motion_instantane. Le HTML doit suivre le contrat HyperFrames (compétence hyperframes-core) : racine data-composition-id, data-width, data-height, data-fps, data-duration ; chaque élément dans le temps avec un id, class=\"clip\", data-start, data-duration, data-track-index ; les timelines GSAP dans window.__timelines[id]. Pour un petit changement (un texte, un début), préférer motion_element. Ne supprime aucun fichier : un asset qui n'est plus cité reste dans assets/. Annulable en une étape, HTML compris. Renvoie la fiche de la composition (comme motion_lister) avec ok, ajoutes, retires, rendus_relances (les id concernés).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "nom": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Le nom de la composition."
+        },
+        "html": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Le contenu complet de index.html."
+        }
+      },
+      "required": [
+        "nom",
+        "html"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/motion/koracutmotionmirror.h:KoraCutMotionMirror::replaceHtml (écriture silencieuse par KoraCutMotionSync::writeAllSilently, puis applyFromFile : diff par id et par empreinte).",
+    "x_confirmation": false
+  },
+  {
+    "name": "motion_element",
+    "description": "Modifie un seul élément d'une composition Motion, à sa place dans le fichier, sans toucher au reste : son texte visible (un bloc), son début et sa durée en secondes, ou n'importe quel attribut de sa balise (src d'un média, data-track-index, data-media-start, une classe, un data-* de variable). Un changement de texte ou d'attribut de contenu relance le rendu de cet élément seul ; un changement de début ou de durée retime le clip sans nouveau rendu. Une valeur nulle dans attributs retire l'attribut. L'id ne se change pas ici (motion_ecrire). Une composition d'un seul tenant (sorte « entiere ») se modifie par motion_ecrire. Annulable en une étape. Renvoie { ok, nom, id, element (comme dans motion_lister), rendu_relance }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "nom": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Le nom de la composition."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "L'id de l'élément (motion_lister, champ elements[].id)."
+        },
+        "texte": {
+          "type": "string",
+          "description": "Le nouveau texte visible d'un bloc. Le premier nœud de texte prend ce texte, les balises restent."
+        },
+        "debut": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Le nouveau data-start, en secondes."
+        },
+        "duree": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Le nouveau data-duration, en secondes."
+        },
+        "attributs": {
+          "type": "object",
+          "description": "Des attributs de la balise à écrire : { \"src\": \"assets/logo.png\", \"data-track-index\": \"2\" }. Une valeur null retire l'attribut.",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "required": [
+        "nom",
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/motion/koracutmotionmirror.h:KoraCutMotionMirror::setElement, sur KoraCutMotionSync::writeElement (modification minimale du texte du fichier).",
+    "x_confirmation": false
+  },
+  {
+    "name": "motion_rendre",
+    "description": "Rend les éléments d'une composition Motion en vidéo transparente (ProRes 4444) par HyperFrames et Chrome sans fenêtre, dans le cache du projet, puis pose leurs clips dans la timeline. Un rendu déjà en cache (même contenu) n'est jamais refait : forcer le refait. Sans ids, toute la composition ; avec ids, ces éléments seulement. Par défaut l'outil attend la fin des rendus (quelques secondes à une minute par élément, jusqu'à 5 minutes en tout) pour que l'appel suivant trouve les clips ; attendre: false rend la main tout de suite et motion_lister donnera l'état. Répond non_disponible si Node ou HyperFrames manquent : le dire à la personne, la composition est écrite quand même. Ce n'est pas un export : rien ne sort du projet. Le rendu n'est pas une étape d'annulation ; la pose des clips l'est. Renvoie la fiche de la composition avec ok, demandes, attendu, termine, derniere_erreur.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "nom": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Le nom de la composition."
+        },
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "maxItems": 50,
+          "description": "Les éléments à rendre. Absent ou vide : tous."
+        },
+        "forcer": {
+          "type": "boolean",
+          "description": "true : refait même les rendus déjà en cache. Défaut : false."
+        },
+        "attendre": {
+          "type": "boolean",
+          "description": "true (défaut) : attend la fin des rendus avant de répondre."
+        }
+      },
+      "required": [
+        "nom"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/motion/koracutmotionmirror.h:KoraCutMotionMirror::renderElements ; la file : koracutmotionrenderer.h:KoraCutMotionRenderer::request et waitForIdle ; la tâche : KoraCutMotionRenderTask (hyperframes render --format mov --quality looks).",
+    "x_confirmation": false
+  },
+  {
+    "name": "motion_instantane",
+    "description": "Capture une image fixe (PNG) d'une composition Motion à un temps donné, sans rendu complet, par hyperframes snapshot. C'est ainsi que le Motion designer regarde ce qu'il a écrit : après motion_ecrire, un instantané à deux temps (le milieu de l'animation d'entrée, puis le plateau), puis corriger. L'image est écrite dans le cache du projet ; le chemin renvoyé se lit avec voir_image (ou directement, depuis un terminal). Rien ne sort de la machine par cet outil. Pas d'étape d'annulation. Répond non_disponible sans HyperFrames. Renvoie { ok, nom, temps, chemin }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "nom": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Le nom de la composition."
+        },
+        "temps": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Le temps dans la composition, en secondes (0 = première image)."
+        }
+      },
+      "required": [
+        "nom",
+        "temps"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/motion/koracutmotionrenderer.h:KoraCutMotionHost::runCli(snapshot --at <t> --no-end --describe false --output <cache>/instantanes).",
+    "x_confirmation": false
+  },
+  {
+    "name": "motion_verifier",
+    "description": "Vérifie une composition Motion : l'analyse de KoraCut (racine, débuts qui ne se résolvent pas) et hyperframes lint (contrat HyperFrames, conflits GSAP et CSS, chemins d'assets, structure), messages en JSON avec le niveau, le code, la ligne et un conseil. À appeler après chaque motion_ecrire et avant motion_rendre : une erreur de lint fait presque toujours échouer le rendu. Un avertissement n'empêche pas de rendre. Lecture seule. Renvoie { ok, nom, lint (true si HyperFrames a pu être lancé), erreurs, avertissements, messages: [ { niveau: \"error\" | \"warning\" | \"info\", code, message, element, ligne, conseil } ] }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "nom": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Le nom de la composition."
+        }
+      },
+      "required": [
+        "nom"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/motion/koracutmotionrenderer.h:KoraCutMotionHost::runCli(lint --json) ; les erreurs d'analyse : koracutmotionsync.h:KoraCutMotion::Composition::errors.",
+    "x_confirmation": false
+  },
+  {
+    "name": "motion_poser",
+    "description": "Pose ou repose dans la timeline les clips d'une composition Motion dont le rendu est prêt et qui n'y sont pas (après un rendu lancé sans attendre, ou après un retrait à la main). Sans piste_id, le miroir crée ses pistes « Motion · nom » au-dessus de la vidéo (une par data-track-index) ; avec piste_id, cette piste vidéo devient la première piste Motion de la composition, si elle n'appartient pas déjà à une autre. Avec position, le premier élément à début absolu est amené à cette place de la timeline et les autres suivent d'autant (le HTML est réécrit : data-start). Ne rend rien : motion_rendre d'abord. Annulable en une étape. Renvoie la fiche de la composition avec ok, change, poses, sans_clip, remarque.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "nom": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Le nom de la composition."
+        },
+        "piste_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Une piste vidéo existante (etat_timeline) pour les éléments du premier index de piste. Absent : les pistes Motion sont créées."
+        },
+        "position": {
+          "description": "Où poser le premier élément sur la timeline. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet). Absent : à la place écrite dans le HTML.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "nom"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/motion/koracutmotionmirror.h:KoraCutMotionMirror::place (marque de piste kdenlive:koracut_motion, applyFromFile, requestClipMove, puis réécriture de data-start).",
+    "x_confirmation": false
+  },
+  {
+    "name": "motion_element_seul",
+    "description": "Crée UN élément animé dans sa propre petite composition HyperFrames, la rend en vidéo transparente et la pose comme UN seul clip à la position et à la durée données : un titre, un bandeau nom et fonction, un compteur, un logo qui arrive, une légende, ou ce que tu écris toi-même (brief_html). C'est la façon normale de faire de l'habillage : un élément = une composition = un clip, que la personne déplace, rallonge ou supprime sans toucher au reste ; son double-clic n'ouvre que lui. Sans piste_id, le clip va sur la piste partagée « Animations » (créée au besoin, sous la piste « Transitions ») ; une autre piste « Animations 2 » naît si la place est prise. Le catalogue (sans brief_html) : titre (styles monte, machine, eclat), bandeau (glisse ; texte « Nom | Fonction »), compteur (compte ; texte « 1250 clients » ou « +45 % »), logo (rebond ; fichier), legende (trait). Avec brief_html : soit une composition complète (racine data-composition-id, sans élément data-start à l'intérieur), soit un fragment HTML avec ses <style> et <script> ; dans le script, tl (la timeline GSAP en pause, déjà créée), D (la durée en secondes), W et H (la taille) existent : n'en crée pas d'autre. Marque la balise du texte principal avec data-koracut-texte=\"1\" pour que la personne puisse le changer dans l'inspecteur. Le rendu prend quelques secondes (attendre vrai par défaut). Annulable en une étape (la pose du clip) ; les fichiers restent dans motion/<nom>/. Renvoie { ok, nom, affichage, sorte, style, element, rendu, clip_id, piste_id, piste, position, duree, fichier, dossier, remarque? }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "nom": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Le nom de la composition, qui devient son dossier motion/<nom>/ : des lettres, des chiffres, des tirets (« titre-ouverture »)."
+        },
+        "sorte": {
+          "type": "string",
+          "enum": [
+            "titre",
+            "bandeau",
+            "compteur",
+            "logo",
+            "legende",
+            "autre"
+          ],
+          "description": "Ce qu'est l'élément. « autre » : avec brief_html seulement."
+        },
+        "style": {
+          "type": "string",
+          "description": "Le style du catalogue pour cette sorte (titre : monte, machine, eclat ; bandeau : glisse ; compteur : compte ; logo : rebond ; legende : trait). Absent : le premier."
+        },
+        "texte": {
+          "type": "string",
+          "description": "Le texte exact à écrire. Bandeau : « Nom | Fonction ». Compteur : le nombre avec son unité et son libellé."
+        },
+        "fichier": {
+          "type": "string",
+          "description": "Logo : le fichier image (absolu, ~, ou relatif au dossier du projet), copié dans assets/."
+        },
+        "brief_html": {
+          "type": "string",
+          "description": "Ton HTML : une composition complète d'un seul élément, ou un fragment (balises, <style>, <script> qui utilise tl, D, W, H). Lis hyperframes-core et hyperframes-animation avant."
+        },
+        "position": {
+          "description": "Où poser le clip sur la timeline. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\".",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "duree": {
+          "description": "Combien de temps l'élément reste, entrée et sortie comprises. Nombre d'images ou timecode.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "piste_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Une piste vidéo libre à cet endroit (etat_timeline). Absent : la piste « Animations »."
+        },
+        "couleurs": {
+          "type": "object",
+          "description": "Les couleurs de la charte, en hexadécimal (#RRGGBB). Absentes : l'habillage neutre de KoraCut (accent #7C5CFF, texte #FFFFFF, fond #2C2C2C).",
+          "properties": {
+            "accent": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "description": "La couleur d'accent (barre, trait, bande)."
+            },
+            "texte": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "description": "La couleur du texte (et des cordes, du voile)."
+            },
+            "fond": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "description": "La couleur de fond (boîte du bandeau, volets des cordes, voile de la secousse)."
+            }
+          },
+          "additionalProperties": false
+        },
+        "attendre": {
+          "type": "boolean",
+          "description": "Attendre la fin du rendu et la pose du clip (vrai par défaut)."
+        }
+      },
+      "required": [
+        "nom",
+        "position",
+        "duree"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/koracutagenttoolsanimation.cpp:motionElementSeul (KoraCutMotionCatalog::elementHtml ou wrapBrief, KoraCutMotionMirror::createProject puis setElementPlacement ; la piste partagée : KoraCutMotionMirror::elementTrack).",
+    "x_confirmation": false
+  },
+  {
+    "name": "motion_transition",
+    "description": "Pose une transition HyperFrames seule, dans sa propre composition, à cheval sur la coupe entre deux plans collés : son milieu tombe exactement sur la coupe, et à ce moment elle couvre toute l'image (la coupe se fait derrière). Elle va sur la piste « Transitions », tout en haut (créée au besoin). Si la personne déplace la coupe (rognage, déplacement d'un plan), la transition suit ; si elle déplace la transition sur une autre coupe, elle s'y accroche. Styles : cordes (quatre cordes tracées, deux volets qui se referment sur une coupe à 32°, un éclair les tranche, les volets s'écartent), balayage (une bande d'accent traverse l'image à 32°), secousse (bandes qui tremblent, voile, éclair), voile (brume floue qui monte et se dissipe), eclair (un flash blanc). Un élément qui doit s'accorder à la transition (un titre qui arrive derrière elle) : motion_element_seul sans piste_id, il va sur « Animations », juste sous la transition (piste_dessous_id), et tant que son clip croise celui de la transition, il la suit quand la coupe bouge (motion_lister le dit : suit_transition). Pour une transition légère sans rendu : transition_app. Annulable en une étape. Renvoie { ok, nom, affichage, style, clip_id, piste_id, position, duree, coupe, clip_avant, clip_apres, piste_dessous_id, rendu }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_avant": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le plan qui finit à la coupe (etat_timeline)."
+        },
+        "clip_apres": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le plan qui commence à la coupe. Absent : celui qui suit clip_avant sur sa piste."
+        },
+        "style": {
+          "type": "string",
+          "enum": [
+            "cordes",
+            "balayage",
+            "secousse",
+            "voile",
+            "eclair"
+          ],
+          "description": "Le style (cordes par défaut)."
+        },
+        "duree": {
+          "description": "La durée totale, centrée sur la coupe. Absent : 0,9 s (cordes, balayage), 0,6 s (secousse, eclair), 1,2 s (voile).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        },
+        "nom": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Le nom de la composition. Absent : transition-<style>, numéroté."
+        },
+        "couleurs": {
+          "type": "object",
+          "description": "Les couleurs de la charte, en hexadécimal (#RRGGBB). Absentes : l'habillage neutre de KoraCut (accent #7C5CFF, texte #FFFFFF, fond #2C2C2C).",
+          "properties": {
+            "accent": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "description": "La couleur d'accent (barre, trait, bande)."
+            },
+            "texte": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "description": "La couleur du texte (et des cordes, du voile)."
+            },
+            "fond": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "description": "La couleur de fond (boîte du bandeau, volets des cordes, voile de la secousse)."
+            }
+          },
+          "additionalProperties": false
+        },
+        "attendre": {
+          "type": "boolean",
+          "description": "Attendre la fin du rendu et la pose du clip (vrai par défaut)."
+        }
+      },
+      "required": [
+        "clip_avant"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/koracutagenttoolsanimation.cpp:motionTransition (KoraCutMotionCatalog::transitionHtml, data-koracut-cut ; la coupe suivie : KoraCutMotionMirror::retimeTransitions).",
+    "x_confirmation": false
+  },
+  {
+    "name": "motion_ouvrir",
+    "description": "Ouvre UN élément Motion comme un double-clic sur son clip : l'inspecteur montre son texte et ses réglages, le panneau Motion passe sur sa composition (et seulement elle : l'onglet Code, « Ouvrir dans Studio » sur son dossier). Rien d'autre ne change, la timeline reste telle quelle. Pour montrer à la personne ce qu'elle peut modifier. Renvoie { ok, nom, element, affichage, clip_id, dossier_studio, fichier_code, ouvert (l'élément ouvert), panneau (la composition que le panneau Motion montre, vide sans fenêtre) }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "nom": {
+          "type": "string",
+          "minLength": 1,
+          "description": "La composition (motion_lister, champ nom). Laisser vide si clip_id est donné."
+        },
+        "id": {
+          "type": "string",
+          "description": "L'élément dans cette composition. Absent : le premier."
+        },
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le clip de timeline de l'élément. Laisser vide si nom est donné."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/mainwindow.cpp:MainWindow::koraCutEditMotionClip (KoraCutMotionInspector::showClip, KoraCutMotionMirror::announceOpened).",
+    "x_confirmation": false
+  }
+]

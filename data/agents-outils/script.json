@@ -1,0 +1,243 @@
+[
+  {
+    "name": "script_lire",
+    "description": "Lit le script du projet : des blocs (titre, paragraphe, liste, tableau, séparateur) avec leurs identifiants. Les tableaux ont des colonnes typées (texte, duree, media, case, choix) et une ligne par scène ; une scène peut être reliée à un marqueur ou à une zone de la timeline (marqueur, zone). Tant que rien n'est écrit, c'est le modèle du type de vidéo du projet (enregistre = false) : un tableau « deroule » aux lignes s1, s2… construit depuis le guide des types. À lire avant de monter : le script dit ce qu'on monte, dans quel ordre, avec quels plans. Lecture seule.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "json",
+            "markdown",
+            "les_deux"
+          ],
+          "description": "json (défaut) : le script en blocs. markdown : un texte lisible. les_deux."
+        },
+        "bloc_id": {
+          "type": "string",
+          "description": "Ne rendre que ce bloc."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait : src/koracut/koracutagenttoolsscript.cpp, modèle src/koracut/script/koracutscript.cpp (propriété de document koracut:script).",
+    "x_confirmation": false
+  },
+  {
+    "name": "script_ecrire",
+    "description": "Écrit le script du projet, en une seule étape d'annulation par appel. Deux façons : script (un objet { blocs: [...] } comme script_lire le rend) remplace tout ; operations (une liste, au plus 200) modifie un bloc, une ligne, une colonne ou une cellule par identifiant. Une opération fausse et rien n'est gardé. Les colonnes se désignent par id ou par titre ; une cellule media accepte un media_id du chutier (il devient le nom du plan). relier_ligne relie une scène à un marqueur (poser_marqueur: true le pose dans la timeline, dans la même étape) ou à une zone. Rend { ok, resume, crees: [identifiants créés] } ; rendre_script: true rend aussi le script.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "script": {
+          "type": "object",
+          "description": "Le script entier, pour tout remplacer."
+        },
+        "operations": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "properties": {
+              "faire": {
+                "type": "string",
+                "enum": [
+                  "ajouter_bloc",
+                  "modifier_bloc",
+                  "supprimer_bloc",
+                  "deplacer_bloc",
+                  "ajouter_ligne",
+                  "modifier_ligne",
+                  "modifier_cellule",
+                  "supprimer_ligne",
+                  "deplacer_ligne",
+                  "ajouter_colonne",
+                  "modifier_colonne",
+                  "supprimer_colonne",
+                  "relier_ligne"
+                ],
+                "description": "L'opération."
+              },
+              "bloc_id": {
+                "type": "string",
+                "description": "Le bloc visé (champ id de script_lire). Le tableau d'un modèle s'appelle « deroule », ses lignes « s1 », « s2 »…"
+              },
+              "ligne_id": {
+                "type": "string",
+                "description": "La ligne (scène) visée, dans un tableau."
+              },
+              "colonne": {
+                "type": "string",
+                "description": "La colonne : son id (scene, duree, voix, image, son, plans, fait dans un modèle) ou son titre."
+              },
+              "valeur": {
+                "description": "modifier_cellule : la valeur. Texte, ou booléen pour une case.",
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "cellules": {
+                "type": "object",
+                "description": "ajouter_ligne, modifier_ligne : colonne (id ou titre) vers valeur."
+              },
+              "type": {
+                "type": "string",
+                "description": "ajouter_bloc : titre, paragraphe, liste, tableau, separateur. ajouter_colonne, modifier_colonne : texte, duree, media, case, choix."
+              },
+              "id": {
+                "type": "string",
+                "description": "ajouter_bloc, ajouter_ligne, ajouter_colonne : un identifiant choisi (sinon KoraCut en donne un, rendu dans crees)."
+              },
+              "texte": {
+                "type": "string",
+                "description": "Le texte d'un titre ou d'un paragraphe."
+              },
+              "titre": {
+                "type": "string",
+                "description": "Le nom d'un tableau ou d'une colonne."
+              },
+              "niveau": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 3,
+                "description": "Le niveau d'un titre."
+              },
+              "elements": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Les éléments d'une liste."
+              },
+              "colonnes": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                },
+                "description": "ajouter_bloc tableau : [{ titre, type, choix? }]. Sans : les sept colonnes du modèle."
+              },
+              "lignes": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                },
+                "description": "ajouter_bloc tableau : [{ cellules }]."
+              },
+              "choix": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Les choix d'une colonne choix."
+              },
+              "position": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Rang où insérer ou déplacer (0 = en tête)."
+              },
+              "apres": {
+                "type": "string",
+                "description": "Insérer après ce bloc ou cette ligne."
+              },
+              "avant": {
+                "type": "string",
+                "description": "Insérer avant ce bloc ou cette ligne."
+              },
+              "marqueur": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+                  }
+                ],
+                "description": "relier_ligne : l'image du marqueur de la scène, en images ou timecode HH:MM:SS:II."
+              },
+              "poser_marqueur": {
+                "type": "boolean",
+                "description": "relier_ligne : true pose aussi le marqueur dans la timeline, avec le texte de la scène."
+              },
+              "debut": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+                  }
+                ],
+                "description": "relier_ligne : début de la zone de la scène."
+              },
+              "fin": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+                  }
+                ],
+                "description": "relier_ligne : fin de la zone (exclue)."
+              },
+              "delier": {
+                "type": "boolean",
+                "description": "relier_ligne : true retire le lien."
+              }
+            },
+            "required": [
+              "faire"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Les modifications, appliquées dans l'ordre."
+        },
+        "rendre_script": {
+          "type": "boolean",
+          "description": "true : rend le script après écriture."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait : src/koracut/koracutagenttoolsscript.cpp.",
+    "x_confirmation": false
+  },
+  {
+    "name": "script_modele",
+    "description": "Pose le modèle de script d'un type de vidéo du guide (par défaut celui du projet) : un titre, la durée idéale, l'accroche, le tableau « deroule » (une ligne par étape de la structure, colonnes Scène, Durée, Voix ou texte, À l'image, Son, Plans à utiliser, Fait), la fin et l'appel à l'action. Sans type : le modèle générique (Accroche, Promesse, Développement, Appel à l'action). Refuse avec existe_deja si le projet a déjà un script, sauf remplacer: true (un Annuler rend l'ancien).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "type_video": {
+          "type": "string",
+          "description": "Un identifiant du guide, par exemple F04-13. Vide : le type du projet."
+        },
+        "remplacer": {
+          "type": "boolean",
+          "description": "true : remplace un script déjà écrit."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait : src/koracut/koracutagenttoolsscript.cpp, données data/koracut-script-templates.json (Sources/koracut-video-types/generer.py).",
+    "x_confirmation": false
+  }
+]
