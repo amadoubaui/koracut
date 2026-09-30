@@ -4561,7 +4561,16 @@ void MainWindow::setupActions()
     // Ctrl+Maj+virgule, reste en second. Libre dans les 834 actions (KORACUT_DUMP_ACTIONS=all).
     actionCollection()->setDefaultShortcuts(preferences, {QKeySequence(Qt::CTRL | Qt::Key_Comma), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Comma)});
     KStandardAction::configureNotifications(this, &MainWindow::configureNotifications, actionCollection());
-    KStandardAction::fullScreen(this, &MainWindow::slotFullScreen, this, actionCollection());
+    QAction *fullScreenAction = KStandardAction::fullScreen(this, &MainWindow::slotFullScreen, this, actionCollection());
+#ifndef Q_OS_MACOS
+    // KoraCut, chantier 12 : sous Windows et Linux, le plein écran standard de KDE (Ctrl+Maj+F) prenait la
+    // touche de « Agrandir le panneau actif » (⌘⇧F sur Mac, où le plein écran est ⌃⌘F), et KDE ouvrait au
+    // démarrage une fenêtre « raccourcis ambigus » (vu sous Linux le 30 septembre 2026). F11 est déjà le
+    // moniteur en plein écran : Ctrl+Alt+F, la même lettre que sur Mac.
+    actionCollection()->setDefaultShortcut(fullScreenAction, QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_F));
+#else
+    Q_UNUSED(fullScreenAction)
+#endif
 
     // cppcheck-suppress legacyUninitvar
     QAction *undo = KStandardAction::undo(m_commandStack, SLOT(undo()), actionCollection());

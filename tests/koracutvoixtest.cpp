@@ -47,7 +47,7 @@ void touch(const QString &path)
 
 TEST_CASE("Voix off : moteur, fichiers, outils et annulation", "[KoraCutVoix]")
 {
-    // Un faux moteur local « installé » dans un dossier temporaire : environnement, moshi_mlx, modèle.
+    // Un faux moteur local « installé » dans un dossier temporaire : environnement, moteur, modèle.
     QTemporaryDir dir;
     REQUIRE(dir.isValid());
     const QString cache = dir.filePath(QStringLiteral("koracut-voix"));
@@ -57,7 +57,9 @@ TEST_CASE("Voix off : moteur, fichiers, outils et annulation", "[KoraCutVoix]")
     REQUIRE_FALSE(python.isEmpty());
     QDir().mkpath(cache + QStringLiteral("/kyutai/bin"));
     REQUIRE(QFile::link(python, cache + QStringLiteral("/kyutai/bin/python")));
+    // Les deux moteurs : moshi_mlx (Mac à puce Apple) et moshi (PyTorch, partout ailleurs).
     QDir().mkpath(cache + QStringLiteral("/kyutai/lib/python3.11/site-packages/moshi_mlx"));
+    QDir().mkpath(cache + QStringLiteral("/kyutai/lib/python3.11/site-packages/moshi"));
     const QString snapshot = hub + QStringLiteral("/models--kyutai--tts-1.6b-en_fr/snapshots/abc");
     touch(snapshot + QStringLiteral("/dsm_tts_1e68beda@240.safetensors"));
     touch(snapshot + QStringLiteral("/tokenizer-e351c8d8-checkpoint125.safetensors"));

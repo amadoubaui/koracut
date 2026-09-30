@@ -263,4 +263,7 @@ TEST_CASE("Module Export : réglages gardés dans le projet et rendu par modeles
         CHECK(job->state == QStringLiteral("termine"));
         CHECK(QFileInfo(path).size() > 0);
     }
+    // Le document est une variable du test : on le referme avant qu'il disparaisse, sinon le nettoyage du
+    // chutier à la sortie du programme le relit détruit (plantage vu sous Linux le 30 septembre 2026).
+    pCore->projectManager()->closeCurrentDocument(false, false);
 }

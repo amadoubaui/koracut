@@ -57,6 +57,9 @@ jobs:
         continue-on-error: true
         run: |
           cd build
+          # Les tests tournent depuis build/bin : sous Windows, MLT chercherait ses modules à côté (build/lib/mlt).
+          export MLT_REPOSITORY="$(cygpath -w "$MINGW_PREFIX/lib/mlt")" MLT_DATA="$(cygpath -w "$MINGW_PREFIX/share/mlt")"
+          export MLT_PROFILES_PATH="$(cygpath -w "$MINGW_PREFIX/share/mlt/profiles")" MLT_PRESETS_PATH="$(cygpath -w "$MINGW_PREFIX/share/mlt/presets")"
           QT_QPA_PLATFORM=offscreen ctest -j 2 --timeout 600 --output-on-failure > ../tests-windows.log 2>&1
           grep -E "tests passed|\(Failed\)|\(SEGFAULT\)|\(Timeout\)|Exception" ../tests-windows.log | tail -40
 
