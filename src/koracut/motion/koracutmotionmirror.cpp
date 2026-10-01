@@ -1821,8 +1821,19 @@ int KoraCutMotionMirror::elementTrack(const QString &project, int position, int 
     const QString purpose = transition ? QString(kSharedTransitions) : QString(kSharedAnimations);
     int count = 0;
     int lowestTransition = -1;
+    // Les pistes « Sujets détourés » (detourer_sujet) : les animations se rangent en dessous, pour passer
+    // entre le plan et son sujet ; les transitions restent au-dessus de tout.
+    const QString subjectMark = KoraCutAgentTools::subjectTrackProperty();
+    int lowestSubject = -1;
+    int subjectsTop = -1;
     const QList<int> videoTracks = tl->getTracksIds(false);
     for (int tid : videoTracks) {
+        if (!tl->getTrackProperty(tid, subjectMark).toString().isEmpty()) {
+            subjectsTop = std::max(subjectsTop, tl->getTrackPosition(tid));
+            if (lowestSubject < 0 || tl->getTrackPosition(tid) < tl->getTrackPosition(lowestSubject)) {
+                lowestSubject = tid;
+            }
+        }
         const QString mark = tl->getTrackProperty(tid, kTrackProject).toString();
         if (mark == kSharedTransitions && (lowestTransition < 0 || tl->getTrackPosition(tid) < tl->getTrackPosition(lowestTransition))) {
             lowestTransition = tid;
@@ -1855,7 +1866,7 @@ int KoraCutMotionMirror::elementTrack(const QString &project, int position, int 
         const int pos = tl->getTrackPosition(tid);
         if (mark == kSharedAnimations) {
             animationsTop = std::max(animationsTop, pos);
-        } else if (mark.isEmpty()) {
+        } else if (mark.isEmpty() && tl->getTrackProperty(tid, subjectMark).toString().isEmpty()) {
             for (int id : tl->getItemsInRange(tid, 0, -1, false)) {
                 if (tl->isClip(id)) {
                     contentTop = std::max(contentTop, pos);
@@ -1864,8 +1875,13 @@ int KoraCutMotionMirror::elementTrack(const QString &project, int position, int 
             }
         }
     }
-    const int floorPosition = transition ? std::max(contentTop, animationsTop) : contentTop;
-    const int ceilingPosition = (!transition && lowestTransition >= 0) ? tl->getTrackPosition(lowestTransition) : std::numeric_limits<int>::max();
+    const int floorPosition = transition ? std::max({contentTop, animationsTop, subjectsTop}) : contentTop;
+    // Le plafond des animations : la plus basse des pistes « Transitions » et « Sujets détourés ».
+    int ceilingTrack = transition ? -1 : lowestTransition;
+    if (!transition && lowestSubject >= 0 && (ceilingTrack < 0 || tl->getTrackPosition(lowestSubject) < tl->getTrackPosition(ceilingTrack))) {
+        ceilingTrack = lowestSubject;
+    }
+    const int ceilingPosition = ceilingTrack >= 0 ? tl->getTrackPosition(ceilingTrack) : std::numeric_limits<int>::max();
     int adopted = -1;
     // Une piste que la personne (ou le plan du projet) a déjà nommée « Animations » ou « Transitions », libre à
     // cet endroit, est prise telle quelle, où qu'elle soit : c'est sa place voulue (montage Tek Tech, 24 septembre 2026,
@@ -1916,7 +1932,7 @@ int KoraCutMotionMirror::elementTrack(const QString &project, int position, int 
         entry.homeTrack = adopted;
         return adopted;
     }
-    const int insertAt = (!transition && lowestTransition >= 0) ? tl->getTrackPosition(lowestTransition) : -1;
+    const int insertAt = ceilingTrack >= 0 ? tl->getTrackPosition(ceilingTrack) : -1;
     int tid = -1;
     if (!tl->requestTrackInsertion(insertAt, tid, name, false, undo, redo)) {
         return -1;

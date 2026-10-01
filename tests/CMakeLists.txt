@@ -29,6 +29,7 @@ set(KdenliveTest_SOURCES
     koracutautocuttest.cpp
     koracutcliptoolstest.cpp
     koracutcolorstest.cpp
+    koracutdetouragetest.cpp
     koracuteffectpreviewstest.cpp
     koracutgradetest.cpp
     koracutgradeuitest.cpp

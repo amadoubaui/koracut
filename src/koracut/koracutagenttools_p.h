@@ -134,6 +134,14 @@ QMap<QString, Tool> voixTools();
 /** @brief Document 24 (30 septembre 2026, koracutagenttoolsoutils.cpp) : la section Outils de
  *  l'inspecteur, reduire_bruit, ameliorer_voix, effet_voix (audio.json) et stabiliser (montage.json). */
 QMap<QString, Tool> outilsTools();
+/** @brief 1er octobre 2026 (koracutagenttoolsdetourage.cpp) : detourer_sujet (montage.json), le sujet d'un plan
+ *  détouré et posé au-dessus de lui, pour qu'un élément Motion passe derrière. */
+QMap<QString, Tool> detourageTools();
+/** @brief La pose de detourer_sujet, sans le calcul : importe @p file (une vidéo avec alpha) dans le dossier
+ *  « Détourages » du chutier et la pose au-dessus du plan @p clipId, même place et même durée, sur la piste
+ *  @p trackId ou, à -1, sur la piste « Sujets détourés » (créée au besoin) ; l'étalonnage et le Transformer
+ *  du plan sont recopiés. Une seule étape d'annulation. */
+QJsonObject placeSubjectCutout(const Timeline &timeline, int clipId, const QString &file, int trackId = -1);
 QStringList reglagesToolNames();
 
 } // namespace KoraCutAgentToolsPrivate

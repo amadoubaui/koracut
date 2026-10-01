@@ -846,6 +846,46 @@
     "x_confirmation": false
   },
   {
+    "name": "detourer_sujet",
+    "description": "Détoure le sujet d'un plan filmé et pose ce sujet seul, sur fond transparent, exactement au-dessus du plan (même position, même durée), sur la piste « Sujets détourés ». Sert à faire passer un élément derrière le sujet : un cadre derrière un téléphone tenu en main, un texte derrière une personne. Tout clip posé sur une piste entre le plan et son sujet (les pistes « Animations » y sont rangées d'office) passe alors derrière le sujet. sujet personne : une ou plusieurs personnes (ce qu'elles tiennent en main est souvent pris avec). sujet premier_plan : ce qui se détache du fond, personne ou non (une main qui tient un téléphone, un produit). L'étalonnage et le Transformer du plan sont recopiés sur le sujet, images clés comprises, pour qu'il se superpose au pixel près ; les autres effets sont listés dans effets_non_copies. Le calcul tourne à côté, sans bloquer : compter 3 secondes par seconde de plan, et 5 à 10 Mo de disque par seconde (fichier rangé dans le dossier detourages du projet, dossier « Détourages » du chutier). Plan de 30 secondes au plus : couper d'abord le plan autour du moment utile. Vitesse du plan à 100 % seulement. Le même appel sur le même plan reprend le fichier déjà calculé (deja_calcule). Sur macOS seulement pour l'instant : ailleurs, non_disponible. Autres erreurs : projet_absent (projet jamais enregistré), sujet_introuvable (rien à détourer : essayer l'autre valeur de sujet), place_occupee (piste_id donnée et déjà prise). Si le plan est ensuite déplacé, rogné ou étalonné, le sujet ne suit pas : le supprimer et rappeler l'outil. Une seule étape d'annulation. Renvoie { ok, clip_id (le sujet détouré), clip_source_id, media_id, piste_id, piste, piste_creee, position, duree, fichier, effets_copies, effets_non_copies?, duree_calcul_s, deja_calcule, poids_mo }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le clip vidéo du plan à détourer (champ k = « v »), tiré d'un fichier vidéo."
+        },
+        "sujet": {
+          "type": "string",
+          "enum": [
+            "personne",
+            "premier_plan"
+          ],
+          "description": "personne : les personnes du plan. premier_plan : ce qui est devant, personne ou objet."
+        },
+        "adoucir": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 20,
+          "description": "Bord doux du détourage, en pixels. Défaut : 2. 0 pour un bord net, 4 à 6 pour un sujet flou ou des cheveux."
+        },
+        "piste_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Une piste vidéo au-dessus du plan, libre à cet endroit. Vide (conseillé) : la piste « Sujets détourés », créée si besoin au-dessus des pistes « Animations »."
+        }
+      },
+      "required": [
+        "clip_id",
+        "sujet"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/koracutagenttoolsdetourage.cpp : lance koracut-detourer (Sources/koracut-detourage, framework Vision de macOS, ProRes 4444 avec alpha) sur l'entrée et la durée du clip, puis placeSubjectCutout : ClipCreator::createClipFromFile, piste marquée kdenlive:koracut_detourage, requestClipInsertion, EffectStackModel::toXml / fromXml pour l'étalonnage et le Transformer.",
+    "x_confirmation": false
+  },
+  {
     "name": "sous_titres_poser",
     "description": "Pose des sous-titres de dialogue sur la piste de sous-titres de la séquence ouverte (la piste native, rendue par libass et incrustée à l'export). À utiliser pour sous-titrer une interview, un podcast, une vidéo verticale : cartons courts et rythmés, mots clés en couleur. Chaque carton a debut, fin (temps de la timeline) et texte ; un retour à la ligne avec \\n (deux lignes au plus) ; un mot entre *étoiles* prend la couleur accent de son style. Les styles sont nommés (Default existe toujours) et se règlent en pixels du projet ; la taille et la marge par défaut suivent l'orientation (en vertical, au-dessus de la zone des boutons). remplacer (vrai par défaut) retire d'abord les sous-titres de la séquence. Relis et corrige l'orthographe avant : le texte est posé tel quel. Pour ajouter un titre ou un nom en bas d'écran, utiliser ajouter_titre ou motion_element_seul. Annulable (le retrait et la pose sont deux étapes). Renvoie { ok, cartons, retires, styles, format, premier, dernier, fichier }.",
     "input_schema": {

@@ -53,6 +53,8 @@ set(koracut_SRCS
     koracut/koracutcliptoolspanel.cpp
     koracut/koracutstabilizer.cpp
     koracut/koracutagenttoolsoutils.cpp
+    # 1er octobre 2026 : detourer_sujet, le sujet d'un plan détouré et posé au-dessus de lui.
+    koracut/koracutagenttoolsdetourage.cpp
     # Le mode « montage visible » : l'écran suit chaque geste des agents et de la porte.
     koracut/koracutvisible.cpp
     koracut/koracutassetcards.cpp

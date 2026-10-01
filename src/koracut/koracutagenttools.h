@@ -53,6 +53,10 @@ int relocateMedia(const QString &binId, const QString &from, const QString &to);
  *  ou de le déplacer : Windows refuse de toucher à un fichier ouvert. Rend le nombre de producteurs relâchés. */
 int releaseMediaFile(const QString &binId);
 
+/** @brief La propriété qui marque une piste « Sujets détourés » (detourer_sujet) : le Motion range ses
+ *  pistes « Animations » en dessous, pour que les éléments passent entre le plan et son sujet. */
+QString subjectTrackProperty();
+
 /** @brief Le miroir Motion derrière les outils `motion_*` (document 19, lot 3). Le miroir s'inscrit
  * lui-même à sa construction ; sans miroir, ces outils répondent `non_disponible`. */
 void setMotionMirror(KoraCutMotionMirror *mirror);
