@@ -10,6 +10,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QList>
 #include <QObject>
 #include <QSet>
 #include <QString>
@@ -225,6 +226,10 @@ private:
     std::function<QString()> m_projectProvider;
     std::function<bool()> m_busyProvider;
     int m_running{0};
+    /** Les prises raccrochées pendant qu'une commande tourne : détruites quand elle a fini (voir retireSocket). */
+    QList<QLocalSocket *> m_retiredSockets;
+    void retireSocket(QLocalSocket *socket);
+    void releaseRetiredSockets();
     bool m_watchingWindows{false};
     std::weak_ptr<TimelineItemModel> m_watchedTimeline;
     QMetaObject::Connection m_selectionConnection;

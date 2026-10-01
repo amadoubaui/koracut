@@ -3313,6 +3313,11 @@ void Monitor::requestSeekIfVisible(int pos)
 
 void Monitor::updateTimelineProducer()
 {
+    // KoraCut : ce minuteur peut tomber pendant qu'un autre projet s'ouvre (plus de document, plus de
+    // timeline) : plantage du 1er octobre 2026 en ouvrant deux projets coup sur coup par la porte.
+    if (!pCore->currentDoc() || !pCore->window() || !pCore->window()->getCurrentTimeline() || !pCore->window()->getCurrentTimeline()->model()) {
+        return;
+    }
     const QUuid sequenceUuid = pCore->currentTimelineId();
     int position = pCore->currentDoc()->getSequenceProperty(sequenceUuid, QStringLiteral("position"), QString::number(0)).toInt();
     QMetaObject::invokeMethod(this, "setProducer", Q_ARG(QUuid, sequenceUuid),

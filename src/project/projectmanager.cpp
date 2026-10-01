@@ -11,6 +11,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "core.h"
 #include <numeric>
 #include <QRegularExpression>
+#include "koracut/script/koracutscript.h"
 #include "koracut/koracutnewprojectdialog.h"
 #include "profiles/profilerepository.hpp"
 #include "timeline2/view/timelinecontroller.h"
@@ -177,7 +178,13 @@ void ProjectManager::newFile(bool showProjectSettings)
 
 void ProjectManager::newFile(QString profileName, bool showProjectSettings)
 {
-    QUrl startFile = QUrl::fromLocalFile(KdenliveSettings::defaultprojectfolder() + QStringLiteral("/_untitled.koracut"));
+    // KoraCut : la copie de récupération d'un projet sans nom porte le nom du réglage qui l'écrit
+    // (« _untitled-koracut-essai.koracut »), sinon une instance lancée avec un autre réglage rouvre
+    // le projet d'une autre session (1er octobre 2026). Le réglage par défaut garde l'ancien nom.
+    const QString configName = QFileInfo(KSharedConfig::openConfig()->name()).fileName();
+    const QString untitled = (configName.isEmpty() || configName == QLatin1String("koracutrc")) ? QStringLiteral("/_untitled.koracut")
+                                                                                              : QStringLiteral("/_untitled-%1.koracut").arg(configName);
+    QUrl startFile = QUrl::fromLocalFile(KdenliveSettings::defaultprojectfolder() + untitled);
     Q_EMIT pCore->GUISetupDone();
     if (checkForBackupFile(startFile, true)) {
         return;
@@ -325,10 +332,10 @@ void ProjectManager::newFileFromPlan(const KoraCutProjectPlan &plan)
     // Le profil : un existant qui correspond, sinon un profil KoraCut écrit dans les profils de
     // l'utilisateur (1080 × 1920 à 25 i/s, par exemple, n'existe pas d'office).
     const int g = std::gcd(plan.frame.width(), plan.frame.height());
-    ProfileParam wanted(plan.frame.width(), plan.frame.height(), plan.fps, 1, plan.frame.width() / g, plan.frame.height() / g, 1, 1, 709, false);
+    ProfileParam wanted(plan.frame.width(), plan.frame.height(), plan.rateNum(), plan.rateDen(), plan.frame.width() / g, plan.frame.height() / g, 1, 1, 709, false);
     QString profileName = ProfileRepository::get()->findMatchingProfile(&wanted);
     if (profileName.isEmpty()) {
-        wanted.m_description = QStringLiteral("KoraCut %1×%2 %3 i/s").arg(plan.frame.width()).arg(plan.frame.height()).arg(plan.fps);
+        wanted.m_description = QStringLiteral("KoraCut %1×%2 %3 i/s").arg(plan.frame.width()).arg(plan.frame.height()).arg(QString::number(plan.rate(), 'g', 5));
         profileName = ProfileRepository::get()->saveProfile(&wanted);
     }
     if (profileName.isEmpty()) {
@@ -402,6 +409,8 @@ void ProjectManager::setActiveTimeline(const QUuid &uuid)
 {
     m_activeTimelineModel = m_project->getTimeline(uuid);
     m_project->activeUuid = uuid;
+    // KoraCut, document 21 : chaque séquence a son script, le panneau Script suit la séquence active.
+    Q_EMIT KoraCutScriptNotifier::instance()->activeSequenceChanged();
 }
 
 void ProjectManager::activateDocument(const QUuid &uuid)
@@ -410,6 +419,7 @@ void ProjectManager::activateDocument(const QUuid &uuid)
 
     m_activeTimelineModel = m_project->getTimeline(uuid);
     m_project->activeUuid = uuid;
+    Q_EMIT KoraCutScriptNotifier::instance()->activeSequenceChanged();
     pCore->window()->raiseTimeline(uuid);
     pCore->window()->slotSwitchTimelineZone(m_project->getDocumentProperty(QStringLiteral("enableTimelineZone")).toInt() == 1);
     pCore->window()->slotSetZoom(m_project->zoom(uuid).x());
@@ -1045,7 +1055,7 @@ void ProjectManager::doOpenFile(const QUrl &url, KAutoSaveFile *stale, bool isBa
         stale->setParent(doc);
         // if loading from an autosave of unnamed file, or restore failed then keep unnamed
         bool loadingFailed = doc->url().isEmpty();
-        if (url.fileName().contains(QStringLiteral("_untitled.koracut"))) {
+        if (url.fileName().startsWith(QLatin1String("_untitled")) && url.fileName().endsWith(QLatin1String(".koracut"))) {
             doc->setUrl(QUrl());
             doc->setModified(true);
         } else if (!loadingFailed) {

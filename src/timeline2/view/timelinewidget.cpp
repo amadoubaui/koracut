@@ -62,7 +62,11 @@ TimelineWidget::TimelineWidget(const QUuid uuid, QWidget *parent)
 
 TimelineWidget::~TimelineWidget()
 {
-    rootObject()->blockSignals(true);
+    // KoraCut : une séquence dont la vue n'a jamais été chargée n'a pas d'objet racine (plantage à la
+    // fermeture, vu les 30 septembre et 1er octobre 2026).
+    if (rootObject()) {
+        rootObject()->blockSignals(true);
+    }
     timelineController.prepareClose();
     setSource(QUrl());
 }

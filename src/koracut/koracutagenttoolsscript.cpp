@@ -6,6 +6,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 // Document 21 (24 septembre 2026) : les trois outils du script du projet, script_lire,
 // script_ecrire et script_modele. Contrat : Agents in-app/outils/script.json. Le script vit dans le
 // projet (KoraCutScriptStore) ; un appel = une étape d'annulation, marqueurs posés compris.
+// 1er octobre 2026 : un script par séquence. Le paramètre facultatif « sequence » (rang, nom ou
+// uuid) choisit laquelle ; sans lui, la séquence active.
 
 #include "koracutagenttools.h"
 #include "koracutagenttools_p.h"
@@ -90,26 +92,76 @@ QString mediaValue(const QString &value)
     return value;
 }
 
+// La séquence visée par l'appel : « sequence » (rang, nom ou uuid), sinon celle de la timeline de
+// l'appel (la séquence active). Nulle et une erreur dans @p failure si rien ne correspond.
+QUuid targetSequence(const Timeline &timeline, const Args &args, QJsonObject &failure)
+{
+    const QJsonValue given = args.value(QStringLiteral("sequence"));
+    const QString reference = given.isDouble() ? QString::number(given.toInt()) : given.toString().trimmed();
+    QUuid uuid;
+    if (reference.isEmpty()) {
+        uuid = timeline ? timeline->uuid() : KoraCutScriptStore::activeSequence();
+    } else {
+        uuid = KoraCutScriptStore::findSequence(reference);
+    }
+    if (uuid.isNull() || !pCore->currentDoc()->getTimeline(uuid, true)) {
+        QStringList names;
+        const QList<QUuid> all = KoraCutScriptStore::sequences();
+        for (int i = 0; i < all.size(); ++i) {
+            names << QStringLiteral("%1 : %2").arg(i + 1).arg(KoraCutScriptStore::sequenceName(all.at(i)));
+        }
+        failure = error(QStringLiteral("id_inconnu"), reference.isEmpty() ? QStringLiteral("Aucune séquence active.") : QStringLiteral("Aucune séquence ne correspond à « %1 ».").arg(reference),
+                        QStringLiteral("sequence est un rang, un nom ou un uuid. Séquences du projet : %1.").arg(names.join(QStringLiteral(" ; "))));
+        return QUuid();
+    }
+    return uuid;
+}
+
+// La séquence dont on vient de lire ou d'écrire le script, pour que l'agent sache laquelle.
+QJsonObject sequenceJson(const QUuid &uuid)
+{
+    return QJsonObject{{QStringLiteral("uuid"), uuid.toString(QUuid::WithoutBraces)},
+                       {QStringLiteral("nom"), KoraCutScriptStore::sequenceName(uuid)},
+                       {QStringLiteral("rang"), int(KoraCutScriptStore::sequences().indexOf(uuid)) + 1},
+                       {QStringLiteral("active"), uuid == KoraCutScriptStore::activeSequence()}};
+}
+
 // ---------------------------------------------------------------------------------------------
 // script_lire
 
-QJsonObject scriptLire(const Timeline &, const Args &args)
+QJsonObject scriptLire(const Timeline &timeline, const Args &args)
 {
     if (!pCore->currentDoc()) {
         return error(QStringLiteral("non_disponible"), QStringLiteral("Aucun projet ouvert."));
+    }
+    QJsonObject failure;
+    const QUuid sequence = targetSequence(timeline, args, failure);
+    if (sequence.isNull()) {
+        return failure;
     }
     const QString format = args.value(QStringLiteral("format")).toString(QStringLiteral("json"));
     if (format != QLatin1String("json") && format != QLatin1String("markdown") && format != QLatin1String("les_deux")) {
         return error(QStringLiteral("entree_invalide"), QStringLiteral("format vaut « json », « markdown » ou « les_deux »."));
     }
     bool fromTemplate = true;
-    const KoraCutScript script = KoraCutScriptStore::current(nullptr, &fromTemplate);
+    const KoraCutScript script = KoraCutScriptStore::current(nullptr, &fromTemplate, sequence);
     QJsonObject result{{QStringLiteral("ok"), true},
+                       {QStringLiteral("sequence"), sequenceJson(sequence)},
                        {QStringLiteral("enregistre"), !fromTemplate},
                        {QStringLiteral("type_video"), videoType()},
                        {QStringLiteral("resume"), summary(script)}};
     if (fromTemplate) {
-        result.insert(QStringLiteral("remarque"), QStringLiteral("Le projet n'a pas encore de script : c'est le modèle de son type de vidéo. Il s'enregistre au premier script_ecrire."));
+        result.insert(QStringLiteral("remarque"), QStringLiteral("Cette séquence n'a pas encore de script : c'est le modèle du type de vidéo du projet. Il s'enregistre au premier script_ecrire."));
+    }
+    // Un script par séquence : les autres séquences du projet, pour savoir où sont les autres scripts.
+    if (const QList<QUuid> all = KoraCutScriptStore::sequences(); all.size() > 1) {
+        QJsonArray others;
+        for (int i = 0; i < all.size(); ++i) {
+            others.append(QJsonObject{{QStringLiteral("rang"), i + 1},
+                                      {QStringLiteral("nom"), KoraCutScriptStore::sequenceName(all.at(i))},
+                                      {QStringLiteral("enregistre"), KoraCutScriptStore::isStored(nullptr, all.at(i))}});
+        }
+        result.insert(QStringLiteral("sequences"), others);
     }
     if (const QString blockId = args.value(QStringLiteral("bloc_id")).toString(); !blockId.isEmpty()) {
         const KoraCutScriptBlock *b = script.block(blockId);
@@ -523,6 +575,11 @@ QJsonObject scriptEcrire(const Timeline &timeline, const Args &args)
     if (!pCore->currentDoc()) {
         return error(QStringLiteral("non_disponible"), QStringLiteral("Aucun projet ouvert."));
     }
+    QJsonObject failure;
+    const QUuid sequence = targetSequence(timeline, args, failure);
+    if (sequence.isNull()) {
+        return failure;
+    }
     const bool replace = args.contains(QStringLiteral("script"));
     const QJsonArray operations = args.value(QStringLiteral("operations")).toArray();
     if (!replace && operations.isEmpty()) {
@@ -533,7 +590,8 @@ QJsonObject scriptEcrire(const Timeline &timeline, const Args &args)
         return error(QStringLiteral("entree_invalide"), QStringLiteral("Au plus %1 opérations par appel.").arg(kMaxOperations));
     }
     Writer w;
-    w.timeline = timeline;
+    // Les marqueurs de relier_ligne vont dans la séquence du script, pas dans la séquence active.
+    w.timeline = pCore->currentDoc()->getTimeline(sequence, true);
     if (replace) {
         if (!args.value(QStringLiteral("script")).isObject()) {
             return error(QStringLiteral("entree_invalide"), QStringLiteral("script est un objet { blocs: [...] }, comme script_lire le rend."));
@@ -547,7 +605,7 @@ QJsonObject scriptEcrire(const Timeline &timeline, const Args &args)
             w.script.typeId = videoType();
         }
     } else {
-        w.script = KoraCutScriptStore::current();
+        w.script = KoraCutScriptStore::current(nullptr, nullptr, sequence);
     }
     for (int i = 0; i < operations.size(); ++i) {
         if (!w.run(operations.at(i).toObject())) {
@@ -559,13 +617,13 @@ QJsonObject scriptEcrire(const Timeline &timeline, const Args &args)
         }
     }
     const QString undoText = replace ? i18nc("@action undo text", "Script: rewrite") : i18nc("@action undo text", "Script: edit");
-    if (!KoraCutScriptStore::apply(w.script, undoText, QString(), w.markersPlaced ? w.undo : Fun(), w.markersPlaced ? w.redo : Fun())) {
+    if (!KoraCutScriptStore::apply(w.script, undoText, QString(), w.markersPlaced ? w.undo : Fun(), w.markersPlaced ? w.redo : Fun(), sequence)) {
         if (w.markersPlaced) {
             w.undo();
         }
         return error(QStringLiteral("non_disponible"), QStringLiteral("Le script n'a pas pu être enregistré."));
     }
-    QJsonObject result{{QStringLiteral("ok"), true}, {QStringLiteral("resume"), summary(w.script)}};
+    QJsonObject result{{QStringLiteral("ok"), true}, {QStringLiteral("sequence"), sequenceJson(sequence)}, {QStringLiteral("resume"), summary(w.script)}};
     if (!w.created.isEmpty()) {
         result.insert(QStringLiteral("crees"), w.created);
     }
@@ -578,10 +636,15 @@ QJsonObject scriptEcrire(const Timeline &timeline, const Args &args)
 // ---------------------------------------------------------------------------------------------
 // script_modele
 
-QJsonObject scriptModele(const Timeline &, const Args &args)
+QJsonObject scriptModele(const Timeline &timeline, const Args &args)
 {
     if (!pCore->currentDoc()) {
         return error(QStringLiteral("non_disponible"), QStringLiteral("Aucun projet ouvert."));
+    }
+    QJsonObject failure;
+    const QUuid sequence = targetSequence(timeline, args, failure);
+    if (sequence.isNull()) {
+        return failure;
     }
     QString type = args.value(QStringLiteral("type_video")).toString();
     if (type.isEmpty()) {
@@ -590,16 +653,17 @@ QJsonObject scriptModele(const Timeline &, const Args &args)
         return error(QStringLiteral("id_inconnu"), QStringLiteral("Aucun type de vidéo « %1 » dans le guide.").arg(type),
                      QStringLiteral("Les identifiants sont de la forme F04-13 ; laisse type_video vide pour le type du projet."));
     }
-    if (KoraCutScriptStore::isStored() && !args.value(QStringLiteral("remplacer")).toBool(false)) {
-        return error(QStringLiteral("existe_deja"), QStringLiteral("Le projet a déjà un script."),
+    if (KoraCutScriptStore::isStored(nullptr, sequence) && !args.value(QStringLiteral("remplacer")).toBool(false)) {
+        return error(QStringLiteral("existe_deja"), QStringLiteral("La séquence « %1 » a déjà un script.").arg(KoraCutScriptStore::sequenceName(sequence)),
                      QStringLiteral("Lis-le avec script_lire et modifie-le avec script_ecrire ; remplacer = true efface tout (un Annuler le rend)."));
     }
     const KoraCutScript script = KoraCutScript::templateFor(type);
-    if (!KoraCutScriptStore::apply(script, i18nc("@action undo text", "Script: put back the template"))) {
+    if (!KoraCutScriptStore::apply(script, i18nc("@action undo text", "Script: put back the template"), QString(), Fun(), Fun(), sequence)) {
         return error(QStringLiteral("non_disponible"), QStringLiteral("Le script n'a pas pu être enregistré."));
     }
     const KoraCutVideoTypes::VideoType *videoTypeInfo = KoraCutVideoTypes::byId(type);
     return QJsonObject{{QStringLiteral("ok"), true},
+                       {QStringLiteral("sequence"), sequenceJson(sequence)},
                        {QStringLiteral("type_video"), type},
                        {QStringLiteral("nom_du_type"), videoTypeInfo ? videoTypeInfo->name : QStringLiteral("générique")},
                        {QStringLiteral("resume"), summary(script)},

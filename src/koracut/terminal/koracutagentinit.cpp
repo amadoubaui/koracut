@@ -312,10 +312,11 @@ QString KoraCutAgentInit::instructionsBlock(const Context &ctx, const QString &a
         if (total > 60) {
             out << "> …\n";
         }
-        out << "\nLe script entier : `" << ctlCmd << " timeline outil nom=script_lire`.\n";
+        out << "\nLe script entier : `" << ctlCmd << " timeline outil nom=script_lire`. Chaque séquence a son script : sans `sequence`, c'est celui de la "
+               "séquence active ; `sequence=<rang ou nom>` vise une autre séquence.\n";
     } else {
         out << "Pas encore de script. Si la personne n'en donne pas, comprends la vidéo à partir de sa demande et des rushs (transcription : `"
-            << ctlCmd << " medias analyser media_id=<id> quoi=transcription`), puis écris-le avec `script_modele` et `script_ecrire` avant de monter.\n";
+            << ctlCmd << " medias analyser media_id=<id> quoi=transcription`), puis écris-le avec `script_modele` et `script_ecrire` avant de monter. Chaque séquence a son script (`sequence=<rang ou nom>`, sinon la séquence active).\n";
     }
 
     out << "\n## Au démarrage\n\n";

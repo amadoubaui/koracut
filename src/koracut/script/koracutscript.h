@@ -13,6 +13,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QUuid>
 
 #include <memory>
 
@@ -82,15 +83,17 @@ struct KoraCutScriptBlock
     ///@}
 };
 
-/** @brief Le script d'un projet : un document en blocs, enregistré dans le projet.
+/** @brief Le script d'une séquence : un document en blocs, enregistré dans le projet.
  *
  * Demande URGENTE d'Amadou Ba du 24 septembre 2026 : une partie de l'application où les agents
  * écrivent le script, ou la personne qui monte écrit le sien. Du texte et des tableaux comme dans
  * Notion, un tableau déjà prêt qui change selon le type de projet. Document 21.
  *
- * Le script vit dans la propriété de document `koracut:script`, en JSON compact avec un numéro de
- * version du format. Tant qu'elle est vide, le script affiché est le modèle du type de vidéo du
- * projet (`koracut:videotype`) : rien ne s'écrit dans le projet avant la première modification.
+ * Depuis le 1er octobre 2026, chaque séquence (timeline) a son script : il vit dans la propriété de
+ * séquence `koracut:script`, en JSON compact avec un numéro de version du format. Tant qu'elle est
+ * vide, le script affiché est le modèle du type de vidéo du projet (`koracut:videotype`) : rien ne
+ * s'écrit dans le projet avant la première modification. Un projet d'avant, qui porte un seul script
+ * dans la propriété de document du même nom, le donne à sa première séquence (KoraCutScriptStore).
  */
 class KoraCutScript
 {
@@ -151,36 +154,52 @@ public:
     static QString columnTypeLabel(const QString &type);
 };
 
-/** @brief Prévient le panneau et les agents quand le script du projet change (édition, annuler). */
+/** @brief Prévient le panneau et les agents quand un script change (édition, annuler) ou quand
+ * la séquence active change. */
 class KoraCutScriptNotifier : public QObject
 {
     Q_OBJECT
 public:
     static KoraCutScriptNotifier *instance();
 Q_SIGNALS:
-    void changed();
+    /** Le script de @p sequence a changé. */
+    void changed(const QUuid &sequence);
+    /** Une autre séquence est devenue la séquence active : le panneau montre son script. */
+    void activeSequenceChanged();
 };
 
-/** @brief Le script du document courant : le lire, et le changer en une étape d'annulation. */
+/** @brief Les scripts du document courant, un par séquence : les lire, et les changer en une étape
+ * d'annulation. Partout, une séquence nulle veut dire la séquence active. */
 namespace KoraCutScriptStore {
 
-/** @brief Le script du document (le courant si @p doc est nul). Sans script enregistré, le modèle
- * du type de vidéo du projet ; @p fromTemplate le dit. */
-KoraCutScript current(KdenliveDoc *doc = nullptr, bool *fromTemplate = nullptr);
-/** @brief Vrai si le projet a déjà un script enregistré. */
-bool isStored(KdenliveDoc *doc = nullptr);
+/** @brief La séquence active du document (le courant si @p doc est nul). */
+QUuid activeSequence(KdenliveDoc *doc = nullptr);
+/** @brief Toutes les séquences du projet, onglet fermé compris, dans l'ordre de leur création. */
+QList<QUuid> sequences(KdenliveDoc *doc = nullptr);
+/** @brief Le nom d'une séquence (celui de son onglet et de son clip du chutier). */
+QString sequenceName(const QUuid &sequence);
+/** @brief La séquence désignée par son rang (1, 2… dans l'ordre de sequences()), son nom ou son
+ * uuid ; vide : la séquence active. Nulle si rien ne correspond. */
+QUuid findSequence(const QString &reference, KdenliveDoc *doc = nullptr);
 
-/** @brief Enregistre @p after dans le document courant, en une étape d'annulation.
+/** @brief Le script de @p sequence. Sans script enregistré, le modèle du type de vidéo du projet ;
+ * @p fromTemplate le dit. */
+KoraCutScript current(KdenliveDoc *doc = nullptr, bool *fromTemplate = nullptr, const QUuid &sequence = QUuid());
+/** @brief Vrai si la séquence a déjà un script enregistré. */
+bool isStored(KdenliveDoc *doc = nullptr, const QUuid &sequence = QUuid());
+
+/** @brief Enregistre @p after comme script de @p sequence, en une étape d'annulation. Annuler et
+ * Refaire reviennent sur cette séquence-là, même si une autre est devenue active entre-temps.
  * @param mergeKey non vide : les étapes qui se suivent avec la même clé à moins de 2,5 s d'écart
  *        n'en font qu'une (une frappe dans une même cellule, comme dans un éditeur de texte).
  * @param extraUndo, extraRedo une action déjà faite à défaire et refaire avec le script (le marqueur
  *        posé par « Poser un marqueur ici »).
- * @return faux sans document ouvert. */
+ * @return faux sans document ou sans séquence. */
 bool apply(const KoraCutScript &after, const QString &undoText, const QString &mergeKey = QString(), const Fun &extraUndo = Fun(),
-           const Fun &extraRedo = Fun());
+           const Fun &extraRedo = Fun(), const QUuid &sequence = QUuid());
 
-/** @brief Pose un marqueur de la timeline à @p frame avec le texte de la scène et relie la ligne,
- * le tout en une étape d'annulation. */
+/** @brief Pose un marqueur dans @p timeline à @p frame avec le texte de la scène et relie la ligne
+ * du script de cette séquence, le tout en une étape d'annulation. */
 bool placeMarker(const std::shared_ptr<TimelineItemModel> &timeline, const QString &blockId, const QString &rowId, int frame, QString *error = nullptr);
 
 } // namespace KoraCutScriptStore

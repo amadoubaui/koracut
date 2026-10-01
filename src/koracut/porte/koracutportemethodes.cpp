@@ -586,7 +586,17 @@ QWidget *findWindow(const QJsonObject &params, QWidget *main)
             first = w;
         }
     }
-    return (title.isEmpty() && klass.isEmpty()) ? first : nullptr;
+    if (!title.isEmpty() || !klass.isEmpty()) {
+        return nullptr;
+    }
+    // Sans cible : la fenêtre modale active (la dernière ouverte, celle qui attend une réponse),
+    // sinon la première fenêtre ouverte.
+    if (QWidget *modal = QApplication::activeModalWidget()) {
+        if (modal != main && modal->isVisible() && modal->isWindow()) {
+            return modal;
+        }
+    }
+    return first;
 }
 
 // Les définitions d'outils d'agents (nom, description, schéma), si la ressource est compilée.
@@ -969,7 +979,7 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
     });
     porte->registerMethod(
         QStringLiteral("ui.fenetre"), QStringLiteral("Répond à une fenêtre ouverte : clique un bouton par son libellé, change d'onglet, remplit un champ, ferme."),
-        {p(QStringLiteral("titre"), QStringLiteral("string"), QStringLiteral("Un morceau du titre de la fenêtre (sinon la première ouverte).")),
+        {p(QStringLiteral("titre"), QStringLiteral("string"), QStringLiteral("Un morceau du titre de la fenêtre (sinon la fenêtre modale active, à défaut la première ouverte ; un bouton est alors cherché dans toutes).")),
          p(QStringLiteral("classe"), QStringLiteral("string"), QStringLiteral("Ou sa classe (ui.fenetres).")),
          p(QStringLiteral("faire"), QStringLiteral("string"), QStringLiteral("bouton:<libellé>, fermer, onglet:<n>, section:<id> ou recherche:<texte> (fenêtre à sections, Préférences).")),
          p(QStringLiteral("champ"), QStringLiteral("string"), QStringLiteral("Nom d'un champ à remplir (ui.fenetres).")),
@@ -1048,10 +1058,23 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
             const QString verb = call.params.value(QStringLiteral("faire")).toString();
             if (verb.startsWith(QLatin1String("bouton:"))) {
                 const QString label = verb.mid(7);
-                for (QAbstractButton *b : w->findChildren<QAbstractButton *>()) {
-                    if (b->isVisible() && cleanLabel(b->text()) == label) {
-                        b->click();
-                        return Reply::value(QJsonObject{{QStringLiteral("ok"), true}});
+                // La fenêtre visée d'abord ; sans titre ni classe, on cherche ensuite dans toutes les
+                // fenêtres ouvertes (une fenêtre de chargement peut en cacher une autre).
+                QList<QWidget *> candidates{w};
+                if (!call.params.contains(QStringLiteral("titre")) && !call.params.contains(QStringLiteral("classe"))) {
+                    const QList<QWidget *> tops = QApplication::topLevelWidgets();
+                    for (QWidget *other : tops) {
+                        if (other != w && other != window && other->isVisible() && other->isWindow() && other->width() >= 50) {
+                            candidates << other;
+                        }
+                    }
+                }
+                for (QWidget *candidate : std::as_const(candidates)) {
+                    for (QAbstractButton *b : candidate->findChildren<QAbstractButton *>()) {
+                        if (b->isVisible() && cleanLabel(b->text()) == label) {
+                            b->click();
+                            return Reply::value(QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("fenetre"), candidate->windowTitle()}});
+                        }
                     }
                 }
                 return Reply::fail(QStringLiteral("bouton_introuvable"), QStringLiteral("Aucun bouton « %1 » dans « %2 ».").arg(label, w->windowTitle()),
@@ -1266,7 +1289,7 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
     porte->registerMethod(
         QStringLiteral("projet.nouveau"), QStringLiteral("Un projet neuf depuis un plan : type de vidéo (suffit), nom, format, pistes. À confirmation si le projet courant est modifié."),
         {p(QStringLiteral("plan"), QStringLiteral("object"),
-           QStringLiteral("{ type_video, nom, largeur, hauteur, ips, pistes_video: [noms], pistes_audio: [noms] }"), true)},
+           QStringLiteral("{ type_video, nom, largeur, hauteur, ips (24, 25, 30, 50, 60, ou 23.976, 29.97, 59.94), pistes_video: [noms], pistes_audio: [noms] }"), true)},
         [porte, window](const Call &call) {
             if (!window) {
                 return noWindow();
@@ -1301,7 +1324,20 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
                 out.frame = QSize(plan.value(QStringLiteral("largeur")).toInt(), plan.value(QStringLiteral("hauteur")).toInt());
             }
             if (plan.contains(QStringLiteral("ips"))) {
-                out.fps = plan.value(QStringLiteral("ips")).toInt();
+                // Un entier, un décimal (29.97, 23.976, 59.94) ou une fraction écrite « 30000/1001 ».
+                const QJsonValue ips = plan.value(QStringLiteral("ips"));
+                bool read = false;
+                if (ips.isString() && ips.toString().contains(QLatin1Char('/'))) {
+                    const int num = ips.toString().section(QLatin1Char('/'), 0, 0).trimmed().toInt();
+                    const int den = ips.toString().section(QLatin1Char('/'), 1, 1).trimmed().toInt();
+                    read = num > 0 && den > 0 && out.setRate(double(num) / den);
+                } else {
+                    read = out.setRate(ips.isString() ? ips.toString().replace(QLatin1Char(','), QLatin1Char('.')).toDouble() : ips.toDouble());
+                }
+                if (!read) {
+                    return Reply::fail(QStringLiteral("parametres_invalides"), QStringLiteral("Images par seconde illisibles : « %1 ».").arg(ips.toVariant().toString()),
+                                       QStringLiteral("ips est un nombre : 24, 25, 30, 50, 60, ou 23.976, 29.97, 59.94 (ou « 30000/1001 »)."));
+                }
             }
             const auto names = [](const QJsonValue &v) {
                 QStringList list;
@@ -1317,7 +1353,8 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
                 out.audioTracks = names(plan.value(QStringLiteral("pistes_audio")));
             }
             if (out.frame.width() < 16 || out.frame.height() < 16 || out.fps < 1) {
-                return Reply::fail(QStringLiteral("parametres_invalides"), QStringLiteral("Format ou images par seconde illisibles."));
+                return Reply::fail(QStringLiteral("parametres_invalides"), QStringLiteral("Format ou images par seconde illisibles."),
+                                   QStringLiteral("largeur et hauteur d'au moins 16, ips au moins 1 (24, 25, 29.97, 30…)."));
             }
             if (pCore->currentDoc() && pCore->currentDoc()->isModified()) {
                 Reply gate;

@@ -412,8 +412,9 @@ void KoraCutNewProjectDialog::buildReviewPage()
     m_format->addItem(i18nc("@item video format", "Horizontal 4K") + QStringLiteral("  ·  3840 × 2160"), QStringLiteral("4k"));
     form->addRow(i18nc("@label:listbox", "Format"), m_format);
     m_fps = new QComboBox(page);
-    for (int fps : {24, 25, 30, 50, 60}) {
-        m_fps->addItem(QStringLiteral("%1 i/s").arg(fps), fps);
+    // Les cadences entières et celles de la télévision américaine (23,976, 29,97, 59,94).
+    for (double fps : {23.976, 24.0, 25.0, 29.97, 30.0, 50.0, 59.94, 60.0}) {
+        m_fps->addItem(QStringLiteral("%1 i/s").arg(QLocale().toString(fps, 'g', 5)), fps);
     }
     form->addRow(i18nc("@label:listbox", "Frames per second"), m_fps);
     auto *tracks = new QHBoxLayout;
@@ -460,7 +461,7 @@ void KoraCutNewProjectDialog::chooseType(const QString &id)
         m_typeDescription->setText(type->description);
         m_name->setText(type->name);
         m_format->setCurrentIndex(qMax(0, m_format->findData(type->format)));
-        m_fps->setCurrentIndex(qMax(0, m_fps->findData(type->fps)));
+        m_fps->setCurrentIndex(qMax(0, m_fps->findData(double(type->fps))));
         // Demande d'Amadou Ba du 23 septembre 2026 : dix pistes vidéo et dix pistes audio pour
         // tout projet, pas seulement les pistes que le guide nomme. Les noms du guide occupent
         // les premières, les autres restent V5, V6… et arrivent pliées.
@@ -484,7 +485,7 @@ void KoraCutNewProjectDialog::chooseType(const QString &id)
         m_typeDescription->setText(i18nc("@info", "Your usual settings. You can still change them here."));
         m_name->setText(i18nc("@item default project name", "Untitled"));
         m_format->setCurrentIndex(0);
-        m_fps->setCurrentIndex(qMax(0, m_fps->findData(25)));
+        m_fps->setCurrentIndex(qMax(0, m_fps->findData(25.0)));
         m_videoNames.clear();
         m_audioNames.clear();
         for (int i = 0; i < KdenliveSettings::videotracks(); ++i) {
@@ -570,7 +571,7 @@ KoraCutProjectPlan KoraCutNewProjectDialog::plan() const
     p.name = m_name->text().trimmed();
     const QString format = m_format->currentData().toString();
     p.frame = format == QLatin1String("4k") ? QSize(3840, 2160) : KoraCutVideoTypes::frameSize(format);
-    p.fps = m_fps->currentData().toInt();
+    p.setRate(m_fps->currentData().toDouble());
     p.videoTracks = m_videoNames;
     p.audioTracks = m_audioNames;
     p.exportLufs = m_exportLufs;

@@ -27,7 +27,40 @@ struct KoraCutProjectPlan
     QString typeId;   ///< id du type de vidéo (vide : projet libre)
     QString name;     ///< nom du projet
     QSize frame;      ///< largeur × hauteur
-    int fps{25};
+    int fps{25};          ///< images par seconde, arrondies (29,97 donne 30)
+    /** La cadence exacte en fraction, pour 23,976, 29,97 et 59,94 (24000/1001, 30000/1001,
+     * 60000/1001). fpsNum à 0 : la cadence est `fps`, entière. */
+    int fpsNum{0};
+    int fpsDen{1};
+
+    /** @brief Règle la cadence depuis un nombre (25, 29.97, 23.976…). Faux si elle ne se lit pas. */
+    bool setRate(double rate)
+    {
+        if (!(rate >= 1.0) || rate > 240.0) {
+            return false;
+        }
+        const int rounded = int(rate + 0.5);
+        if (qAbs(rate - rounded) < 0.0005) {
+            fps = rounded;
+            fpsNum = 0;
+            fpsDen = 1;
+            return true;
+        }
+        // Les cadences de la télévision américaine : un entier × 1000/1001.
+        if (qAbs(rate - rounded * 1000.0 / 1001.0) < 0.01) {
+            fps = rounded;
+            fpsNum = rounded * 1000;
+            fpsDen = 1001;
+            return true;
+        }
+        fps = rounded;
+        fpsNum = int(rate * 1000.0 + 0.5);
+        fpsDen = 1000;
+        return true;
+    }
+    int rateNum() const { return fpsNum > 0 ? fpsNum : fps; }
+    int rateDen() const { return fpsNum > 0 ? fpsDen : 1; }
+    double rate() const { return double(rateNum()) / rateDen(); }
     QStringList videoTracks; ///< V1 d'abord
     QStringList audioTracks; ///< A1 d'abord
     int exportLufs{-14};

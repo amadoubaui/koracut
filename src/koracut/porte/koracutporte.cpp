@@ -577,7 +577,7 @@ void KoraCutPorte::onDisconnected(Client *client)
             // revient sous le même nom pour dire faire=fin.
             if (client->socket) {
                 client->socket->disconnect(this);
-                client->socket->deleteLater();
+                retireSocket(client->socket);
                 client->socket = nullptr;
             }
             m_clients.erase(it);
@@ -587,6 +587,34 @@ void KoraCutPorte::onDisconnected(Client *client)
     if (!name.isEmpty()) {
         Q_EMIT clientClosed(name);
     }
+}
+
+// Une commande qui a ouvert une fenêtre modale tourne encore, plus haut dans la pile, DANS le signal
+// de lecture de la prise de son client. Ce client a reçu `fenetre_ouverte` et raccroche : détruire sa
+// prise tout de suite (deleteLater est servi par la boucle de la fenêtre) la retirait sous les pieds
+// de Qt, et l'application plantait à la fermeture de la fenêtre (1er octobre 2026). Tant qu'une
+// commande tourne, la prise attend.
+void KoraCutPorte::retireSocket(QLocalSocket *socket)
+{
+    if (!socket) {
+        return;
+    }
+    if (m_running > 0) {
+        m_retiredSockets << socket;
+    } else {
+        socket->deleteLater();
+    }
+}
+
+void KoraCutPorte::releaseRetiredSockets()
+{
+    if (m_running > 0) {
+        return;
+    }
+    for (QLocalSocket *socket : std::as_const(m_retiredSockets)) {
+        socket->deleteLater();
+    }
+    m_retiredSockets.clear();
 }
 
 void KoraCutPorte::send(Client *client, const QJsonObject &message)
@@ -796,6 +824,7 @@ void KoraCutPorte::execute(Client *client, const Call &call, const Done &done)
         m->asyncHandler(call, finish);
     }
     --m_running;
+    releaseRetiredSockets();
     if (qApp) {
         qApp->setProperty(noDialogProperty(), noDialogBefore);
     }
@@ -1195,6 +1224,7 @@ void KoraCutPorte::runAsClient(const QString &client, const std::function<void()
     ++m_running;
     fn();
     --m_running;
+    releaseRetiredSockets();
     if (qApp) {
         qApp->setProperty(noDialogProperty(), noDialogBefore);
     }

@@ -80,6 +80,14 @@ SequenceClip::SequenceClip(const QString &id, const QIcon &thumb, const std::sha
             pCore->currentDoc()->setSequenceProperty(m_sequenceUuid, QStringLiteral("kdenlive:activeSubtitleIndex"), QString::number(ix));
             pCore->currentDoc()->duplicateSequenceProperty(m_sequenceUuid, prevUuid, subValue);
         }
+        // KoraCut, document 21 : chaque séquence a son script, la copie emporte celui de sa source.
+        QString script = QString::fromUtf8(m_masterProducer->get("kdenlive:sequenceproperties.koracut:script"));
+        if (script.isEmpty()) {
+            script = QString::fromUtf8(m_masterProducer->parent().get("kdenlive:sequenceproperties.koracut:script"));
+        }
+        if (!script.isEmpty()) {
+            pCore->currentDoc()->setSequenceProperty(m_sequenceUuid, QStringLiteral("koracut:script"), script);
+        }
     }
     connect(this, &ProjectClip::audioThumbReady, this, &SequenceClip::updateAudioSync);
     m_sequenceThumbFile.setFileTemplate(QDir::temp().absoluteFilePath(QStringLiteral("thumbs-%1-XXXXXX.mlt").arg(m_binId)));

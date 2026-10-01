@@ -1,10 +1,22 @@
 [
   {
     "name": "script_lire",
-    "description": "Lit le script du projet : des blocs (titre, paragraphe, liste, tableau, séparateur) avec leurs identifiants. Les tableaux ont des colonnes typées (texte, duree, media, case, choix) et une ligne par scène ; une scène peut être reliée à un marqueur ou à une zone de la timeline (marqueur, zone). Tant que rien n'est écrit, c'est le modèle du type de vidéo du projet (enregistre = false) : un tableau « deroule » aux lignes s1, s2… construit depuis le guide des types. À lire avant de monter : le script dit ce qu'on monte, dans quel ordre, avec quels plans. Lecture seule.",
+    "description": "Lit le script d'une séquence (chaque séquence du projet a son script ; sans sequence, celui de la séquence active) : des blocs (titre, paragraphe, liste, tableau, séparateur) avec leurs identifiants. Les tableaux ont des colonnes typées (texte, duree, media, case, choix) et une ligne par scène ; une scène peut être reliée à un marqueur ou à une zone de la timeline (marqueur, zone). Tant que rien n'est écrit, c'est le modèle du type de vidéo du projet (enregistre = false) : un tableau « deroule » aux lignes s1, s2… construit depuis le guide des types. À lire avant de monter : le script dit ce qu'on monte, dans quel ordre, avec quels plans. Rend aussi sequence { uuid, nom, rang, active } et, s'il y a plusieurs séquences, sequences [{ rang, nom, enregistre }]. Lecture seule.",
     "input_schema": {
       "type": "object",
       "properties": {
+        "sequence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer",
+              "minimum": 1
+            }
+          ],
+          "description": "La séquence dont on veut le script : son rang (1 = la première séquence créée, voir sequences dans script_lire), son nom ou son uuid. Absent : la séquence active."
+        },
         "format": {
           "type": "string",
           "enum": [
@@ -22,15 +34,27 @@
       "required": [],
       "additionalProperties": false
     },
-    "x_kdenlive": "fait : src/koracut/koracutagenttoolsscript.cpp, modèle src/koracut/script/koracutscript.cpp (propriété de document koracut:script).",
+    "x_kdenlive": "fait : src/koracut/koracutagenttoolsscript.cpp, modèle src/koracut/script/koracutscript.cpp (propriété de séquence koracut:script, une par séquence depuis le 1er octobre 2026).",
     "x_confirmation": false
   },
   {
     "name": "script_ecrire",
-    "description": "Écrit le script du projet, en une seule étape d'annulation par appel. Deux façons : script (un objet { blocs: [...] } comme script_lire le rend) remplace tout ; operations (une liste, au plus 200) modifie un bloc, une ligne, une colonne ou une cellule par identifiant. Une opération fausse et rien n'est gardé. Les colonnes se désignent par id ou par titre ; une cellule media accepte un media_id du chutier (il devient le nom du plan). relier_ligne relie une scène à un marqueur (poser_marqueur: true le pose dans la timeline, dans la même étape) ou à une zone. Rend { ok, resume, crees: [identifiants créés] } ; rendre_script: true rend aussi le script.",
+    "description": "Écrit le script d'une séquence (sans sequence, la séquence active), en une seule étape d'annulation par appel. Deux façons : script (un objet { blocs: [...] } comme script_lire le rend) remplace tout ; operations (une liste, au plus 200) modifie un bloc, une ligne, une colonne ou une cellule par identifiant. Une opération fausse et rien n'est gardé. Les colonnes se désignent par id ou par titre ; une cellule media accepte un media_id du chutier (il devient le nom du plan). relier_ligne relie une scène à un marqueur (poser_marqueur: true le pose dans la timeline de cette séquence, dans la même étape) ou à une zone. Rend { ok, sequence, resume, crees: [identifiants créés] } ; rendre_script: true rend aussi le script.",
     "input_schema": {
       "type": "object",
       "properties": {
+        "sequence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer",
+              "minimum": 1
+            }
+          ],
+          "description": "La séquence dont on veut le script : son rang (1 = la première séquence créée, voir sequences dans script_lire), son nom ou son uuid. Absent : la séquence active."
+        },
         "script": {
           "type": "object",
           "description": "Le script entier, pour tout remplacer."
@@ -221,10 +245,22 @@
   },
   {
     "name": "script_modele",
-    "description": "Pose le modèle de script d'un type de vidéo du guide (par défaut celui du projet) : un titre, la durée idéale, l'accroche, le tableau « deroule » (une ligne par étape de la structure, colonnes Scène, Durée, Voix ou texte, À l'image, Son, Plans à utiliser, Fait), la fin et l'appel à l'action. Sans type : le modèle générique (Accroche, Promesse, Développement, Appel à l'action). Refuse avec existe_deja si le projet a déjà un script, sauf remplacer: true (un Annuler rend l'ancien).",
+    "description": "Pose le modèle de script d'un type de vidéo du guide (par défaut celui du projet) : un titre, la durée idéale, l'accroche, le tableau « deroule » (une ligne par étape de la structure, colonnes Scène, Durée, Voix ou texte, À l'image, Son, Plans à utiliser, Fait), la fin et l'appel à l'action. Sans type : le modèle générique (Accroche, Promesse, Développement, Appel à l'action). Le modèle va dans le script d'une séquence (sans sequence, la séquence active). Refuse avec existe_deja si cette séquence a déjà un script, sauf remplacer: true (un Annuler rend l'ancien).",
     "input_schema": {
       "type": "object",
       "properties": {
+        "sequence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer",
+              "minimum": 1
+            }
+          ],
+          "description": "La séquence dont on veut le script : son rang (1 = la première séquence créée, voir sequences dans script_lire), son nom ou son uuid. Absent : la séquence active."
+        },
         "type_video": {
           "type": "string",
           "description": "Un identifiant du guide, par exemple F04-13. Vide : le type du projet."

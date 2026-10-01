@@ -7,6 +7,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "koracutscript.h"
 
+#include <QUuid>
 #include <QPair>
 #include <QPointer>
 #include <QWidget>
@@ -19,7 +20,10 @@ class QTimer;
 class QToolButton;
 class QVBoxLayout;
 
-/** @brief Le panneau Script : l'éditeur en blocs du script du projet (document 21).
+/** @brief Le panneau Script : l'éditeur en blocs du script de la séquence active (document 21).
+ *
+ * Chaque séquence du projet a son script (1er octobre 2026) : le panneau suit la séquence active,
+ * onglets et séquences côte à côte compris, et dit son nom.
  *
  * Un canevas vertical de blocs (titres, paragraphes, listes, tableaux, séparateurs), un « + » au
  * survol entre deux blocs, un « + » à droite des tableaux pour une colonne et en bas pour une ligne.
@@ -33,7 +37,7 @@ class KoraCutScriptPanel : public QWidget
 public:
     explicit KoraCutScriptPanel(QWidget *parent = nullptr);
 
-    /** @brief Relit le script du document courant et redessine. */
+    /** @brief Relit le script de la séquence active du document courant et redessine. */
     void reload();
 
     /** @brief Les pseudo-actions de capture (`script:…`, CLAUDE.md « Se relire sans écran ») :
@@ -50,6 +54,8 @@ protected:
 private:
     void rebuild();
     void refreshHeader();
+    /** La séquence active a changé : la frappe en attente part dans l'ancienne, puis on montre la nouvelle. */
+    void followActiveSequence();
     /** Enregistre m_script sans redessiner (le geste vient d'ici). */
     void commit(const QString &undoText, const QString &mergeKey = QString());
     /** Enregistre m_script, puis redessine et donne le focus à @p focusBlock. */
@@ -83,6 +89,9 @@ private:
     bool m_fromTemplate{true};
     bool m_selfUpdate{false};
     QPointer<KdenliveDoc> m_doc;
+    /** La séquence dont le script est à l'écran : tout ce que le panneau enregistre va dans celle-là. */
+    QUuid m_sequence;
+    bool m_binConnected{false};
     QString m_focusBlock;
     QString m_lastTable;
     QString m_pendingText;
@@ -90,6 +99,7 @@ private:
 
     QLabel *m_title{nullptr};
     QLabel *m_typeChip{nullptr};
+    QLabel *m_sequenceLabel{nullptr};
     QLabel *m_hint{nullptr};
     QToolButton *m_addButton{nullptr};
     QToolButton *m_menuButton{nullptr};

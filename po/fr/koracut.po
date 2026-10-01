@@ -55214,3 +55214,12 @@ msgstr "Option"
 msgctxt "@info modifier key"
 msgid "Alt"
 msgstr "Alt"
+
+#. KoraCut, document 21 (1er octobre 2026) : un script par séquence
+msgctxt "@info:tooltip"
+msgid "Each sequence of the project has its own script. This panel follows the active sequence."
+msgstr "Chaque séquence du projet a son script. Ce panneau suit la séquence active."
+
+msgctxt "@info script panel, %1 is the name of the sequence whose script is shown"
+msgid "Sequence: %1"
+msgstr "Séquence : %1"

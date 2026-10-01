@@ -6,6 +6,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "koracutscriptpanel.h"
 #include "koracutscripttable.h"
 
+#include "bin/bin.h"
 #include "core.h"
 #include "doc/kdenlivedoc.h"
 #include "koracut/koracutmetrics.h"
@@ -281,6 +282,15 @@ KoraCutScriptPanel::KoraCutScriptPanel(QWidget *parent)
     barLayout->addWidget(m_menuButton);
     root->addWidget(bar);
 
+    // Le nom de la séquence dont on écrit le script : chaque séquence a le sien.
+    m_sequenceLabel = new QLabel(this);
+    m_sequenceLabel->setObjectName(QStringLiteral("koracutScriptSequence"));
+    m_sequenceLabel->setTextFormat(Qt::PlainText);
+    m_sequenceLabel->setToolTip(i18nc("@info:tooltip", "Each sequence of the project has its own script. This panel follows the active sequence."));
+    m_sequenceLabel->setContentsMargins(KoraCutMetrics::SpaceZone, 0, KoraCutMetrics::SpaceZone, KoraCutMetrics::SpaceGroup);
+    m_sequenceLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    root->addWidget(m_sequenceLabel);
+
     m_hint = new QLabel(this);
     m_hint->setObjectName(QStringLiteral("koracutScriptHint"));
     m_hint->setWordWrap(true);
@@ -304,8 +314,9 @@ KoraCutScriptPanel::KoraCutScriptPanel(QWidget *parent)
     m_textTimer->setInterval(500);
     connect(m_textTimer, &QTimer::timeout, this, &KoraCutScriptPanel::flushTextCommit);
 
-    connect(KoraCutScriptNotifier::instance(), &KoraCutScriptNotifier::changed, this, [this]() {
-        if (m_selfUpdate) {
+    connect(KoraCutScriptNotifier::instance(), &KoraCutScriptNotifier::changed, this, [this](const QUuid &sequence) {
+        if (m_selfUpdate || (!sequence.isNull() && sequence != m_sequence)) {
+            // Le geste vient d'ici, ou il touche le script d'une autre séquence que celle à l'écran.
             return;
         }
         // Un annuler, un agent, la porte : on relit. Une frappe en attente est dépassée.
@@ -313,7 +324,17 @@ KoraCutScriptPanel::KoraCutScriptPanel(QWidget *parent)
         m_pendingText.clear();
         reload();
     });
+    connect(KoraCutScriptNotifier::instance(), &KoraCutScriptNotifier::activeSequenceChanged, this, &KoraCutScriptPanel::followActiveSequence);
     connect(pCore.get(), &Core::GUISetupDone, this, [this]() {
+        if (!m_binConnected && pCore->bin()) {
+            // Une séquence renommée : le nom affiché suit.
+            m_binConnected = true;
+            connect(pCore->bin(), &Bin::updateTabName, this, [this](const QUuid &uuid) {
+                if (uuid == m_sequence) {
+                    refreshHeader();
+                }
+            });
+        }
         if (isVisible()) {
             reload();
         } else {
@@ -325,7 +346,7 @@ KoraCutScriptPanel::KoraCutScriptPanel(QWidget *parent)
 void KoraCutScriptPanel::showEvent(QShowEvent *event)
 {
     QWidget::showEvent(event);
-    if (m_doc != pCore->currentDoc() || m_blocks->count() == 0) {
+    if (m_doc != pCore->currentDoc() || m_sequence != KoraCutScriptStore::activeSequence() || m_blocks->count() == 0) {
         reload();
     }
 }
@@ -333,9 +354,26 @@ void KoraCutScriptPanel::showEvent(QShowEvent *event)
 void KoraCutScriptPanel::reload()
 {
     m_doc = pCore->currentDoc();
-    m_script = KoraCutScriptStore::current(m_doc, &m_fromTemplate);
+    m_sequence = KoraCutScriptStore::activeSequence(m_doc);
+    m_script = KoraCutScriptStore::current(m_doc, &m_fromTemplate, m_sequence);
     rebuild();
     refreshHeader();
+}
+
+void KoraCutScriptPanel::followActiveSequence()
+{
+    if (m_doc == pCore->currentDoc() && m_sequence == KoraCutScriptStore::activeSequence()) {
+        return;
+    }
+    // Ce qui était en cours de frappe appartient à la séquence qu'on quitte.
+    flushTextCommit();
+    if (isVisible()) {
+        reload();
+    } else {
+        // Relu à la prochaine ouverture du panneau (showEvent).
+        m_doc.clear();
+        m_sequence = QUuid();
+    }
 }
 
 void KoraCutScriptPanel::refreshHeader()
@@ -344,6 +382,12 @@ void KoraCutScriptPanel::refreshHeader()
     const KoraCutVideoTypes::VideoType *type = KoraCutVideoTypes::byId(typeId);
     m_typeChip->setText(type ? type->name : i18nc("@info script panel, project without a video type", "Free project"));
     m_typeChip->setToolTip(type ? i18nc("@info:tooltip", "The template follows the video type chosen in New Project") : QString());
+    QString sequenceName = KoraCutScriptStore::sequenceName(m_sequence);
+    if (sequenceName.size() > 48) {
+        sequenceName = sequenceName.left(47) + QChar(0x2026);
+    }
+    m_sequenceLabel->setText(i18nc("@info script panel, %1 is the name of the sequence whose script is shown", "Sequence: %1", sequenceName));
+    m_sequenceLabel->setVisible(!sequenceName.isEmpty());
     if (m_fromTemplate) {
         m_hint->setText(type ? i18nc("@info script panel, %1 is a video type", "Ready-made script for “%1”. Change anything: it is saved in the project at your first edit.",
                                      type->name)
@@ -359,11 +403,12 @@ void KoraCutScriptPanel::refreshHeader()
 
 void KoraCutScriptPanel::commit(const QString &undoText, const QString &mergeKey)
 {
-    if (!pCore->currentDoc()) {
+    if (!m_doc || m_doc != pCore->currentDoc()) {
         return;
     }
     m_selfUpdate = true;
-    KoraCutScriptStore::apply(m_script, undoText, mergeKey);
+    // Dans la séquence à l'écran, même si une autre vient de devenir active.
+    KoraCutScriptStore::apply(m_script, undoText, mergeKey, Fun(), Fun(), m_sequence);
     m_selfUpdate = false;
     if (m_fromTemplate) {
         m_fromTemplate = false;
@@ -703,7 +748,7 @@ void KoraCutScriptPanel::placeMarker(const QString &blockId, const QString &rowI
     // Le script affiché peut être le modèle pas encore enregistré : placeMarker() l'enregistre avec
     // le marqueur et le lien, en une seule étape.
     QString error;
-    if (!KoraCutScriptStore::placeMarker(doc->getTimeline(pCore->currentTimelineId(), true), blockId, rowId, pCore->getMonitorPosition(), &error)) {
+    if (!KoraCutScriptStore::placeMarker(doc->getTimeline(m_sequence, true), blockId, rowId, pCore->getMonitorPosition(), &error)) {
         pCore->displayMessage(error, ErrorMessage, 5000);
     }
 }
@@ -831,7 +876,7 @@ void KoraCutScriptPanel::importCsv()
 void KoraCutScriptPanel::resetToTemplate()
 {
     flushTextCommit();
-    if (!noDialogs() && KoraCutScriptStore::isStored() &&
+    if (!noDialogs() && KoraCutScriptStore::isStored(m_doc, m_sequence) &&
         QMessageBox::question(this, i18nc("@title:window", "Start Again from the Template"),
                               i18nc("@info", "Replace the whole script with the template for this video type? You can undo it.")) != QMessageBox::Yes) {
         return;
@@ -990,7 +1035,7 @@ QString KoraCutScriptPanel::debugCommand(const QString &command)
     flushTextCommit();
     const QString verb = command.section(QLatin1Char('='), 0, 0);
     const QString rest = command.section(QLatin1Char('='), 1);
-    if (m_doc != pCore->currentDoc()) {
+    if (m_doc != pCore->currentDoc() || m_sequence != KoraCutScriptStore::activeSequence()) {
         reload();
     }
     if (verb == QLatin1String("modele")) {
@@ -1087,7 +1132,12 @@ QString KoraCutScriptPanel::debugCommand(const QString &command)
         return dialog->debugState();
     }
     if (verb == QLatin1String("etat")) {
-        return QStringLiteral("%1 %2").arg(m_fromTemplate ? QStringLiteral("modele") : QStringLiteral("enregistre"), m_script.toCompactString());
+        // La séquence d'abord : chaque séquence a son script.
+        const int rank = int(KoraCutScriptStore::sequences(m_doc).indexOf(m_sequence)) + 1;
+        return QStringLiteral("sequence=%1 rang=%2 uuid=%3 %4 %5")
+            .arg(QStringLiteral("\"%1\"").arg(KoraCutScriptStore::sequenceName(m_sequence)))
+            .arg(rank)
+            .arg(m_sequence.toString(QUuid::WithoutBraces), m_fromTemplate ? QStringLiteral("modele") : QStringLiteral("enregistre"), m_script.toCompactString());
     }
     return QStringLiteral("commande inconnue : %1").arg(command);
 }

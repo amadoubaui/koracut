@@ -6,6 +6,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "koracutscript.h"
 
 #include "bin/model/markerlistmodel.hpp"
+#include "bin/projectclip.h"
+#include "bin/projectitemmodel.h"
 #include "core.h"
 #include "doc/kdenlivedoc.h"
 #include "koracut/koracutvideotypes.h"
@@ -897,14 +899,94 @@ KoraCutScriptNotifier *KoraCutScriptNotifier::instance()
 
 namespace {
 
-// Une étape d'annulation du script : l'avant et l'après en entier (un script pèse quelques Ko).
-// Les frappes qui se suivent dans la même cellule, à moins de 2,5 s, fusionnent.
+// La propriété telle qu'elle part dans le fichier, sur le tracteur de la séquence.
+const char *kTractorProperty = "kdenlive:sequenceproperties.koracut:script";
+
+KdenliveDoc *documentOr(KdenliveDoc *doc)
+{
+    return doc ? doc : (pCore ? pCore->currentDoc() : nullptr);
+}
+
+// Le script enregistré d'une séquence, vide s'il n'y en a pas. Une séquence dont l'onglet est fermé
+// n'a plus ses propriétés dans le document : elles sont sur son tracteur, on les lit là.
+QString storedValue(KdenliveDoc *doc, const QUuid &sequence)
+{
+    if (!doc || sequence.isNull()) {
+        return QString();
+    }
+    const QString value = doc->getSequenceProperty(sequence, KoraCutScript::PropertyName);
+    if (!value.isEmpty()) {
+        return value;
+    }
+    if (const auto model = doc->getTimeline(sequence, true)) {
+        if (model->tractor() && model->tractor()->property_exists(kTractorProperty)) {
+            return QString::fromUtf8(model->tractor()->get(kTractorProperty));
+        }
+    }
+    return QString();
+}
+
+// Écrit aux deux endroits : les propriétés de séquence du document (ce qui part à l'enregistrement)
+// et le tracteur (ce que copie une duplication, ce qui reste quand l'onglet est fermé). Une valeur
+// vide retire la propriété des deux, sinon un script annulé reviendrait à la réouverture.
+void storeValue(KdenliveDoc *doc, const QUuid &sequence, const QString &value)
+{
+    if (!doc || sequence.isNull()) {
+        return;
+    }
+    doc->setSequenceProperty(sequence, KoraCutScript::PropertyName, value);
+    if (const auto model = doc->getTimeline(sequence, true)) {
+        if (model->tractor()) {
+            if (value.isEmpty()) {
+                // Mlt::Producer::clear() cache celui des propriétés : on passe par elles.
+                Mlt::Properties properties(model->tractor()->get_properties());
+                properties.clear(kTractorProperty);
+            } else {
+                model->tractor()->set(kTractorProperty, value.toUtf8().constData());
+            }
+        }
+    }
+}
+
+// Un projet d'avant le 1er octobre 2026 porte un seul script, dans la propriété de document. Il
+// revient à la première séquence du projet (celle qui porte l'uuid du document, sinon la plus
+// ancienne) ; si elle a déjà le sien, à la première séquence qui n'en a pas. Si toutes en ont un, la
+// propriété de document reste où elle est : rien ne se perd. Le projet n'est pas marqué modifié.
+void adoptDocumentScript(KdenliveDoc *doc)
+{
+    if (!doc) {
+        return;
+    }
+    const QString legacy = doc->getDocumentProperty(KoraCutScript::PropertyName);
+    if (legacy.isEmpty()) {
+        return;
+    }
+    QList<QUuid> all = KoraCutScriptStore::sequences(doc);
+    if (all.isEmpty()) {
+        return;
+    }
+    if (all.removeOne(doc->uuid())) {
+        all.prepend(doc->uuid());
+    }
+    for (const QUuid &uuid : std::as_const(all)) {
+        if (storedValue(doc, uuid).isEmpty()) {
+            storeValue(doc, uuid, legacy);
+            doc->setDocumentProperty(KoraCutScript::PropertyName, QString());
+            return;
+        }
+    }
+}
+
+// Une étape d'annulation du script d'une séquence : l'avant et l'après en entier (un script pèse
+// quelques Ko). Les frappes qui se suivent dans la même cellule, à moins de 2,5 s, fusionnent.
 class KoraCutScriptCommand : public QUndoCommand
 {
 public:
-    KoraCutScriptCommand(KdenliveDoc *doc, QString before, QString after, const QString &text, QString mergeKey, Fun extraUndo, Fun extraRedo)
+    KoraCutScriptCommand(KdenliveDoc *doc, const QUuid &sequence, QString before, QString after, const QString &text, QString mergeKey, Fun extraUndo,
+                         Fun extraRedo)
         : QUndoCommand(text)
         , m_doc(doc)
+        , m_sequence(sequence)
         , m_before(std::move(before))
         , m_after(std::move(after))
         , m_key(std::move(mergeKey))
@@ -919,7 +1001,7 @@ public:
     bool mergeWith(const QUndoCommand *other) override
     {
         const auto *o = dynamic_cast<const KoraCutScriptCommand *>(other);
-        if (!o || o->m_key != m_key || o->m_doc != m_doc || m_extraUndo || o->m_extraUndo || o->m_time - m_time > 2500) {
+        if (!o || o->m_key != m_key || o->m_doc != m_doc || o->m_sequence != m_sequence || m_extraUndo || o->m_extraUndo || o->m_time - m_time > 2500) {
             return false;
         }
         m_after = o->m_after;
@@ -952,13 +1034,15 @@ public:
 private:
     void write(const QString &value)
     {
+        // Toujours dans la séquence du geste, pas dans celle qui est active au moment d'annuler.
         if (m_doc) {
-            m_doc->setDocumentProperty(KoraCutScript::PropertyName, value);
+            storeValue(m_doc, m_sequence, value);
         }
-        Q_EMIT KoraCutScriptNotifier::instance()->changed();
+        Q_EMIT KoraCutScriptNotifier::instance()->changed(m_sequence);
     }
 
     QPointer<KdenliveDoc> m_doc;
+    QUuid m_sequence;
     QString m_before;
     QString m_after;
     QString m_key;
@@ -972,12 +1056,84 @@ private:
 
 namespace KoraCutScriptStore {
 
-KoraCutScript current(KdenliveDoc *doc, bool *fromTemplate)
+QUuid activeSequence(KdenliveDoc *doc)
 {
+    doc = documentOr(doc);
+    return doc ? doc->activeUuid : QUuid();
+}
+
+QList<QUuid> sequences(KdenliveDoc *doc)
+{
+    doc = documentOr(doc);
     if (!doc) {
-        doc = pCore ? pCore->currentDoc() : nullptr;
+        return {};
     }
-    const QString stored = doc ? doc->getDocumentProperty(KoraCutScript::PropertyName) : QString();
+    // L'ordre de création : celui des identifiants du chutier. Les séquences dont l'onglet est fermé y sont.
+    QList<std::pair<int, QUuid>> ordered;
+    if (pCore->projectItemModel() && doc == pCore->currentDoc()) {
+        const QMap<QUuid, QString> clips = pCore->projectItemModel()->getAllSequenceClips();
+        for (auto it = clips.cbegin(); it != clips.cend(); ++it) {
+            ordered.append({it.value().toInt(), it.key()});
+        }
+    }
+    std::sort(ordered.begin(), ordered.end(), [](const std::pair<int, QUuid> &a, const std::pair<int, QUuid> &b) {
+        return a.first != b.first ? a.first < b.first : a.second < b.second;
+    });
+    QList<QUuid> result;
+    for (const auto &entry : std::as_const(ordered)) {
+        result << entry.second;
+    }
+    if (result.isEmpty()) {
+        result = doc->getTimelinesUuids();
+    }
+    return result;
+}
+
+QString sequenceName(const QUuid &sequence)
+{
+    if (sequence.isNull() || !pCore || !pCore->projectItemModel()) {
+        return QString();
+    }
+    const QString binId = pCore->projectItemModel()->getSequenceId(sequence);
+    const auto clip = binId.isEmpty() ? nullptr : pCore->projectItemModel()->getClipByBinID(binId);
+    return clip ? clip->clipName() : QString();
+}
+
+QUuid findSequence(const QString &reference, KdenliveDoc *doc)
+{
+    doc = documentOr(doc);
+    if (!doc) {
+        return QUuid();
+    }
+    const QString wanted = reference.trimmed();
+    if (wanted.isEmpty()) {
+        return doc->activeUuid;
+    }
+    const QList<QUuid> all = sequences(doc);
+    for (const QUuid &uuid : all) {
+        if (uuid.toString(QUuid::WithoutBraces).compare(wanted, Qt::CaseInsensitive) == 0 || uuid.toString().compare(wanted, Qt::CaseInsensitive) == 0) {
+            return uuid;
+        }
+    }
+    for (const QUuid &uuid : all) {
+        if (sequenceName(uuid).trimmed().compare(wanted, Qt::CaseInsensitive) == 0) {
+            return uuid;
+        }
+    }
+    bool isNumber = false;
+    const int rank = wanted.toInt(&isNumber);
+    if (isNumber && rank >= 1 && rank <= all.size()) {
+        return all.at(rank - 1);
+    }
+    return QUuid();
+}
+
+KoraCutScript current(KdenliveDoc *doc, bool *fromTemplate, const QUuid &sequence)
+{
+    doc = documentOr(doc);
+    adoptDocumentScript(doc);
+    const QUuid uuid = sequence.isNull() ? activeSequence(doc) : sequence;
+    const QString stored = storedValue(doc, uuid);
     bool ok = false;
     if (!stored.isEmpty()) {
         KoraCutScript s = KoraCutScript::fromString(stored, &ok);
@@ -994,28 +1150,32 @@ KoraCutScript current(KdenliveDoc *doc, bool *fromTemplate)
     return KoraCutScript::templateFor(doc ? doc->getDocumentProperty(QStringLiteral("koracut:videotype")) : QString());
 }
 
-bool isStored(KdenliveDoc *doc)
+bool isStored(KdenliveDoc *doc, const QUuid &sequence)
 {
-    if (!doc) {
-        doc = pCore ? pCore->currentDoc() : nullptr;
-    }
-    return doc && !doc->getDocumentProperty(KoraCutScript::PropertyName).isEmpty();
+    doc = documentOr(doc);
+    adoptDocumentScript(doc);
+    return doc && !storedValue(doc, sequence.isNull() ? activeSequence(doc) : sequence).isEmpty();
 }
 
-bool apply(const KoraCutScript &after, const QString &undoText, const QString &mergeKey, const Fun &extraUndo, const Fun &extraRedo)
+bool apply(const KoraCutScript &after, const QString &undoText, const QString &mergeKey, const Fun &extraUndo, const Fun &extraRedo, const QUuid &sequence)
 {
-    KdenliveDoc *doc = pCore ? pCore->currentDoc() : nullptr;
+    KdenliveDoc *doc = documentOr(nullptr);
     if (!doc) {
         return false;
     }
-    const QString before = doc->getDocumentProperty(KoraCutScript::PropertyName);
+    adoptDocumentScript(doc);
+    const QUuid uuid = sequence.isNull() ? activeSequence(doc) : sequence;
+    if (uuid.isNull() || !doc->getTimeline(uuid, true)) {
+        return false;
+    }
+    const QString before = storedValue(doc, uuid);
     const QString value = after.toCompactString();
     if (before == value && !extraUndo) {
         return true;
     }
-    doc->setDocumentProperty(KoraCutScript::PropertyName, value);
-    pCore->pushUndo(new KoraCutScriptCommand(doc, before, value, undoText, mergeKey, extraUndo, extraRedo));
-    Q_EMIT KoraCutScriptNotifier::instance()->changed();
+    storeValue(doc, uuid, value);
+    pCore->pushUndo(new KoraCutScriptCommand(doc, uuid, before, value, undoText, mergeKey, extraUndo, extraRedo));
+    Q_EMIT KoraCutScriptNotifier::instance()->changed(uuid);
     return true;
 }
 
@@ -1030,7 +1190,9 @@ bool placeMarker(const std::shared_ptr<TimelineItemModel> &timeline, const QStri
     if (!timeline || frame < 0) {
         return fail(QStringLiteral("Aucune séquence ouverte."));
     }
-    KoraCutScript script = current();
+    // Le marqueur va dans la séquence dont on écrit le script.
+    const QUuid sequence = timeline->uuid();
+    KoraCutScript script = current(nullptr, nullptr, sequence);
     KoraCutScriptBlock *table = script.block(blockId);
     const int row = table ? table->rowIndex(rowId) : -1;
     if (row < 0) {
@@ -1044,7 +1206,7 @@ bool placeMarker(const std::shared_ptr<TimelineItemModel> &timeline, const QStri
     if (guides->hasMarker(position)) {
         // Un marqueur existe déjà à cette image : on relie la scène sans en poser un deuxième.
         table->rows[row].marker = frame;
-        return apply(script, i18nc("@action undo text", "Script: link scene to marker"));
+        return apply(script, i18nc("@action undo text", "Script: link scene to marker"), QString(), Fun(), Fun(), sequence);
     }
     int category = 0;
     if (!pCore->markerTypes.contains(category) && !pCore->markerTypes.isEmpty()) {
@@ -1060,7 +1222,7 @@ bool placeMarker(const std::shared_ptr<TimelineItemModel> &timeline, const QStri
         return fail(QStringLiteral("Le marqueur n'a pas pu être posé."));
     }
     table->rows[row].marker = frame;
-    return apply(script, i18nc("@action undo text", "Script: place marker"), QString(), undo, redo);
+    return apply(script, i18nc("@action undo text", "Script: place marker"), QString(), undo, redo, sequence);
 }
 
 } // namespace KoraCutScriptStore
