@@ -29,6 +29,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <KLocalizedString>
 
+#include <QThread>
 #include <QCoreApplication>
 #include <QDir>
 #include <QDomDocument>
@@ -291,7 +292,17 @@ bool renameOnDisk(const QString &from, const QString &to)
 bool moveFileWithUndo(const QString &binId, const QString &from, const QString &to, Fun &undo, Fun &redo)
 {
     const auto apply = [binId](const QString &a, const QString &b) {
-        if (!renameOnDisk(a, b)) {
+        bool renamed = renameOnDisk(a, b);
+#ifdef Q_OS_WIN
+        // Windows refuse de renommer un fichier ouvert (Mac et Linux le permettent) : MLT le relâche,
+        // on réessaie, et les décodeurs se rouvrent ensuite sur le nouveau chemin.
+        for (int attempt = 0; !renamed && attempt < 5; ++attempt) {
+            KoraCutAgentTools::releaseMediaFile(binId);
+            QThread::msleep(60 * (attempt + 1));
+            renamed = renameOnDisk(a, b);
+        }
+#endif
+        if (!renamed) {
             return false;
         }
         KoraCutAgentTools::relocateMedia(binId, a, b);
@@ -1273,6 +1284,31 @@ QMap<QString, Tool> organisationTools()
 } // namespace KoraCutAgentToolsPrivate
 
 namespace KoraCutAgentTools {
+
+int releaseMediaFile(const QString &binId)
+{
+    if (!pCore || !pCore->projectItemModel()) {
+        return 0;
+    }
+    int count = 0;
+    if (auto clip = pCore->projectItemModel()->getClipByBinID(binId)) {
+        if (Mlt::Producer *master = clip->masterProducer()) {
+            if (master->is_valid()) {
+                mlt_service_cache_purge(master->get_service());
+                ++count;
+            }
+        }
+    }
+    if (KdenliveDoc *doc = pCore->currentDoc()) {
+        const QList<QUuid> uuids = doc->getTimelinesUuids();
+        for (const QUuid &uuid : uuids) {
+            if (auto tl = doc->getTimeline(uuid, true)) {
+                count += TimelineFunctions::koraCutReleaseMedia(tl, binId);
+            }
+        }
+    }
+    return count;
+}
 
 int relocateMedia(const QString &binId, const QString &from, const QString &to)
 {

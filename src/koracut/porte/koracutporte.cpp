@@ -976,7 +976,10 @@ bool KoraCutPorte::parseCommandLine(const QString &line, QString &method, QJsonO
             error = QStringLiteral("Écris « famille methode » ou « famille.methode », puis clef=valeur.");
             return false;
         }
-        method = words.takeFirst() + QLatin1Char('.') + words.takeFirst();
+        // Deux instructions : dans une seule expression, l'ordre des deux takeFirst() n'est pas garanti
+        // par le C++ (le compilateur Windows rendait « etat.timeline », vu le 1er octobre 2026).
+        const QString family = words.takeFirst();
+        method = family + QLatin1Char('.') + words.takeFirst();
     }
     for (const QString &w : words) {
         const int eq = w.indexOf(QLatin1Char('='));

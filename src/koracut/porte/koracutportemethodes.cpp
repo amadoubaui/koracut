@@ -52,6 +52,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <kddockwidgets/core/DockWidget.h>
 #include <kddockwidgets/qtcommon/View.h>
 
+#include <QThread>
 #include <QAbstractButton>
 #include <QApplication>
 #include <QCheckBox>
@@ -220,6 +221,34 @@ std::shared_ptr<ProjectFolder> findBinFolder(const QString &nameOrId)
         }
     }
     return nullptr;
+}
+
+// Renomme ou déplace sur le disque. Windows refuse de toucher à un fichier ouvert (Mac et Linux le
+// permettent) : en cas de refus, MLT relâche les médias concernés et on réessaie.
+bool renameOnDisk(const QString &from, const QString &to, bool folder)
+{
+    bool renamed = QFile::rename(from, to);
+#ifdef Q_OS_WIN
+    for (int attempt = 0; !renamed && attempt < 5 && pCore && pCore->projectItemModel(); ++attempt) {
+        const QString prefix = from + QLatin1Char('/');
+        const std::vector<QString> ids = pCore->projectItemModel()->getAllClipIds();
+        for (const QString &id : ids) {
+            const auto clip = pCore->projectItemModel()->getClipByBinID(id);
+            if (!clip || clip->url().isEmpty()) {
+                continue;
+            }
+            const QString url = QFileInfo(clip->url()).absoluteFilePath();
+            if ((folder && url.startsWith(prefix)) || (!folder && url == from)) {
+                KoraCutAgentTools::releaseMediaFile(id);
+            }
+        }
+        QThread::msleep(60 * (attempt + 1));
+        renamed = QFile::rename(from, to);
+    }
+#else
+    Q_UNUSED(folder)
+#endif
+    return renamed;
 }
 
 // Après un renommage ou un déplacement sur le disque, les clips du chutier suivent.
@@ -2024,19 +2053,19 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
         if (toAbs.startsWith(from + QLatin1Char('/'))) {
             return Reply::fail(QStringLiteral("parametres_invalides"), QStringLiteral("Un dossier ne se déplace pas dans lui-même."));
         }
-        if (!QDir().mkpath(QFileInfo(toAbs).absolutePath()) || !QFile::rename(from, toAbs)) {
+        if (!QDir().mkpath(QFileInfo(toAbs).absolutePath()) || !renameOnDisk(from, toAbs, folder)) {
             return Reply::fail(QStringLiteral("ecriture_impossible"), QStringLiteral("Le système a refusé de déplacer %1.").arg(relativeToProject(ctx, from)));
         }
         retargetClips(from, toAbs, folder);
         Fun undo = [from, toAbs, folder]() {
-            if (!QFile::rename(toAbs, from)) {
+            if (!renameOnDisk(toAbs, from, folder)) {
                 return false;
             }
             retargetClips(toAbs, from, folder);
             return true;
         };
         Fun redo = [from, toAbs, folder]() {
-            if (!QFile::rename(from, toAbs)) {
+            if (!renameOnDisk(from, toAbs, folder)) {
                 return false;
             }
             retargetClips(from, toAbs, folder);

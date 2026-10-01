@@ -3806,6 +3806,29 @@ bool TimelineFunctions::koraCutSetClipName(const std::shared_ptr<TimelineItemMod
     return true;
 }
 
+int TimelineFunctions::koraCutReleaseMedia(const std::shared_ptr<TimelineItemModel> &timeline, const QString &binId)
+{
+    if (!timeline) {
+        return 0;
+    }
+    int count = 0;
+    for (const auto &clip : timeline->m_allClips) {
+        if (clip.second->binId() != binId) {
+            continue;
+        }
+        Mlt::Producer *cut = clip.second->service();
+        if (cut == nullptr || !cut->is_valid()) {
+            continue;
+        }
+        Mlt::Producer parent(cut->parent());
+        if (parent.is_valid()) {
+            mlt_service_cache_purge(parent.get_service());
+            ++count;
+        }
+    }
+    return count;
+}
+
 int TimelineFunctions::koraCutRelocateMedia(const std::shared_ptr<TimelineItemModel> &timeline, const QString &binId, const QString &from, const QString &to)
 {
     if (!timeline || from.isEmpty() || to.isEmpty()) {

@@ -241,6 +241,9 @@ struct TimelineFunctions
      *  piste de ses clips (ceux que le projet enregistre) prennent le nouveau chemin, sans rechargement.
      *  Rend le nombre de producteurs mis à jour. */
     static int koraCutRelocateMedia(const std::shared_ptr<TimelineItemModel> &timeline, const QString &binId, const QString &from, const QString &to);
+    /** @brief KoraCut, chantier 12 : fait relâcher le fichier d'un média par les producteurs de cette séquence
+     *  (MLT ferme son décodeur, il le rouvrira à la prochaine image). Windows refuse de renommer un fichier ouvert. */
+    static int koraCutReleaseMedia(const std::shared_ptr<TimelineItemModel> &timeline, const QString &binId);
 
 private:
     static bool getUsedTracks(const QDomNodeList &clips, const QDomNodeList &compositions, int masterSourceTrack, int &topAudioMirror, TimelineTracksInfo &allTracks, QList<int> &singleAudioTracks, std::unordered_map<int, int> &audioMirrors);

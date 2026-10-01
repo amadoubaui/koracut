@@ -287,7 +287,9 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Écris : koracut-ctl <famille> <methode> [clef=valeur …]. koracut-ctl --aide liste tout.\n");
             return 1;
         }
-        method = positional.takeFirst() + QLatin1Char('.') + positional.takeFirst();
+        // Deux instructions : l'ordre des deux takeFirst() dans une seule expression n'est pas garanti.
+        const QString family = positional.takeFirst();
+        method = family + QLatin1Char('.') + positional.takeFirst();
     }
     QJsonObject params;
     if (!paramsJson.isEmpty()) {

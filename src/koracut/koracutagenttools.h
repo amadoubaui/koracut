@@ -46,6 +46,9 @@ QString timecode(int frames, double fps);
  *  producteurs de piste de ses clips dans les séquences ouvertes prennent le nouveau chemin, sans
  *  rechargement. Sert aux outils d'organisation et à la porte (fichiers.renommer, fichiers.deplacer). */
 int relocateMedia(const QString &binId, const QString &from, const QString &to);
+/** @brief Fait relâcher le fichier d'un média par MLT (chutier et séquences ouvertes), avant de le renommer
+ *  ou de le déplacer : Windows refuse de toucher à un fichier ouvert. Rend le nombre de producteurs relâchés. */
+int releaseMediaFile(const QString &binId);
 
 /** @brief Le miroir Motion derrière les outils `motion_*` (document 19, lot 3). Le miroir s'inscrit
  * lui-même à sa construction ; sans miroir, ces outils répondent `non_disponible`. */

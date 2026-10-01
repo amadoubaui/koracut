@@ -37,7 +37,7 @@ jobs:
             kiconthemes:p kio:p kitemviews:p knewstuff:p knotifications:p knotifyconfig:p ktextwidgets:p
             kwidgetsaddons:p kxmlgui:p mlt:p opentimelineio:p purpose:p shared-mime-info:p qqc2-desktop-style:p
             qt6-base:p qt6-declarative:p qt6-multimedia:p qt6-networkauth:p qt6-svg:p qt6-websockets:p
-            qtkeychain-qt6:p solid:p ffmpeg:p imath:p python:p ccache:p
+            qtkeychain-qt6:p solid:p ffmpeg:p imath:p python:p ccache:p gdb:p
             fftw:p libebur128:p libsamplerate:p libvorbis:p rtaudio:p rnnoise:p rubberband:p sox:p vid.stab:p
             qt6-5compat:p gdk-pixbuf2:p pango:p
 
@@ -74,13 +74,23 @@ jobs:
           cp -r "$MINGW_PREFIX/lib/mlt" build/lib/ && cp -r "$MINGW_PREFIX/share/mlt" build/share/
           # Sous Windows, KDE installe les données dans bin/data, à côté de l'exécutable (effets, thèmes, scripts).
           cp -r "$MINGW_PREFIX/bin/data" build/bin/
-          melt -query filters > ../filtres-mlt.txt 2>/dev/null || true
           cd build
           # Les tests tournent depuis build/bin : sous Windows, MLT chercherait ses modules à côté (build/lib/mlt).
           export MLT_REPOSITORY="$(cygpath -w "$MINGW_PREFIX/lib/mlt")" MLT_DATA="$(cygpath -w "$MINGW_PREFIX/share/mlt")"
           export MLT_PROFILES_PATH="$(cygpath -w "$MINGW_PREFIX/share/mlt/profiles")" MLT_PRESETS_PATH="$(cygpath -w "$MINGW_PREFIX/share/mlt/presets")"
           QT_QPA_PLATFORM=offscreen ctest -j 2 --timeout 600 --output-on-failure > ../tests-windows.log 2>&1
           grep -E "tests passed|\(Failed\)|\(SEGFAULT\)|\(Timeout\)|Exception" ../tests-windows.log | tail -40
+
+      - name: Piles d'appels des tests qui plantent
+        continue-on-error: true
+        run: |
+          cd build
+          export MLT_REPOSITORY="$(cygpath -w "$MINGW_PREFIX/lib/mlt")" MLT_DATA="$(cygpath -w "$MINGW_PREFIX/share/mlt")" QT_QPA_PLATFORM=offscreen
+          for t in $(grep -E "\((SEGFAULT|Subprocess aborted)\)" ../tests-windows.log | awk '{print $3}' | sort -u | head -5); do
+            echo "=== $t" >> ../piles-windows.log
+            timeout 600 gdb -q -batch -ex run -ex bt "bin/$t.exe" 2>&1 | grep -E "^#|received signal|SIG" | head -40 >> ../piles-windows.log
+          done
+          cat ../piles-windows.log || true
 
       - name: Captures d'écran de KoraCut ouverte
         continue-on-error: true
@@ -104,5 +114,5 @@ jobs:
             tests-windows.log
             install.log
             build.log
-            filtres-mlt.txt
+            piles-windows.log
           if-no-files-found: warn
