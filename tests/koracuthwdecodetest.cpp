@@ -28,13 +28,20 @@
 
 namespace {
 
+/** Les verdicts du test vont dans un dossier à lui, jamais dans le cache de la personne. */
+QString testVerdicts()
+{
+    static QTemporaryDir dir;
+    return dir.filePath(QStringLiteral("koracut-decodage.json"));
+}
+
 /** Remet le réglage et l'environnement comme avant le test. */
 struct SettingGuard
 {
     QString before{KdenliveSettings::hwDecoding()};
     ~SettingGuard()
     {
-        KoraCutHwDecode::resetForTests();
+        KoraCutHwDecode::resetForTests(QString());
         KdenliveSettings::setHwDecoding(before);
         KoraCutHwDecode::apply();
         qunsetenv("MLT_AVFORMAT_HWACCEL");
@@ -114,7 +121,7 @@ TEST_CASE("Décodage matériel : règles et lecture de la sortie de ffmpeg", "[K
 TEST_CASE("Décodage matériel : un clip refusé fait retomber tout le projet en logiciel", "[KoraCut]")
 {
     SettingGuard guard;
-    KoraCutHwDecode::resetForTests();
+    KoraCutHwDecode::resetForTests(testVerdicts());
     KdenliveSettings::setHwDecoding(QStringLiteral("videotoolbox"));
     auto calls = std::make_shared<std::atomic<int>>(0);
     KoraCutHwDecode::setTrial([calls](const QString &, const QString &path) {
@@ -176,6 +183,8 @@ TEST_CASE("Décodage matériel : un clip refusé fait retomber tout le projet en
     REQUIRE(KoraCutHwDecode::waitForTrials(10000));
     CHECK(calls->load() == before);
     CHECK(KoraCutHwDecode::effective().isEmpty());
+    // Et il est écrit sur le disque, pour la prochaine ouverture du projet.
+    CHECK(QFileInfo::exists(testVerdicts()));
 
     // Les clips partis, la puce revient.
     KoraCutHwDecode::forgetClip(&camera);
@@ -225,7 +234,7 @@ TEST_CASE("Décodage matériel : un H.264 4:2:2 10 bits ne sort jamais blanc", "
     }
 
     SettingGuard guard;
-    KoraCutHwDecode::resetForTests();
+    KoraCutHwDecode::resetForTests(testVerdicts());
     int owner = 0;
 
     // 1. En logiciel (réglage vide) : l'image de référence.
@@ -256,7 +265,7 @@ TEST_CASE("Décodage matériel : un H.264 4:2:2 10 bits ne sort jamais blanc", "
     }
 
     // 3. La puce refuse ce fichier (comme un rush Sony XAVC) : le projet repasse en logiciel, l'image est là.
-    KoraCutHwDecode::resetForTests();
+    KoraCutHwDecode::resetForTests(testVerdicts());
     KdenliveSettings::setHwDecoding(QStringLiteral("videotoolbox"));
     KoraCutHwDecode::setTrial([](const QString &, const QString &) { return false; });
     KoraCutHwDecode::noteClip(&owner, QFileInfo(clip).fileName(), clip, QStringLiteral("h264"), QStringLiteral("yuv422p10le"), false);

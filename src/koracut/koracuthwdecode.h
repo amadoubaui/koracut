@@ -70,8 +70,9 @@ public:
     static void setTrial(const Trial &trial);
     /** L'essai réel, par ffmpeg. */
     static bool ffmpegTrial(const QString &ffmpeg, const QString &hw, const QString &path);
-    /** Oublie les verdicts gardés en mémoire et sur le disque (tests). */
-    static void resetForTests();
+    /** Tests : oublie les clips et les verdicts en mémoire, et garde les verdicts dans @p verdictsPath
+     *  (effacé d'abord). Vide : retour au fichier du cache de l'application, sans y toucher. */
+    static void resetForTests(const QString &verdictsPath = QString());
 
     /** Pendant le chargement d'un fichier, avant que son clip existe : le projet reste en logiciel. */
     class Hold

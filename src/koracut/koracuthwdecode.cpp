@@ -61,6 +61,8 @@ struct Shared
     // « décodeur|chemin|taille|date » → décodable par la puce.
     QHash<QString, bool> verdicts;
     bool verdictsLoaded{false};
+    // Vide : le fichier du cache de l'application. Les tests en posent un autre.
+    QString verdictsPath;
     QSet<QString> running;
     KoraCutHwDecode::Trial trial;
     QString applied;
@@ -82,9 +84,11 @@ Shared &shared()
     return *s;
 }
 
-QString verdictsFile()
+// Verrou tenu.
+QString verdictsFile(const Shared &s)
 {
-    return QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QStringLiteral("/koracut-decodage.json");
+    return s.verdictsPath.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QStringLiteral("/koracut-decodage.json")
+                                    : s.verdictsPath;
 }
 
 QString verdictKey(const QString &hw, const QString &path)
@@ -100,7 +104,7 @@ void loadVerdicts(Shared &s)
         return;
     }
     s.verdictsLoaded = true;
-    QFile file(verdictsFile());
+    QFile file(verdictsFile(s));
     if (!file.open(QIODevice::ReadOnly)) {
         return;
     }
@@ -121,7 +125,7 @@ void saveVerdicts(Shared &s)
     for (auto it = s.verdicts.constBegin(); it != s.verdicts.constEnd(); ++it) {
         list.insert(it.key(), it.value());
     }
-    const QString path = verdictsFile();
+    const QString path = verdictsFile(s);
     QDir().mkpath(QFileInfo(path).absolutePath());
     QSaveFile file(path);
     if (file.open(QIODevice::WriteOnly)) {
@@ -508,19 +512,23 @@ bool KoraCutHwDecode::ffmpegTrial(const QString &ffmpeg, const QString &hw, cons
     return runFfmpeg(ffmpeg, hw, path) == Outcome::Decodes;
 }
 
-void KoraCutHwDecode::resetForTests()
+void KoraCutHwDecode::resetForTests(const QString &verdictsPath)
 {
     waitForTrials(30000);
     Shared &s = shared();
     QMutexLocker lock(&s.mutex);
     s.entries.clear();
     s.verdicts.clear();
-    s.verdictsLoaded = true;
+    // Jamais le fichier de la personne : un test travaille sur le sien, puis rend la main.
+    s.verdictsPath = verdictsPath;
+    s.verdictsLoaded = false;
+    if (!verdictsPath.isEmpty()) {
+        QFile::remove(verdictsPath);
+    }
     s.trial = nullptr;
     s.loggedSoftware = false;
     s.appliedOnce = false;
     s.applied.clear();
-    QFile::remove(verdictsFile());
 }
 
 KoraCutHwDecode::Hold::Hold(const QString &path)
