@@ -72,6 +72,9 @@ jobs:
           # Les tests initialisent MLT à côté de leur dossier (build/lib/mlt, build/share/mlt) : on y pose l'installation.
           mkdir -p build/lib build/share
           cp -r "$MINGW_PREFIX/lib/mlt" build/lib/ && cp -r "$MINGW_PREFIX/share/mlt" build/share/
+          # Sous Windows, KDE installe les données dans bin/data, à côté de l'exécutable (effets, thèmes, scripts).
+          cp -r "$MINGW_PREFIX/bin/data" build/bin/
+          melt -query filters > ../filtres-mlt.txt 2>/dev/null || true
           cd build
           # Les tests tournent depuis build/bin : sous Windows, MLT chercherait ses modules à côté (build/lib/mlt).
           export MLT_REPOSITORY="$(cygpath -w "$MINGW_PREFIX/lib/mlt")" MLT_DATA="$(cygpath -w "$MINGW_PREFIX/share/mlt")"
@@ -101,4 +104,5 @@ jobs:
             tests-windows.log
             install.log
             build.log
+            filtres-mlt.txt
           if-no-files-found: warn
