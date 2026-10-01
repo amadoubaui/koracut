@@ -38,6 +38,8 @@ jobs:
             kwidgetsaddons:p kxmlgui:p mlt:p opentimelineio:p purpose:p shared-mime-info:p qqc2-desktop-style:p
             qt6-base:p qt6-declarative:p qt6-multimedia:p qt6-networkauth:p qt6-svg:p qt6-websockets:p
             qtkeychain-qt6:p solid:p ffmpeg:p imath:p python:p ccache:p
+            fftw:p libebur128:p libsamplerate:p libvorbis:p rtaudio:p rnnoise:p rubberband:p sox:p vid.stab:p
+            qt6-5compat:p gdk-pixbuf2:p pango:p
 
       # ccache : la première compilation prend 2 heures, les suivantes ne refont que ce qui a changé.
       - name: Cache de compilation
