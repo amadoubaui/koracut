@@ -2271,8 +2271,9 @@ void KdenliveSettingsDialog::buildKoraCutPages()
         auto *decoder = new QLabel;
         decoder->setWordWrap(true);
         const auto showDecoder = [decoder]() {
-            decoder->setText(KdenliveSettings::hwDecoding().isEmpty() ? i18nc("@info video decoding done by the processor", "Processor (software)")
-                                                                      : i18nc("@info hardware video decoding, %1 is its name", "Hardware (%1)", KdenliveSettings::hwDecoding()));
+            QString tip;
+            decoder->setText(KoraCutPerformance::decodingLabel(&tip));
+            decoder->setToolTip(tip);
         };
         showDecoder();
         auto *tryDecoder = new QPushButton(i18nc("@action:button", "Test Again"));

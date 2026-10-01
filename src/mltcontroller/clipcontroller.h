@@ -74,6 +74,9 @@ public:
     /** @brief KoraCut, porte de commande (document 18) : le fichier a été renommé ou déplacé sur le disque,
      *  le clip suit tout de suite (chemin, resource, kdenlive:originalurl), sans rechargement. */
     void koraCutRelocate(const QString &path);
+    /** @brief KoraCut, document 6 : signale ce clip au contrôle du décodage matériel (essai par fichier,
+     *  le projet passe en logiciel tant qu'un clip ne se décode pas avec la puce). */
+    void koraCutNoteDecoding();
 
     /** @brief Returns the clip's type as defined in definitions.h */
     ClipType::ProducerType clipType() const;

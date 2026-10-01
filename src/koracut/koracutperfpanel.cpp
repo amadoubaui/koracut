@@ -244,9 +244,9 @@ void KoraCutPerfPanel::refresh()
     m_effects->setText(paused > 0 ? i18ncp("@info diagnostic panel", "%1 paused while playing", "%1 paused while playing", paused)
                                   : (KoraCutPerformance::simplifiedHeavyEffects() ? i18nc("@info diagnostic panel", "Paused while playing")
                                                                                  : i18nc("@info diagnostic panel", "Always shown")));
-    m_decoder->setText(KdenliveSettings::hwDecoding().isEmpty() ? i18nc("@info video decoding done by the processor", "Processor (software)")
-                                                                : i18nc("@info hardware video decoding, %1 is its name", "Hardware (%1)", KdenliveSettings::hwDecoding()));
-    m_decoder->setToolTip(KoraCutPerformance::group().readEntry("decodageMaterielEssai", QString()));
+    QString decoderTip;
+    m_decoder->setText(KoraCutPerformance::decodingLabel(&decoderTip));
+    m_decoder->setToolTip(decoderTip);
     const QJsonObject snap = snapshot();
     m_proxies->setText(i18nc("@info diagnostic panel, %1 proxied videos out of %2", "%1 of %2 videos", snap.value(QStringLiteral("videos_en_proxy")).toInt(),
                              snap.value(QStringLiteral("videos")).toInt()));

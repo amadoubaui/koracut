@@ -4,6 +4,7 @@
 */
 
 #include "koracutperformance.h"
+#include "koracuthwdecode.h"
 
 #include "core.h"
 #include "kdenlivesettings.h"
@@ -191,6 +192,43 @@ int producerCacheMax()
     return group().readEntry("cacheProducteursMax", 0);
 }
 
+QString decodingLabel(QString *tooltip)
+{
+    const QString hw = KdenliveSettings::hwDecoding();
+    if (tooltip) {
+        *tooltip = group().readEntry("decodageMaterielEssai", QString());
+    }
+    if (hw.isEmpty()) {
+        return i18nc("@info video decoding done by the processor", "Processor (software)");
+    }
+    if (!KoraCutHwDecode::effective().isEmpty()) {
+        return i18nc("@info hardware video decoding, %1 is its name", "Hardware (%1)", hw);
+    }
+    const QList<KoraCutHwDecode::Clip> clips = KoraCutHwDecode::softwareClips();
+    int refused = 0;
+    QStringList lines;
+    for (const KoraCutHwDecode::Clip &clip : clips) {
+        if (clip.state != KoraCutHwDecode::State::Refused) {
+            continue;
+        }
+        ++refused;
+        if (lines.size() < 12) {
+            lines << (clip.format.isEmpty() ? clip.name : QStringLiteral("%1 (%2)").arg(clip.name, clip.format));
+        }
+    }
+    if (tooltip && !lines.isEmpty()) {
+        if (refused > lines.size()) {
+            lines << QStringLiteral("…");
+        }
+        *tooltip = lines.join(QLatin1Char('\n'));
+    }
+    if (refused == 0) {
+        return i18nc("@info diagnostic panel, clips are being checked before the graphics chip is used", "Processor, while the clips are checked");
+    }
+    return i18ncp("@info diagnostic panel, the graphics chip cannot decode some clips of this project",
+                  "Processor for this project: the chip cannot decode %1 clip", "Processor for this project: the chip cannot decode %1 clips", refused);
+}
+
 void testHwDecoding(const std::function<void(const QString &, const QString &)> &done)
 {
     const QStringList candidates = MachineProfile::hwDecoderCandidates(KdenliveSettings::supportedHWCodecs());
@@ -278,6 +316,9 @@ QJsonObject stateJson()
                        {QStringLiteral("images_sautees_max"), QStringLiteral("i/s ÷ %1").arg(dropDivisor())},
                        {QStringLiteral("decodage"), KdenliveSettings::hwDecoding().isEmpty() ? QStringLiteral("logiciel") : KdenliveSettings::hwDecoding()},
                        {QStringLiteral("decodage_essai"), group().readEntry("decodageMaterielEssai", QString())},
+                       // Document 6, journal du 1er octobre 2026 : le réglage est une demande, voici ce qui tourne vraiment.
+                       {QStringLiteral("decodage_effectif"), KoraCutHwDecode::stateJson().value(QStringLiteral("effectif"))},
+                       {QStringLiteral("decodage_clips_logiciel"), KoraCutHwDecode::stateJson().value(QStringLiteral("clips_logiciel"))},
                        {QStringLiteral("proxys_auto"), KdenliveSettings::generateproxy()},
                        {QStringLiteral("proxy_largeur_min"), KdenliveSettings::proxyminsize()},
                        {QStringLiteral("proxy_codec_lourd_largeur"), proxyHeavyMinWidth()},

@@ -54516,6 +54516,22 @@ msgid "Processor (software)"
 msgstr "Processeur (logiciel)"
 
 #: KoraCut chantier 10
+msgctxt ""
+"@info diagnostic panel, clips are being checked before the graphics chip is "
+"used"
+msgid "Processor, while the clips are checked"
+msgstr "Processeur, le temps de vérifier les clips"
+
+#: KoraCut chantier 10
+msgctxt ""
+"@info diagnostic panel, the graphics chip cannot decode some clips of this "
+"project"
+msgid "Processor for this project: the chip cannot decode %1 clip"
+msgid_plural "Processor for this project: the chip cannot decode %1 clips"
+msgstr[0] "Processeur pour ce projet : la puce ne décode pas %1 clip"
+msgstr[1] "Processeur pour ce projet : la puce ne décode pas %1 clips"
+
+#: KoraCut chantier 10
 msgctxt "@info hardware video decoding, %1 is its name"
 msgid "Hardware (%1)"
 msgstr "Matériel (%1)"

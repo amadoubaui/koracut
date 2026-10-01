@@ -55,6 +55,9 @@ int proxyHeavyMinWidth();
 bool simplifiedHeavyEffects();
 int producerCacheMax();
 
+/** @brief Ce que le Diagnostic et les Préférences affichent pour le décodage : la puce, le processeur,
+ * ou le processeur pour ce projet parce qu'un clip ne passe pas par la puce. @p tooltip reçoit les clips en cause. */
+QString decodingLabel(QString *tooltip = nullptr);
 /** @brief Essaie les décodeurs matériels du système sur une courte vidéo de test (ffmpeg), en
  * tâche de fond : le premier qui décode sans erreur et au moins aussi vite que le logiciel est
  * posé dans hwDecoding ; sinon hwDecoding reste vide (décodage logiciel). @p done reçoit le

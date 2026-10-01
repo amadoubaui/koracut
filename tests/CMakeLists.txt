@@ -32,6 +32,7 @@ set(KdenliveTest_SOURCES
     koracuteffectpreviewstest.cpp
     koracutgradetest.cpp
     koracutgradeuitest.cpp
+    koracuthwdecodetest.cpp
     koracutduckingtest.cpp
     koracutexporttest.cpp
     koracutloudnesstest.cpp

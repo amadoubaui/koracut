@@ -15,6 +15,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "doc/kdenlivedoc.h"
 #include "doc/kthumb.h"
 #include "kdenlivesettings.h"
+#include "koracut/koracuthwdecode.h"
 #include "mltcontroller/clipcontroller.h"
 #include "monitor/monitor.h"
 #include "project/dialogs/slideshowclip.h"
@@ -368,6 +369,8 @@ void ClipLoadTask::run()
         type = ClipType::AV;
         service.clear();
     }
+    // KoraCut : déclaré avant le producteur, donc relâché après lui.
+    std::unique_ptr<KoraCutHwDecode::Hold> hwHold;
     std::shared_ptr<Mlt::Producer> producer;
     switch (type) {
     case ClipType::Color:
@@ -501,6 +504,10 @@ void ClipLoadTask::run()
         break;
     }
     default:
+        // KoraCut : tant que ce fichier n'a pas réussi son essai, il ne s'ouvre pas avec le décodage matériel.
+        if (type != ClipType::Audio) {
+            hwHold = std::make_unique<KoraCutHwDecode::Hold>(resource);
+        }
         if (!service.isEmpty()) {
             service.append(QChar(':'));
             if (service == QLatin1String("avformat-novalidate:")) {

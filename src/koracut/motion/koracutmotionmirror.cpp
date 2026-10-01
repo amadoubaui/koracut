@@ -750,6 +750,28 @@ bool KoraCutMotionMirror::insertClip(const Entry &entry, const KoraCutMotion::El
         // La place est prise (un autre clip déplacé à la main) : rien n'est posé.
         return false;
     }
+    if (!audio) {
+        // Posé sans étape d'annulation à lui : le modèle ne prévient pas le rendu d'aperçu, et un morceau
+        // déjà rendu resterait affiché sans cette animation (vu le 1er octobre 2026). On le dit ici.
+        const int end = position + length;
+        const Fun invalidate = [tl, position, end]() {
+            Q_EMIT tl->invalidateZone(position, end);
+            return true;
+        };
+        invalidate();
+        const Fun insertUndo = localUndo;
+        const Fun insertRedo = localRedo;
+        localUndo = [insertUndo, invalidate]() {
+            const bool ok = insertUndo();
+            invalidate();
+            return ok;
+        };
+        localRedo = [insertRedo, invalidate]() {
+            const bool ok = insertRedo();
+            invalidate();
+            return ok;
+        };
+    }
     merge(undo, redo, localUndo, localRedo);
     return true;
 }
@@ -951,7 +973,18 @@ bool KoraCutMotionMirror::applyFromFile(const QString &name, bool logUndo, const
             for (int cid : items) {
                 const ClipInfo info = clipInfo(cid);
                 if (info.project == name && !ids.contains(info.elementId)) {
+                    const int from = tl->getClipPosition(cid);
+                    const int to = from + tl->getClipPlaytime(cid);
                     tl->requestItemDeletion(cid, *undo, *redo, false);
+                    if (!audio) {
+                        // Même raison qu'à la pose : sans cela, le rendu d'aperçu garderait l'animation retirée.
+                        const Fun invalidate = [tl, from, to]() {
+                            Q_EMIT tl->invalidateZone(from, to);
+                            return true;
+                        };
+                        invalidate();
+                        merge(*undo, *redo, invalidate, invalidate);
+                    }
                     entry.placed.remove(info.elementId);
                     changed = true;
                 }

@@ -19,6 +19,8 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 
 #include "core.h"
 #include "kdenlive_debug.h"
+#include "koracut/koracuthwdecode.h"
+#include "project/projectmanager.h"
 #include <KLocalizedString>
 #include <QApplication>
 #include <QFileInfo>
@@ -59,6 +61,7 @@ ClipController::ClipController(const QString &clipId, const std::shared_ptr<Mlt:
         }
         getInfoForProducer();
         checkAudioVideo();
+        koraCutNoteDecoding();
     } else {
         m_producerLock.lockForWrite();
         if (Xml::hasXmlProperty(description, QStringLiteral("kdenlive:control_uuid"))) {
@@ -75,6 +78,7 @@ ClipController::ClipController(const QString &clipId, const std::shared_ptr<Mlt:
 
 ClipController::~ClipController()
 {
+    KoraCutHwDecode::forgetClip(this);
     delete m_properties;
     Q_ASSERT(m_masterProducer.use_count() <= 1);
     m_masterProducer.reset();
@@ -133,6 +137,7 @@ void ClipController::addMasterProducer(const std::shared_ptr<Mlt::Producer> &pro
     }
     getInfoForProducer();
     checkAudioVideo();
+    koraCutNoteDecoding();
     if (!m_effectsToLoad.isNull()) {
         m_effectStack->fromMltXml(m_effectsToLoad);
         m_effectsToLoad.clear();
@@ -521,6 +526,7 @@ void ClipController::updateProducer(const std::shared_ptr<Mlt::Producer> &produc
             getInfoForProducer();
         }
         checkAudioVideo();
+        koraCutNoteDecoding();
         // URL and name should not be updated otherwise when proxying a clip we cannot find back the original url
         /*m_url = QUrl::fromLocalFile(m_masterProducer->get("resource"));
         if (m_url.isValid()) {
@@ -719,6 +725,25 @@ const QString ClipController::clipUrl() const
     return m_path;
 }
 
+void ClipController::koraCutNoteDecoding()
+{
+    if (!m_properties || !m_service.startsWith(QLatin1String("avformat")) || (m_clipType != ClipType::AV && m_clipType != ClipType::Video) ||
+        m_path.isEmpty()) {
+        KoraCutHwDecode::forgetClip(this);
+        return;
+    }
+    // Avec un proxy, les propriétés décrivent le proxy : le format de l'original est inconnu, l'essai le dira.
+    QString codec;
+    QString pixFmt;
+    if (!m_usesProxy && m_videoIndex >= 0) {
+        codec = m_properties->get(QStringLiteral("meta.media.%1.codec.name").arg(m_videoIndex).toUtf8().constData());
+        pixFmt = m_properties->get(QStringLiteral("meta.media.%1.codec.pix_fmt").arg(m_videoIndex).toUtf8().constData());
+    }
+    // Un clip déjà là à l'ouverture du projet a peut-être des vignettes et des rendus faits avec la puce.
+    const KdenliveDoc *doc = pCore->projectManager() ? pCore->currentDoc() : nullptr;
+    KoraCutHwDecode::noteClip(this, QFileInfo(m_path).fileName(), m_path, codec, pixFmt, doc != nullptr && doc->loading);
+}
+
 void ClipController::koraCutRelocate(const QString &path)
 {
     m_path = path.isEmpty() ? QString() : QFileInfo(path).absoluteFilePath();
@@ -733,6 +758,7 @@ void ClipController::koraCutRelocate(const QString &path)
     if (!origurl.isEmpty() || !m_usesProxy) {
         m_properties->set("kdenlive:originalurl", m_path.toUtf8().constData());
     }
+    koraCutNoteDecoding();
 }
 
 bool ClipController::sourceExists() const

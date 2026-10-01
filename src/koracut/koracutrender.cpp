@@ -7,7 +7,10 @@
 
 #include "core.h"
 #include "doc/kdenlivedoc.h"
+#include "bin/projectitemmodel.h"
 #include "kdenlivesettings.h"
+#include "koracut/koracuthwdecode.h"
+#include "utils/thumbnailcache.hpp"
 #include "mainwindow.h"
 #include "monitor/monitor.h"
 #include "monitor/monitormanager.h"
@@ -32,7 +35,10 @@
 #include <QJsonArray>
 #include <QMenu>
 #include <QSet>
+#include <QRegularExpression>
 #include <QStandardPaths>
+#include <QTimer>
+#include <QUuid>
 #include <QStorageInfo>
 #include <QtConcurrent/QtConcurrentRun>
 
@@ -170,8 +176,102 @@ bool isModestMachine()
     return MachineProfile::effectiveLevel() == MachineProfile::Level::Modest;
 }
 
+void healAfterHardwareRefusal(const QString &path, bool legacy)
+{
+    KdenliveDoc *doc = pCore ? pCore->currentDoc() : nullptr;
+    if (!doc || path.isEmpty()) {
+        return;
+    }
+    bool ok = false;
+    const QDir base = doc->getCacheDir(CacheBase, &ok);
+    if (!ok || !base.exists()) {
+        return;
+    }
+    // Un fichier par projet, dans son cache : s'il part avec le cache, il n'y a plus rien à soigner non plus.
+    const QString markerPath = base.absoluteFilePath(QStringLiteral("koracut-decodage-logiciel.txt"));
+    QStringList healed;
+    {
+        QFile marker(markerPath);
+        if (marker.open(QIODevice::ReadOnly)) {
+            healed = QString::fromUtf8(marker.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        }
+    }
+    if (healed.contains(path)) {
+        return;
+    }
+    healed << path;
+    {
+        QFile marker(markerPath);
+        if (marker.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            marker.write(healed.join(QLatin1Char('\n')).toUtf8());
+        }
+    }
+    if (!legacy) {
+        // Importé maintenant : rien n'a pu être fait avec la puce, l'essai est passé avant.
+        return;
+    }
+    const QStringList ids = pCore->projectItemModel()->getClipByUrl(QFileInfo(path));
+    for (const QString &id : ids) {
+        ThumbnailCache::get()->invalidateThumbsForClip(id);
+    }
+    // Les essais arrivent un par un : les rendus partent une seule fois, quand la rafale est passée.
+    static QTimer *timer = nullptr;
+    static int count = 0;
+    ++count;
+    if (timer == nullptr) {
+        timer = new QTimer(pCore.get());
+        timer->setSingleShot(true);
+        timer->setInterval(1500);
+        QObject::connect(timer, &QTimer::timeout, pCore.get(), []() {
+            KdenliveDoc *current = pCore->currentDoc();
+            if (!current) {
+                count = 0;
+                return;
+            }
+            if (current->loading) {
+                timer->start();
+                return;
+            }
+            int managers = 0;
+            const QList<QUuid> uuids = current->getTimelinesUuids();
+            for (const QUuid &uuid : uuids) {
+                const std::shared_ptr<TimelineItemModel> model = current->getTimeline(uuid, true);
+                if (model && model->hasTimelinePreview()) {
+                    model->previewManager()->koraCutDiscardAll();
+                    ++managers;
+                }
+            }
+            // Les séquences fermées : leurs morceaux partent du disque, ils seront refaits à l'ouverture.
+            bool rootOk = false;
+            const QDir root = current->getCacheDir(CachePreview, &rootOk);
+            int files = 0;
+            if (rootOk && root.exists() && root.dirName() == QLatin1String("preview")) {
+                static const QRegularExpression chunk(QStringLiteral("^\\d+\\.\\w+$"));
+                QDirIterator it(root.absolutePath(), QDir::Files, QDirIterator::Subdirectories);
+                while (it.hasNext()) {
+                    const QString file = it.next();
+                    if (chunk.match(QFileInfo(file).fileName()).hasMatch() && QFile::remove(file)) {
+                        ++files;
+                    }
+                }
+            }
+            qInfo().noquote() << "KORACUT-APERCU rendus effacés :" << count << "clip(s) que la puce ne décode pas," << managers << "séquence(s)," << files
+                              << "fichier(s) en plus";
+            count = 0;
+        });
+    }
+    timer->start();
+}
+
 void applyFirstLaunchDefaults()
 {
+    // Document 6, journal du 1er octobre 2026 : un clip refusé par la puce fait refaire ses caches.
+    static bool watching = false;
+    if (!watching) {
+        watching = true;
+        QObject::connect(KoraCutHwDecode::instance(), &KoraCutHwDecode::clipRefused, pCore.get(),
+                         [](const QString &path, bool legacy) { healAfterHardwareRefusal(path, legacy); });
+    }
     KConfigGroup group = koraCutGroup();
     if (group.readEntry("apercuAutoInitialise", false)) {
         return;
@@ -369,7 +469,7 @@ void measurePlayback(int from, int seconds, const std::function<void(const QJson
                                {QStringLiteral("ips"), ms > 0 ? qRound(10. * shown * 1000. / double(ms)) / 10. : 0.},
                                {QStringLiteral("profil"), MachineProfile::levelId(MachineProfile::effectiveLevel())},
                                {QStringLiteral("apercu_min"), MachineProfile::scalingHeight(lowestScalingValue(state->lowestScaling))},
-                               {QStringLiteral("decodage"), KdenliveSettings::hwDecoding().isEmpty() ? QStringLiteral("logiciel") : KdenliveSettings::hwDecoding()},
+                               {QStringLiteral("decodage"), KoraCutHwDecode::effective().isEmpty() ? QStringLiteral("logiciel") : KoraCutHwDecode::effective()},
                                {QStringLiteral("memoire_max_mo"), peakMemoryMb()},
                                // Temps processeur du processus pendant la lecture, rapporté à la durée : le nombre de
                                // cœurs occupés. Une machine à 4 cœurs ne suit plus au-delà de 3 environ.

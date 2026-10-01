@@ -42,6 +42,11 @@ int undoStepsKept();
 /** @brief Efface, en tâche de fond et au plus une fois par jour, les rendus des projets du cache
  * système non ouverts depuis apercuNettoyageJours. Les proxys et les vignettes ne sont pas touchés. */
 void cleanupOldProjects(const QString &currentDocumentId);
+/** @brief Un clip du projet ne se décode pas avec la puce (document 6, journal du 1er octobre 2026).
+ * S'il était déjà dans le projet (@p legacy), ses vignettes et les rendus d'aperçu ont peut-être été
+ * faits pendant que le décodage échouait : ils sont effacés une fois, puis refaits en logiciel.
+ * Le dossier de cache du projet garde la liste des fichiers déjà soignés. */
+void healAfterHardwareRefusal(const QString &path, bool legacy);
 /** @brief Pose le témoin « projet ouvert » dans le dossier de rendu d'un projet. */
 void touchOpenedMarker(const QString &previewRoot);
 

@@ -23,6 +23,7 @@ set(koracut_SRCS
     koracut/koracutagenttoolsapercu.cpp
     koracut/koracutrender.cpp
     # Chantier 10 (29 septembre 2026) : les réglages selon la machine, l'aperçu adaptatif, le diagnostic.
+    koracut/koracuthwdecode.cpp
     koracut/koracutperformance.cpp
     koracut/koracutperfpanel.cpp
     koracut/koracutagenttoolsscript.cpp

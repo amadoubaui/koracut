@@ -101,6 +101,9 @@ public:
     /** @brief « Effacer les rendus » : tous les fichiers de la séquence partent, zones comprises.
      * Le rendu automatique ne les refait qu'au prochain changement. */
     void clearRenderFiles(int duration);
+    /** @brief KoraCut : tous les morceaux rendus sont faux (rendus pendant que le décodage matériel
+     * échouait). Leurs fichiers partent, annulation comprise, et ils sont à refaire. Sans étape d'annulation. */
+    void koraCutDiscardAll();
 
 private:
     Mlt::Tractor *m_tractor;

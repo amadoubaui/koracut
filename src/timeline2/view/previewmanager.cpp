@@ -5,6 +5,7 @@
 */
 
 #include "previewmanager.h"
+#include "koracut/koracuthwdecode.h"
 #include "bin/projectitemmodel.h"
 #include "core.h"
 #include "dialogs/wizard.h"
@@ -800,10 +801,9 @@ void PreviewManager::doPreviewRender(const QString &scene)
                      m_consumerParams.join(QLatin1Char(' '))};
     pCore->currentDoc()->previewProgress(0);
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    if (!KdenliveSettings::hwDecoding().isEmpty()) {
-        env.insert(QLatin1String("MLT_AVFORMAT_HWACCEL"), KdenliveSettings::hwDecoding());
-        m_previewProcess.setProcessEnvironment(env);
-    }
+    // KoraCut : jamais la puce pour un projet dont un clip ne se décode pas avec elle (image blanche sinon).
+    KoraCutHwDecode::applyTo(env);
+    m_previewProcess.setProcessEnvironment(env);
     // KoraCut : le rendu tourne en priorité basse, l'interface et la lecture passent devant.
 #if defined(Q_OS_UNIX)
     m_previewProcess.setChildProcessModifier([]() { ::setpriority(PRIO_PROCESS, 0, 10); });
@@ -1286,6 +1286,48 @@ void PreviewManager::clearRenderFiles(int duration)
     }
     m_cacheEstimate = 0;
     m_capWarned = false;
+}
+
+void PreviewManager::koraCutDiscardAll()
+{
+    m_previewGatherTimer.stop();
+    abortRendering();
+    bool changed = false;
+    {
+        QMutexLocker lock(&m_dirtyMutex);
+        m_tractor->lock();
+        const QVariantList rendered = m_renderedChunks;
+        for (const QVariant &frame : rendered) {
+            if (m_previewTrack != nullptr) {
+                const int ix = m_previewTrack->get_clip_index_at(frame.toInt());
+                if (!m_previewTrack->is_blank(ix)) {
+                    Mlt::Producer *prod = m_previewTrack->replace_with_blank(ix);
+                    delete prod;
+                }
+            }
+            if (!m_dirtyChunks.contains(frame)) {
+                m_dirtyChunks << frame;
+            }
+            changed = true;
+        }
+        m_renderedChunks.clear();
+        if (m_previewTrack != nullptr) {
+            m_previewTrack->consolidate_blanks();
+        }
+        m_tractor->unlock();
+    }
+    // koracut_render saute un fichier déjà présent : les fichiers partent, ceux gardés pour l'annulation aussi.
+    QDirIterator it(m_cacheDir.absolutePath(), {QStringLiteral("*.%1").arg(m_extension)}, QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        QFile::remove(it.next());
+    }
+    m_cacheEstimate = 0;
+    m_capWarned = false;
+    if (changed) {
+        Q_EMIT renderedChunksChanged();
+        Q_EMIT dirtyChunksChanged();
+        m_previewGatherTimer.start();
+    }
 }
 
 QStringList PreviewManager::orderedChunkList()

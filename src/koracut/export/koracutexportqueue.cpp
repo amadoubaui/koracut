@@ -4,6 +4,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 */
 
 #include "koracutexportqueue.h"
+#include "koracut/koracuthwdecode.h"
 
 #include "core.h"
 #include "dialogs/renderwidget.h"
@@ -281,9 +282,9 @@ void KoraCutExportQueue::start(const JobPtr &job)
     }
     auto *process = new QProcess(this);
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    if (!KdenliveSettings::hwDecoding().isEmpty()) {
-        env.insert(QLatin1String("MLT_AVFORMAT_HWACCEL"), KdenliveSettings::hwDecoding());
-    }
+    // KoraCut : les essais en cours finissent d'abord, puis jamais la puce si un clip ne se décode pas avec elle.
+    KoraCutHwDecode::waitForTrials(3000);
+    KoraCutHwDecode::applyTo(env);
     process->setProcessEnvironment(env);
     process->setProgram(renderer);
     process->setArguments(job->args);

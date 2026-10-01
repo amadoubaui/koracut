@@ -6,6 +6,7 @@
 */
 
 #include "renderwidget.h"
+#include "koracut/koracuthwdecode.h"
 #include "bin/bin.h"
 #include "bin/projectitemmodel.h"
 #include "core.h"
@@ -1308,9 +1309,9 @@ void RenderWidget::startRendering(RenderJobItem *item)
     qDebug() << "starting koracut_render process using: " << KdenliveSettings::koracutrendererpath();
     QProcess proc;
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    if (!KdenliveSettings::hwDecoding().isEmpty()) {
-        env.insert(QLatin1String("MLT_AVFORMAT_HWACCEL"), KdenliveSettings::hwDecoding());
-    }
+    // KoraCut : les essais en cours finissent d'abord, puis jamais la puce si un clip ne se décode pas avec elle.
+    KoraCutHwDecode::waitForTrials(3000);
+    KoraCutHwDecode::applyTo(env);
     proc.setProgram(KdenliveSettings::koracutrendererpath());
     proc.setProcessEnvironment(env);
     if (KdenliveSettings::keepRenderLogFiles()) {

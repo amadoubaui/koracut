@@ -16,6 +16,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "capture/mediacapture.h"
 #include "config-kdenlive.h"
 #include "core.h"
+#include "koracut/koracuthwdecode.h"
 #include <QFileInfo>
 #include <KSharedConfig>
 #include "dialogs/proxytest.h"
@@ -2406,7 +2407,8 @@ int Core::currentTimelineOffset()
 
 void Core::updateHwDecoding()
 {
-    qputenv("MLT_AVFORMAT_HWACCEL", KdenliveSettings::hwDecoding().toUtf8());
+    // KoraCut : le réglage est une demande, un clip que la puce ne décode pas fait retomber le projet en logiciel.
+    KoraCutHwDecode::apply();
 }
 
 void Core::closeApp()
