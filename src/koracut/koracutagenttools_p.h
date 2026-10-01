@@ -25,6 +25,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 class EffectItemModel;
 class EffectStackModel;
+class KoraCutMotionMirror;
 class TimelineItemModel;
 
 namespace KoraCutAgentToolsPrivate {
@@ -50,6 +51,20 @@ QJsonObject trackIdCheck(const Timeline &timeline, int trackId, bool mustBeUnloc
 int currentFade(const Timeline &timeline, int clipId, bool fadeIn);
 /** @brief Le type d'un média tel que lister_medias le nomme : video, audio, image, titre, couleur, sequence. */
 QString mediaTypeName(ClipType::ProducerType type);
+
+// ---- Motion (koracutagenttools.cpp) -----------------------------------------------------------
+
+/** @brief Un chemin donné par un agent : absolu, « ~ », ou relatif au dossier du projet. @p failure reçoit
+ * `projet_absent` pour un chemin relatif quand le projet n'est pas encore sur le disque. */
+QString resolveUserPath(const QString &path, QJsonObject &failure);
+/** @brief Copie les fichiers du paramètre `fichiers` (polices, images…) dans `<dossier de la composition>/assets/`,
+ * sous leur nom. @return une erreur prête à rendre, ou un objet vide ; @p copied reçoit « assets/<nom> ».
+ * Avec @p checkOnly, la liste est seulement vérifiée. */
+QJsonObject copyMotionAssets(const Args &args, const QString &compositionDir, QJsonArray &copied, bool checkOnly = false);
+/** @brief Le nom d'une composition retirée (son clip a quitté la timeline : supprimé, ou création annulée)
+ * est libre : son dossier part dans `motion/.corbeille/`, rien n'est supprimé. @return faux si le nom est
+ * pris par une composition vivante ; @p trashed reçoit le dossier de la corbeille quand il y en a un. */
+bool releaseMotionName(KoraCutMotionMirror *mirror, const QString &name, QString &trashed);
 
 // ---- Les effets (koracutagenttoolsmontage.cpp) ------------------------------------------------
 

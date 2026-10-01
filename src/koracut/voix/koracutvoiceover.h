@@ -99,9 +99,11 @@ public:
     /** @brief Importe les fichiers dans le chutier (dossier « Voix off ») et, pour chaque position
      *  positive, pose le son sur @p trackId (-1 : la piste audio « Voix off », créée si besoin).
      *  Le tout en une seule étape d'annulation. Rend `{ ok, medias: [{id, fichier, clip_id?, position?, decalee?}], piste_id? }`.
-     *  @param flexible pour chaque fichier, vrai si sa place peut glisser à la première place libre qui suit. */
+     *  @param flexible pour chaque fichier, vrai si sa place peut glisser à la première place libre qui suit.
+     *  @param binFolder le dossier du chutier, par son chemin (« Script 01/02 Son »), créé au besoin dans
+     *  la même étape ; vide : « Voix off ». */
     static QJsonObject importAndPlace(const std::shared_ptr<TimelineItemModel> &timeline, const QStringList &files, const QList<int> &positions, int trackId,
-                                      const QString &undoText, const QList<bool> &flexible = {});
+                                      const QString &undoText, const QList<bool> &flexible = {}, const QString &binFolder = QString());
     /** @brief La piste audio « Voix off » de la séquence, -1 s'il n'y en a pas. */
     static int voiceTrack(const std::shared_ptr<TimelineItemModel> &timeline);
 

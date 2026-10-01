@@ -11,6 +11,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "koracutagenttools.h"
 #include "koracutagenttools_p.h"
 #include "koracutvisible.h"
+#include "porte/koracutportemethodes.h"
 #include "voix/koracutvoiceover.h"
 
 #include "core.h"
@@ -88,7 +89,26 @@ QJsonObject voixOffGenerer(const Timeline &timeline, const Args &args)
             }
         }
     }
-    const QString folder = KoraCutVoiceOver::projectVoiceFolder();
+    // Le dossier : « Voix off » à la racine du projet, ou celui demandé, relatif au dossier du projet
+    // (« Script 01/02 Son »), créé au besoin ; le dossier du chutier suit le même chemin.
+    QString folder = KoraCutVoiceOver::projectVoiceFolder();
+    QString binFolder;
+    if (args.contains(QStringLiteral("dossier"))) {
+        const QString wanted = QDir::cleanPath(args.value(QStringLiteral("dossier")).toString().trimmed());
+        const QString projectFile = doc->url().isEmpty() ? QString() : doc->url().toLocalFile();
+        if (projectFile.isEmpty() || !QFileInfo::exists(projectFile)) {
+            return error(QStringLiteral("projet_absent"), QStringLiteral("dossier est relatif au dossier du projet, et le projet n'est pas encore enregistré."),
+                         QStringLiteral("Enregistre le projet d'abord, ou laisse dossier vide : la voix va dans « Voix off »."));
+        }
+        const QString projectDir = QFileInfo(projectFile).absolutePath();
+        if (wanted.isEmpty() || wanted == QLatin1String(".") || QFileInfo(wanted).isAbsolute() || wanted.startsWith(QLatin1Char('~')) ||
+            !KoraCutPorteMethodes::isInsideFolder(projectDir, projectDir + QLatin1Char('/') + wanted)) {
+            return error(QStringLiteral("hors_projet"), QStringLiteral("dossier « %1 » doit être un sous-dossier du projet.").arg(args.value(QStringLiteral("dossier")).toString()),
+                         QStringLiteral("Un chemin relatif au dossier du projet, sans « .. » : « Script 01/02 Son »."));
+        }
+        folder = projectDir + QLatin1Char('/') + wanted;
+        binFolder = wanted;
+    }
     if (!QDir().mkpath(folder)) {
         return error(QStringLiteral("ecriture_impossible"), QStringLiteral("Le dossier %1 n'a pas pu être créé.").arg(folder));
     }
@@ -152,7 +172,7 @@ QJsonObject voixOffGenerer(const Timeline &timeline, const Args &args)
     // Sans position donnée, la tête de lecture ; si la place est prise, juste après ce qui l'occupe.
     const bool flexible = posing && !place.contains(QStringLiteral("position"));
     const QJsonObject placed = KoraCutVoiceOver::importAndPlace(timeline, {output}, {posing ? position : -1}, trackId,
-                                                                i18nc("@action undo text, %1 start of the text", "Voice-over: %1", line), {flexible});
+                                                                i18nc("@action undo text, %1 start of the text", "Voice-over: %1", line), {flexible}, binFolder);
     if (!placed.value(QStringLiteral("ok")).toBool()) {
         return placed;
     }
@@ -163,6 +183,7 @@ QJsonObject voixOffGenerer(const Timeline &timeline, const Args &args)
     QJsonObject out{{QStringLiteral("ok"), true},
                     {QStringLiteral("media_id"), media.value(QStringLiteral("id"))},
                     {QStringLiteral("fichier"), output},
+                    {QStringLiteral("dossier_chutier"), KoraCutAgentTools::binFolderPath(media.value(QStringLiteral("id")).toVariant().toString())},
                     {QStringLiteral("duree_s"), phrase.value(QStringLiteral("duree"))},
                     {QStringLiteral("moteur"), engine},
                     {QStringLiteral("voix"), request.voice.isEmpty() ? KoraCutVoiceOver::defaultVoice(engine) : request.voice},

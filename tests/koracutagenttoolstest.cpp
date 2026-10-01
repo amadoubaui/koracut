@@ -248,6 +248,18 @@ TEST_CASE("Outils d'agent : monter une séquence", "[KoraCutAgentTools]")
                  {{QStringLiteral("media_id"), sound}, {QStringLiteral("piste_id"), a1}, {QStringLiteral("position"), 100}, {QStringLiteral("partie"), QStringLiteral("audio")}});
         REQUIRE(r.value(QStringLiteral("ok")).toBool());
         const int s = r.value(QStringLiteral("clip_id")).toInt();
+        // Une sortie au-delà de la fin du média : hors_media avec sa durée, pas place_occupee (1er octobre 2026).
+        r = call(timeline, QStringLiteral("ajouter_clip"),
+                 {{QStringLiteral("media_id"), sound}, {QStringLiteral("piste_id"), a1}, {QStringLiteral("position"), 300}, {QStringLiteral("partie"), QStringLiteral("audio")},
+                  {QStringLiteral("entree"), 0}, {QStringLiteral("sortie"), 30}});
+        CHECK(errorCode(r) == QStringLiteral("hors_media"));
+        CHECK(r.value(QStringLiteral("erreur")).toObject().value(QStringLiteral("message")).toString().contains(QStringLiteral("10 images")));
+        CHECK(r.value(QStringLiteral("duree_media")).toObject().value(QStringLiteral("i")).toInt() == 10);
+        // Jusqu'à la dernière image, c'est bon (sortie est exclue) ; une couleur n'a pas de fin.
+        r = call(timeline, QStringLiteral("ajouter_clip"),
+                 {{QStringLiteral("media_id"), sound}, {QStringLiteral("piste_id"), a1}, {QStringLiteral("position"), 300}, {QStringLiteral("partie"), QStringLiteral("audio")},
+                  {QStringLiteral("entree"), 0}, {QStringLiteral("sortie"), 10}});
+        CHECK(r.value(QStringLiteral("ok")).toBool());
         CHECK(errorCode(call(timeline, QStringLiteral("changer_vitesse_clip"), {{QStringLiteral("clip_id"), s}, {QStringLiteral("vitesse_pourcent"), 0}})) == QStringLiteral("entree_invalide"));
         r = call(timeline, QStringLiteral("changer_vitesse_clip"), {{QStringLiteral("clip_id"), s}, {QStringLiteral("vitesse_pourcent"), 50}});
         REQUIRE(r.value(QStringLiteral("ok")).toBool());

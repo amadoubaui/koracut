@@ -467,7 +467,7 @@ int KoraCutVoiceOver::voiceTrack(const std::shared_ptr<TimelineItemModel> &timel
 }
 
 QJsonObject KoraCutVoiceOver::importAndPlace(const std::shared_ptr<TimelineItemModel> &timeline, const QStringList &files, const QList<int> &positions, int trackId,
-                                             const QString &undoText, const QList<bool> &flexible)
+                                             const QString &undoText, const QList<bool> &flexible, const QString &binFolder)
 {
     using KoraCutAgentToolsPrivate::error;
     auto model = pCore ? pCore->projectItemModel() : nullptr;
@@ -480,7 +480,27 @@ QJsonObject KoraCutVoiceOver::importAndPlace(const std::shared_ptr<TimelineItemM
     QString folderId = model->getRootFolder()->clipId();
     const QString folderName = i18nc("@item bin folder and track name for generated voices", "Voice-over");
     const QString existingFolder = model->getFolderIdByName(folderName);
-    if (!existingFolder.isEmpty() && model->getFolderByBinId(existingFolder)) {
+    if (!binFolder.trimmed().isEmpty()) {
+        // Un dossier demandé par son chemin : chaque étage est pris s'il existe, créé sinon, dans la même étape.
+        const QStringList parts = binFolder.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+        for (const QString &part : parts) {
+            const QString wanted = part.trimmed();
+            auto parent = model->getFolderByBinId(folderId);
+            QString found;
+            for (int i = 0; parent && i < parent->childCount(); ++i) {
+                auto child = std::static_pointer_cast<AbstractProjectItem>(parent->child(i));
+                if (child->itemType() == AbstractProjectItem::FolderItem && child->name().compare(wanted, Qt::CaseInsensitive) == 0) {
+                    found = child->clipId();
+                    break;
+                }
+            }
+            if (found.isEmpty() && !model->requestAddFolder(found, wanted, folderId, undo, redo)) {
+                undo();
+                return error(QStringLiteral("non_disponible"), QStringLiteral("Le dossier « %1 » du chutier n'a pas pu être créé.").arg(binFolder));
+            }
+            folderId = found;
+        }
+    } else if (!existingFolder.isEmpty() && model->getFolderByBinId(existingFolder)) {
         folderId = existingFolder;
     } else {
         QString newId;

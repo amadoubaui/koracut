@@ -400,6 +400,36 @@ TEST_CASE("Porte : les méthodes sur un vrai projet", "[KoraCutPorte]")
         CHECK(clipCount(timeline, v1) == 0);
         // Quitter demande toujours, même en confiance.
         CHECK(code(porte.call(client, QStringLiteral("app.quitter"), {})) == QStringLiteral("confirmation_requise"));
+
+        // KORACUT_PORTE_CONFIANCE : la personne qui lance KoraCut accorde la confiance d'avance, par débuts de
+        // noms de clients. Un autre programme, sans la variable, attend toujours l'accord.
+        const QString robot = QStringLiteral("Robot de montage 2.0");
+        auto removal = [&]() {
+            int c = -1;
+            REQUIRE(timeline->requestClipInsertion(red, v1, 0, c, true, true, false));
+            const KoraCutPorte::Reply reply =
+                porte.call(robot, QStringLiteral("timeline.outil"), {{QStringLiteral("nom"), QStringLiteral("supprimer_clip")}, {QStringLiteral("args"), QJsonObject{{QStringLiteral("clip_ids"), QJsonArray{c}}}}});
+            if (!reply.ok()) {
+                // Refusé : la demande est fermée et le clip retiré à la main, pour repartir d'une piste vide.
+                porte.answerConfirmation(reply.error.value(QStringLiteral("demande_id")).toString(), false);
+                REQUIRE(timeline->requestItemDeletion(c, false));
+            }
+            return reply;
+        };
+        qunsetenv("KORACUT_PORTE_CONFIANCE");
+        CHECK(code(removal()) == QStringLiteral("confirmation_requise"));
+        qputenv("KORACUT_PORTE_CONFIANCE", "koracut-ctl, claude");
+        CHECK(code(removal()) == QStringLiteral("confirmation_requise")); // ni l'un ni l'autre
+        qputenv("KORACUT_PORTE_CONFIANCE", "koracut-ctl, robot");
+        CHECK(removal().ok()); // un début de nom, sans tenir compte des majuscules
+        CHECK(clipCount(timeline, v1) == 0);
+        // Quitter (et écraser un fichier) demandent toujours, même avec « * ».
+        qputenv("KORACUT_PORTE_CONFIANCE", "*");
+        CHECK(removal().ok());
+        CHECK(code(porte.call(robot, QStringLiteral("app.quitter"), {})) == QStringLiteral("confirmation_requise"));
+        qputenv("KORACUT_PORTE_CONFIANCE", " , ");
+        CHECK(code(removal()) == QStringLiteral("confirmation_requise")); // une liste vide n'accorde rien
+        qunsetenv("KORACUT_PORTE_CONFIANCE");
     }
 
     SECTION("Un tour survit à la connexion : koracut-ctl revient à chaque commande")

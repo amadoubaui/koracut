@@ -101,6 +101,7 @@ KoraCutMotionMirror *mirrorOrFail(QJsonObject &failure)
         return nullptr;
     }
     mirror->rescan();
+    mirror->flush();
     return mirror;
 }
 
@@ -110,6 +111,7 @@ QString freeName(KoraCutMotionMirror *mirror, const QString &base)
     const QString clean = KoraCutMotionProject::sanitizeName(base);
     QString name = clean;
     int n = 2;
+    // Une composition retirée garde son dossier (Rétablir la remet) : la suivante prend un numéro.
     while (mirror->projects().contains(name) || QFile::exists(mirror->motionRoot() + QLatin1Char('/') + name + QStringLiteral("/index.html"))) {
         name = QStringLiteral("%1-%2").arg(clean).arg(n++);
     }
@@ -142,7 +144,7 @@ QString renderStateName(const KoraCutMotionMirror::ElementState &e)
 }
 
 // Ce que les outils rendent d'une composition d'un seul élément : son nom, son clip, sa place.
-QJsonObject singleJson(const Timeline &timeline, KoraCutMotionMirror *mirror, const QString &name)
+QJsonObject singleJson(const Timeline &, KoraCutMotionMirror *mirror, const QString &name)
 {
     const KoraCutMotionMirror::ProjectState state = mirror->projectState(name);
     QJsonObject o{{QStringLiteral("nom"), name},
@@ -160,7 +162,10 @@ QJsonObject singleJson(const Timeline &timeline, KoraCutMotionMirror *mirror, co
             o.insert(QStringLiteral("texte"), e.text);
         }
     }
-    if (state.clipId >= 0 && timeline->isClip(state.clipId)) {
+    o.insert(QStringLiteral("sequence"), mirror->sequenceOf(name));
+    // Le clip est dans la séquence de la composition (celle qui était devant à sa création).
+    const Timeline timeline = mirror->timelineFor(name);
+    if (state.clipId >= 0 && timeline && timeline->isClip(state.clipId)) {
         o.insert(QStringLiteral("clip_id"), state.clipId);
         o.insert(QStringLiteral("piste_id"), timeline->getClipTrackId(state.clipId));
         o.insert(QStringLiteral("piste"), trackLabel(timeline, timeline->getClipTrackId(state.clipId)));
@@ -233,7 +238,7 @@ QJsonObject motionElementSeul(const Timeline &timeline, const Args &args)
         return error(QStringLiteral("entree_invalide"), QStringLiteral("Le nom « %1 » ne donne aucun nom de dossier utilisable.").arg(wanted),
                      QStringLiteral("Des lettres, des chiffres et des tirets : « titre-ouverture »."));
     }
-    if (mirror->projects().contains(clean)) {
+    if (mirror->projects().contains(clean) && !mirror->projectState(clean).retired) {
         return error(QStringLiteral("existe_deja"), QStringLiteral("Une composition « %1 » existe déjà.").arg(clean),
                      QStringLiteral("Change-la avec motion_element, ou choisis un autre nom."));
     }
@@ -278,26 +283,24 @@ QJsonObject motionElementSeul(const Timeline &timeline, const Args &args)
     spec.start = position / projectFps();
     readColors(args, spec);
 
-    // Un logo : son fichier est copié dans assets/ avant la création, pour que le rendu le trouve.
+    // Tout ce qui peut refuser est vérifié avant de toucher au disque : le logo, les fichiers en plus.
     const QString dir = mirror->motionRoot() + QLatin1Char('/') + clean;
+    QString logo;
     if (args.contains(QStringLiteral("fichier"))) {
-        QString source = args.value(QStringLiteral("fichier")).toString();
-        if (source.startsWith(QLatin1String("~/"))) {
-            source = QDir::homePath() + source.mid(1);
+        logo = resolveUserPath(args.value(QStringLiteral("fichier")).toString(), failure);
+        if (logo.isEmpty()) {
+            return failure;
         }
-        if (QFileInfo(source).isRelative() && mirror->document() && !mirror->document()->url().isEmpty()) {
-            source = QFileInfo(mirror->document()->url().toLocalFile()).absolutePath() + QLatin1Char('/') + source;
+        if (!QFileInfo::exists(logo)) {
+            return error(QStringLiteral("fichier_introuvable"), QStringLiteral("Le fichier %1 n'existe pas.").arg(logo));
         }
-        if (!QFileInfo::exists(source)) {
-            return error(QStringLiteral("fichier_introuvable"), QStringLiteral("Le fichier %1 n'existe pas.").arg(source));
-        }
-        QDir().mkpath(dir + QStringLiteral("/assets"));
-        const QString target = dir + QStringLiteral("/assets/") + QFileInfo(source).fileName();
-        if (QFileInfo(source).absoluteFilePath() != QFileInfo(target).absoluteFilePath()) {
-            QFile::remove(target);
-            QFile::copy(source, target);
-        }
-        spec.file = QStringLiteral("assets/") + QFileInfo(source).fileName();
+    }
+    QJsonArray copied;
+    if (QJsonObject e = copyMotionAssets(args, dir, copied, true); !e.isEmpty()) {
+        return e;
+    }
+    if (!logo.isEmpty()) {
+        spec.file = QStringLiteral("assets/") + QFileInfo(logo).fileName();
     }
 
     QString html;
@@ -315,7 +318,35 @@ QJsonObject motionElementSeul(const Timeline &timeline, const Args &args)
     if (html.isEmpty()) {
         return error(QStringLiteral("entree_invalide"), why, QStringLiteral("Lis la description de l'outil : sorte, style, texte, fichier, brief_html."));
     }
-    return createSingle(timeline, mirror, clean, html, trackId, -1, -1, args.value(QStringLiteral("attendre")).toBool(true));
+    // Le nom d'une composition retirée est libre : son dossier part dans la corbeille du projet.
+    QString trashed;
+    if (!releaseMotionName(mirror, clean, trashed)) {
+        return error(QStringLiteral("existe_deja"), QStringLiteral("Une composition « %1 » existe déjà.").arg(clean));
+    }
+    // Les polices et les images sont copiées dans assets/ avant la création, pour que le rendu les trouve.
+    if (QJsonObject e = copyMotionAssets(args, dir, copied); !e.isEmpty()) {
+        return e;
+    }
+    if (!logo.isEmpty()) {
+        const QString source = logo;
+        QDir().mkpath(dir + QStringLiteral("/assets"));
+        const QString target = dir + QStringLiteral("/assets/") + QFileInfo(source).fileName();
+        if (QFileInfo(source).absoluteFilePath() != QFileInfo(target).absoluteFilePath()) {
+            QFile::remove(target);
+            QFile::copy(source, target);
+        }
+    }
+
+    QJsonObject result = createSingle(timeline, mirror, clean, html, trackId, -1, -1, args.value(QStringLiteral("attendre")).toBool(true));
+    if (result.value(QStringLiteral("ok")).toBool()) {
+        if (!copied.isEmpty()) {
+            result.insert(QStringLiteral("fichiers_copies"), copied);
+        }
+        if (!trashed.isEmpty()) {
+            result.insert(QStringLiteral("ancienne_retiree"), trashed);
+        }
+    }
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------

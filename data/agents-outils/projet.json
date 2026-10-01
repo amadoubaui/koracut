@@ -62,7 +62,7 @@
   },
   {
     "name": "lister_medias",
-    "description": "Liste les médias du chutier (vidéos, sons, images, titres, séquences) avec leurs propriétés. À appeler avant ajouter_clip pour trouver le bon media_id, et pour répondre à « qu'est-ce que j'ai comme plans ». La recherche porte sur le nom du fichier, le nom du dossier du chutier et les étiquettes : « drone » trouve DJI_0042.MP4 s'il est rangé dans un dossier « Drone » ou étiqueté ainsi. L'outil ne voit pas le contenu des images. Lecture seule. Renvoie { ok, medias: [ { id, nom, type: \"video\" | \"audio\" | \"image\" | \"titre\" | \"couleur\" | \"sequence\", dossier, duree {i, tc}, l, h, ips, a_du_son, proxy: \"aucun\" | \"en_cours\" | \"pret\", utilise (nombre de fois sur la timeline), manquant (true si le fichier a disparu du disque), etiquettes, marqueurs } ], total, tronque, suite }. Quand le chutier a plus de médias que la limite, la réponse dit tronque: true et suite (le debut de la page suivante) : relance avec debut = suite, ou affine avec recherche, type ou dossier, avant de conclure qu'un média manque.",
+    "description": "Liste les médias du chutier (vidéos, sons, images, titres, séquences) avec leurs propriétés. À appeler avant ajouter_clip pour trouver le bon media_id, et pour répondre à « qu'est-ce que j'ai comme plans ». La recherche porte sur le nom du fichier, le nom du dossier du chutier et les étiquettes : « drone » trouve DJI_0042.MP4 s'il est rangé dans un dossier « Drone » ou étiqueté ainsi. dossier est le chemin complet du dossier du chutier (« Script 01/01 Rushs »), pour distinguer deux dossiers du même nom rangés ailleurs ; dossier_nom en donne le dernier nom quand le chemin a plusieurs étages. L'outil ne voit pas le contenu des images. Lecture seule. Renvoie { ok, medias: [ { id, nom, type: \"video\" | \"audio\" | \"image\" | \"titre\" | \"couleur\" | \"sequence\", dossier, dossier_nom, duree {i, tc}, l, h, ips, a_du_son, proxy: \"aucun\" | \"en_cours\" | \"pret\", utilise (nombre de fois sur la timeline), manquant (true si le fichier a disparu du disque), etiquettes, marqueurs } ], total, tronque, suite }. Quand le chutier a plus de médias que la limite, la réponse dit tronque: true et suite (le debut de la page suivante) : relance avec debut = suite, ou affine avec recherche, type ou dossier, avant de conclure qu'un média manque.",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -85,8 +85,8 @@
         },
         "dossier": {
           "type": "string",
-          "maxLength": 80,
-          "description": "Nom d'un dossier du chutier."
+          "maxLength": 200,
+          "description": "Un dossier du chutier : son chemin complet (« Script 01/01 Rushs ») ou son nom seul (tous les dossiers de ce nom)."
         },
         "limite": {
           "type": "integer",

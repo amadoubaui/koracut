@@ -36,6 +36,9 @@ QJsonObject call(const std::shared_ptr<TimelineItemModel> &timeline, const QStri
 /** @brief Les outils déjà écrits dans l'application. */
 QStringList implementedTools();
 
+/** @brief Le chemin du dossier du chutier où est rangé ce média : « Script 01/01 Rushs » ; vide à la racine. */
+QString binFolderPath(const QString &binId);
+
 /** @brief Un temps donné en images (entier) ou en timecode « HH:MM:SS:II » ; -1 si illisible. */
 int parseTime(const QJsonValue &value, double fps);
 

@@ -1655,8 +1655,11 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
                                             {QStringLiteral("proxy"), clip->hasProxy()},
                                             {QStringLiteral("utilisations"), int(clip->refCount())},
                                             {QStringLiteral("manquant"), clip->clipStatus() == FileStatus::StatusMissing}};
-                              if (auto parent = clip->parent()) {
-                                  o.insert(QStringLiteral("dossier"), parent->name());
+                              // Le chemin complet du dossier du chutier, comme medias.lister ; dossier_nom : le dernier nom.
+                              const QString folderPath = KoraCutAgentTools::binFolderPath(id);
+                              if (!folderPath.isEmpty()) {
+                                  o.insert(QStringLiteral("dossier"), folderPath);
+                                  o.insert(QStringLiteral("dossier_nom"), folderPath.section(QLatin1Char('/'), -1));
                               }
                               return Reply::value(o);
                           });
@@ -2509,7 +2512,9 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
         QStringLiteral("export.lancer"), QStringLiteral("Lance un rendu avec un préréglage vers un fichier, avec le niveau sonore, avec ou sans les sous-titres. À confirmation si le fichier existe (ecraser)."),
         {p(QStringLiteral("prereglage"), QStringLiteral("string"), QStringLiteral("Nom du préréglage (export.prereglages)."), true),
          p(QStringLiteral("chemin"), QStringLiteral("string"), QStringLiteral("Le fichier de sortie."), true),
-         p(QStringLiteral("niveau_lufs"), QStringLiteral("number"), QStringLiteral("Niveau sonore cible (-14 pour le web) ; absent : tel quel.")),
+         p(QStringLiteral("niveau_lufs"), QStringLiteral("number"),
+           QStringLiteral("Niveau sonore cible, de -30 à -8 (-14 pour le web). Absent : le son du mixage tel quel, sans nivellement : le fichier contient ce que "
+                          "mesurer_audio annonce (cible mixage). La cible du type de vidéo du projet n'est pas appliquée d'office : la réponse la rappelle.")),
          p(QStringLiteral("ecraser"), QStringLiteral("boolean"), QStringLiteral("true : écrase le fichier s'il existe (à confirmation).")),
          p(QStringLiteral("zone"), QStringLiteral("any"), QStringLiteral("projet (défaut, toute la séquence), zone (la zone du moniteur), ou { in, out } en images ou timecode, out exclu.")),
          p(QStringLiteral("sous_titres"), QStringLiteral("string"), QStringLiteral("incruster (défaut) ou sans : une version sans sous-titres, sans toucher à la piste."))},
@@ -2563,6 +2568,12 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
             if (subtitles != QLatin1String("incruster") && subtitles != QLatin1String("sans")) {
                 return Reply::fail(QStringLiteral("parametres_invalides"), QStringLiteral("sous_titres = incruster ou sans."));
             }
+            const bool levelling = call.params.contains(QStringLiteral("niveau_lufs")) && !call.params.value(QStringLiteral("niveau_lufs")).isNull();
+            const int lufs = call.params.value(QStringLiteral("niveau_lufs")).toInt(0);
+            if (levelling && (!call.params.value(QStringLiteral("niveau_lufs")).isDouble() || lufs < -30 || lufs > -8)) {
+                return Reply::fail(QStringLiteral("parametres_invalides"), QStringLiteral("niveau_lufs est un nombre entier de -30 à -8 (-14 pour le web, -16 pour un podcast, -23 pour la télévision)."),
+                                   QStringLiteral("Sans niveau_lufs, le son est rendu tel quel."));
+            }
             if (QFileInfo::exists(path)) {
                 if (!call.params.value(QStringLiteral("ecraser")).toBool(false)) {
                     return Reply::fail(QStringLiteral("fichier_existe"), QStringLiteral("%1 existe déjà.").arg(path), QStringLiteral("Donne un autre chemin, ou ecraser=true (à confirmation)."));
@@ -2577,15 +2588,18 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
                 return Reply::fail(QStringLiteral("non_disponible"), QStringLiteral("La fenêtre d'export ne s'ouvre pas."));
             }
             rw->focusItem(preset);
-            if (call.params.contains(QStringLiteral("niveau_lufs"))) {
-                for (QCheckBox *c : rw->findChildren<QCheckBox *>()) {
-                    if (c->text() == i18nc("@option:check", "Level the sound at")) {
-                        c->setChecked(true);
-                    }
+            // Le niveau sonore : celui demandé, sinon aucun. Avant le 1er octobre 2026, sans niveau_lufs, la
+            // case gardait l'état du projet : un projet de type publicité (cible du guide : -23 LUFS) sortait
+            // à -23,0 LUFS alors que mesurer_audio annonçait -14 pour le mixage. La case de la fenêtre suit.
+            for (QCheckBox *c : rw->findChildren<QCheckBox *>()) {
+                if (c->text() == i18nc("@option:check", "Level the sound at")) {
+                    c->setChecked(levelling);
                 }
+            }
+            if (levelling) {
                 for (QSpinBox *sp : rw->findChildren<QSpinBox *>()) {
                     if (sp->suffix().contains(QLatin1String("LUFS"))) {
-                        sp->setValue(call.params.value(QStringLiteral("niveau_lufs")).toInt());
+                        sp->setValue(lufs);
                     }
                 }
             }
@@ -2598,6 +2612,17 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
             if (boundIn >= 0) {
                 o.insert(QStringLiteral("in"), timeObject(boundIn));
                 o.insert(QStringLiteral("out"), timeObject(boundOut));
+            }
+            // Ce qui est fait du son, dit en clair : nivelé à la cible, ou rendu tel quel.
+            o.insert(QStringLiteral("niveau_lufs"), levelling ? QJsonValue(lufs) : QJsonValue());
+            if (!levelling) {
+                const int typeTarget = pCore->currentDoc()->getDocumentProperty(QStringLiteral("koracut:export_lufs")).toInt();
+                QString note = QStringLiteral("Son rendu tel quel, sans nivellement : le fichier contient ce que mesurer_audio annonce pour le mixage.");
+                if (typeTarget != 0) {
+                    o.insert(QStringLiteral("cible_du_type"), typeTarget);
+                    note += QStringLiteral(" Le type de vidéo du projet vise %1 LUFS : niveau_lufs=%1 pour niveler à cette cible.").arg(typeTarget);
+                }
+                o.insert(QStringLiteral("note_son"), note);
             }
             o.insert(QStringLiteral("conseil"), QStringLiteral("export.etat tache_id=<tache_id> suit l'avancement ; l'événement taches prévient."));
             return Reply::value(o);

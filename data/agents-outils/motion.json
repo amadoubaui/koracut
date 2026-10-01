@@ -1,10 +1,20 @@
 [
   {
     "name": "motion_lister",
-    "description": "Liste les compositions Motion (HyperFrames) du projet : pour chacune son nom, son dossier, ses dimensions et sa cadence, ses éléments (id, sorte, nom, texte, fichier, début et durée en secondes, index de piste, état du rendu, et le clip de timeline s'il est posé), le nombre de rendus prêts, en cours et en échec, et les erreurs d'analyse. Dit aussi si HyperFrames est prêt (« pret »), à installer (« a_installer ») ou sans Node (« sans_node »). C'est la vue du Motion designer : l'appeler au début de chaque demande, et après motion_ecrire ou motion_rendre pour vérifier. Les temps des éléments sont en secondes (c'est le HTML qui fait foi), les positions des clips en images. Lecture seule. Renvoie { ok, hyperframes: { etat, version }, dossier, compositions: [ { nom, dossier, fichier, largeur, hauteur, ips, duree, elements: [ { id, sorte: \"bloc\" | \"image\" | \"video\" | \"audio\" | \"composition\" | \"entiere\", nom, texte, fichier, debut, duree, piste_index, rendu: \"pret\" | \"en_cours\" | \"echec\" | \"aucun\" | \"son\", clip_id, piste_id, pos, pos_tc, len } ], rendus, en_cours, echecs, erreurs } ] }.",
+    "description": "Liste les compositions Motion (HyperFrames) du projet : pour chacune son nom, son dossier, ses dimensions et sa cadence, ses éléments (id, sorte, nom, texte, fichier, début et durée en secondes, index de piste, état du rendu, et le clip de timeline s'il est posé), le nombre de rendus prêts, en cours et en échec, et les erreurs d'analyse. Dit aussi si HyperFrames est prêt (« pret »), à installer (« a_installer ») ou sans Node (« sans_node »). C'est la vue du Motion designer : l'appeler au début de chaque demande, et après motion_ecrire ou motion_rendre pour vérifier. Les temps des éléments sont en secondes (c'est le HTML qui fait foi), les positions des clips en images. Chaque composition vit dans une séquence et n'en sort jamais : sequence (son uuid), sequence_nom, sequence_active (c'est la séquence devant) ; les clip_id, piste_id et pos de ses éléments sont ceux de SA séquence, pas de celle qui est devant (sequence_ouverte: false quand son onglet est fermé : ses clips sont posés à la réouverture). Une composition retirée (son clip a été supprimé, ou sa création annulée) n'est plus dans la liste : son dossier reste sur le disque pour que Rétablir la remette, son nom est libre, et retirees_masquees les compte ; retirees = true les montre (retiree: true). Lecture seule. Renvoie { ok, hyperframes: { etat, version }, dossier, retirees_masquees, compositions: [ { nom, sequence, sequence_nom, sequence_active, dossier, fichier, largeur, hauteur, ips, duree, elements: [ { id, sorte: \"bloc\" | \"image\" | \"video\" | \"audio\" | \"composition\" | \"entiere\", nom, texte, fichier, debut, duree, piste_index, rendu: \"pret\" | \"en_cours\" | \"echec\" | \"aucun\" | \"son\", clip_id, piste_id, pos, pos_tc, len } ], rendus, en_cours, echecs, erreurs } ] }.",
     "input_schema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "retirees": {
+          "type": "boolean",
+          "description": "true : montre aussi les compositions retirées (leur clip a quitté la timeline). Défaut : false."
+        },
+        "sequence": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Ne lister que les compositions d'une séquence : son uuid, son nom, ou « active » pour celle qui est devant. Absent : toutes."
+        }
+      },
       "required": [],
       "additionalProperties": false
     },
@@ -13,7 +23,7 @@
   },
   {
     "name": "motion_creer",
-    "description": "Crée une composition Motion dans le projet : un dossier motion/<nom>/ avec un index.html (le gabarit de KoraCut, un titre animé de 4 s, ou le HTML fourni dans html), assets/gsap.min.js déjà copié, et compositions/. Avec source (un dossier HyperFrames déjà écrit avec son index.html, ou un fichier .html), la composition est importée avec tous ses fichiers : polices, images, feuilles et scripts cités, comme par le panneau Motion. C'est la voie pour une composition qui a sa charte (polices du client, logo). Une racine qui porte data-koracut-fond=\"opaque\" (un plan plein cadre, pas un habillage) est rendue en MP4 plutôt qu'en ProRes 4444 transparent : environ trente fois plus léger sur le disque et deux fois plus rapide. Sans largeur, hauteur ni ips, la composition prend le format et la cadence du projet. Les éléments temporels du HTML (data-start, data-duration, data-track-index, voir la compétence hyperframes-core) deviennent des clips violets sur des pistes « Motion · nom » au-dessus de la vidéo, dès que leur rendu est prêt (motion_rendre). Le nom devient un nom de dossier (lettres, chiffres, tirets). Refuse si une composition du même nom existe (existe_deja) : dans ce cas, motion_ecrire. Annulable en une étape. Renvoie la même fiche que motion_lister pour cette composition, avec ok.",
+    "description": "Crée une composition Motion dans le projet : un dossier motion/<nom>/ avec un index.html (le gabarit de KoraCut, un titre animé de 4 s, ou le HTML fourni dans html), assets/gsap.min.js déjà copié, et compositions/. Avec source (un dossier HyperFrames déjà écrit avec son index.html, ou un fichier .html), la composition est importée avec tous ses fichiers : polices, images, feuilles et scripts cités, comme par le panneau Motion. C'est la voie pour une composition qui a sa charte (polices du client, logo). Une racine qui porte data-koracut-fond=\"opaque\" (un plan plein cadre, pas un habillage) est rendue en MP4 plutôt qu'en ProRes 4444 transparent : environ trente fois plus léger sur le disque et deux fois plus rapide. Sans largeur, hauteur ni ips, la composition prend le format et la cadence du projet. Les éléments temporels du HTML (data-start, data-duration, data-track-index, voir la compétence hyperframes-core) deviennent des clips violets sur des pistes « Motion · nom » au-dessus de la vidéo, dès que leur rendu est prêt (motion_rendre). Le nom devient un nom de dossier (lettres, chiffres, tirets). Avec fichiers, des polices et des images sont copiées dans assets/ avant le premier rendu (réponse : fichiers_copies). La composition vit dans la séquence qui est devant à sa création (la racine reçoit data-koracut-sequence). Refuse si une composition du même nom existe (existe_deja) : dans ce cas, motion_ecrire ; le nom d'une composition retirée est libre (son ancien dossier part dans motion/.corbeille/, réponse : ancienne_retiree). Annulable en une étape. Renvoie la même fiche que motion_lister pour cette composition, avec ok.",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -50,6 +60,15 @@
           "type": "string",
           "minLength": 1,
           "description": "Chemin absolu d'un dossier qui contient index.html, ou d'un fichier .html, à importer avec ses fichiers. Exclut html."
+        },
+        "fichiers": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Des fichiers à copier dans assets/ avant le rendu (polices de la charte, logo, images), sous leur nom : chemins absolus, « ~ », ou relatifs au dossier du projet. Le HTML les cite par url(\"assets/Outfit.ttf\") ou <img src=\"assets/logo.png\">. Un fichier du même nom déjà dans assets/ est remplacé."
         }
       },
       "required": [
@@ -82,7 +101,7 @@
   },
   {
     "name": "motion_ecrire",
-    "description": "Remplace tout l'index.html d'une composition Motion par le HTML fourni, puis met la timeline en accord : les éléments nouveaux gagnent un clip (dès que leur rendu est prêt), les éléments disparus perdent le leur, ceux qui ont changé de place ou de durée sont retimés sans nouveau rendu, et ceux dont le contenu a changé (texte, style, animation) sont re-rendus en fond, l'ancien rendu restant affiché en attendant. C'est l'outil normal pour écrire une composition : lire avec motion_lire, modifier, écrire ici, puis motion_verifier, motion_rendre et motion_instantane. Le HTML doit suivre le contrat HyperFrames (compétence hyperframes-core) : racine data-composition-id, data-width, data-height, data-fps, data-duration ; chaque élément dans le temps avec un id, class=\"clip\", data-start, data-duration, data-track-index ; les timelines GSAP dans window.__timelines[id]. Pour un petit changement (un texte, un début), préférer motion_element. Ne supprime aucun fichier : un asset qui n'est plus cité reste dans assets/. Annulable en une étape, HTML compris. Renvoie la fiche de la composition (comme motion_lister) avec ok, ajoutes, retires, rendus_relances (les id concernés).",
+    "description": "Remplace tout l'index.html d'une composition Motion par le HTML fourni, puis met la timeline en accord : les éléments nouveaux gagnent un clip (dès que leur rendu est prêt), les éléments disparus perdent le leur, ceux qui ont changé de place ou de durée sont retimés sans nouveau rendu, et ceux dont le contenu a changé (texte, style, animation) sont re-rendus en fond, l'ancien rendu restant affiché en attendant. C'est l'outil normal pour écrire une composition : lire avec motion_lire, modifier, écrire ici, puis motion_verifier, motion_rendre et motion_instantane. Le HTML doit suivre le contrat HyperFrames (compétence hyperframes-core) : racine data-composition-id, data-width, data-height, data-fps, data-duration ; chaque élément dans le temps avec un id, class=\"clip\", data-start, data-duration, data-track-index ; les timelines GSAP dans window.__timelines[id]. Pour un petit changement (un texte, un début), préférer motion_element. Avec fichiers, des polices et des images sont copiées dans assets/ avant le nouveau rendu (réponse : fichiers_copies) ; un fichier remplacé sans que le HTML change ne relance pas le rendu : motion_rendre avec forcer. La composition reste dans sa séquence, même si le HTML fourni a oublié data-koracut-sequence, et quelle que soit la séquence devant. Ne supprime aucun fichier : un asset qui n'est plus cité reste dans assets/. Annulable en une étape, HTML compris. Renvoie la fiche de la composition (comme motion_lister) avec ok, ajoutes, retires, rendus_relances (les id concernés).",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -95,6 +114,15 @@
           "type": "string",
           "minLength": 1,
           "description": "Le contenu complet de index.html."
+        },
+        "fichiers": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Des fichiers à copier dans assets/ avant le rendu (polices de la charte, logo, images), sous leur nom : chemins absolus, « ~ », ou relatifs au dossier du projet. Le HTML les cite par url(\"assets/Outfit.ttf\") ou <img src=\"assets/logo.png\">. Un fichier du même nom déjà dans assets/ est remplacé."
         }
       },
       "required": [
@@ -243,7 +271,7 @@
   },
   {
     "name": "motion_poser",
-    "description": "Pose ou repose dans la timeline les clips d'une composition Motion dont le rendu est prêt et qui n'y sont pas (après un rendu lancé sans attendre, ou après un retrait à la main). Sans piste_id, le miroir crée ses pistes « Motion · nom » au-dessus de la vidéo (une par data-track-index) ; avec piste_id, cette piste vidéo devient la première piste Motion de la composition, si elle n'appartient pas déjà à une autre. Avec position, le premier élément à début absolu est amené à cette place de la timeline et les autres suivent d'autant (le HTML est réécrit : data-start). Ne rend rien : motion_rendre d'abord. Annulable en une étape. Renvoie la fiche de la composition avec ok, change, poses, sans_clip, remarque.",
+    "description": "Pose ou repose dans la timeline les clips d'une composition Motion dont le rendu est prêt et qui n'y sont pas (après un rendu lancé sans attendre, ou après un retrait à la main). Sans piste_id, le miroir crée ses pistes « Motion · nom » au-dessus de la vidéo (une par data-track-index) ; avec piste_id, cette piste vidéo devient la première piste Motion de la composition, si elle n'appartient pas déjà à une autre. Avec position, le premier élément à début absolu est amené à cette place de la timeline et les autres suivent d'autant (le HTML est réécrit : data-start). La composition se pose dans SA séquence (motion_lister : sequence) : piste_id ne vaut que si cette séquence est devant (sinon autre_sequence), et une séquence dont l'onglet est fermé répond sequence_fermee (l'activer : ses clips sont posés à l'ouverture). Ne rend rien : motion_rendre d'abord. Annulable en une étape. Renvoie la fiche de la composition avec ok, change, poses, sans_clip, remarque.",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -281,7 +309,7 @@
   },
   {
     "name": "motion_element_seul",
-    "description": "Crée UN élément animé dans sa propre petite composition HyperFrames, la rend en vidéo transparente et la pose comme UN seul clip à la position et à la durée données : un titre, un bandeau nom et fonction, un compteur, un logo qui arrive, une légende, ou ce que tu écris toi-même (brief_html). C'est la façon normale de faire de l'habillage : un élément = une composition = un clip, que la personne déplace, rallonge ou supprime sans toucher au reste ; son double-clic n'ouvre que lui. Sans piste_id, le clip va sur la piste partagée « Animations » (créée au besoin, sous la piste « Transitions ») ; une autre piste « Animations 2 » naît si la place est prise. Le catalogue (sans brief_html) : titre (styles monte, machine, eclat), bandeau (glisse ; texte « Nom | Fonction »), compteur (compte ; texte « 1250 clients » ou « +45 % »), logo (rebond ; fichier), legende (trait). Avec brief_html : soit une composition complète (racine data-composition-id, sans élément data-start à l'intérieur), soit un fragment HTML avec ses <style> et <script> ; dans le script, tl (la timeline GSAP en pause, déjà créée), D (la durée en secondes), W et H (la taille) existent : n'en crée pas d'autre. Marque la balise du texte principal avec data-koracut-texte=\"1\" pour que la personne puisse le changer dans l'inspecteur. Le rendu prend quelques secondes (attendre vrai par défaut). Annulable en une étape (la pose du clip) ; les fichiers restent dans motion/<nom>/. Renvoie { ok, nom, affichage, sorte, style, element, rendu, clip_id, piste_id, piste, position, duree, fichier, dossier, remarque? }.",
+    "description": "Crée UN élément animé dans sa propre petite composition HyperFrames, la rend en vidéo transparente et la pose comme UN seul clip à la position et à la durée données : un titre, un bandeau nom et fonction, un compteur, un logo qui arrive, une légende, ou ce que tu écris toi-même (brief_html). C'est la façon normale de faire de l'habillage : un élément = une composition = un clip, que la personne déplace, rallonge ou supprime sans toucher au reste ; son double-clic n'ouvre que lui. Sans piste_id, le clip va sur la piste partagée « Animations » (créée au besoin, sous la piste « Transitions ») ; une autre piste « Animations 2 » naît si la place est prise. Le catalogue (sans brief_html) : titre (styles monte, machine, eclat), bandeau (glisse ; texte « Nom | Fonction »), compteur (compte ; texte « 1250 clients » ou « +45 % »), logo (rebond ; fichier), legende (trait). Avec brief_html : soit une composition complète (racine data-composition-id, sans élément data-start à l'intérieur), soit un fragment HTML avec ses <style> et <script> ; dans le script, tl (la timeline GSAP en pause, déjà créée), D (la durée en secondes), W et H (la taille) existent : n'en crée pas d'autre. Avec fichiers, les polices de la charte et les images sont copiées dans assets/ avant le rendu : cite-les par url(\"assets/Outfit.ttf\") et <img src=\"assets/logo.png\">, n'embarque jamais une police en base64 dans le HTML. Marque la balise du texte principal avec data-koracut-texte=\"1\" pour que la personne puisse le changer dans l'inspecteur. Le rendu prend quelques secondes (attendre vrai par défaut). L'élément vit dans la séquence qui est devant à sa création et n'en sort pas, même si une autre séquence passe devant avant la fin du rendu. Annulable en une étape (la pose du clip) : annulé, l'élément est retiré (il quitte motion_lister, son dossier reste dans motion/<nom>/ pour que Rétablir le remette) et son nom redevient libre ; le recréer sous le même nom range l'ancien dossier dans motion/.corbeille/ (réponse : ancienne_retiree). Renvoie { ok, nom, sequence, affichage, sorte, style, element, rendu, fichiers_copies?, clip_id, piste_id, piste, position, duree, fichier, dossier, remarque? }.",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -317,6 +345,15 @@
         "brief_html": {
           "type": "string",
           "description": "Ton HTML : une composition complète d'un seul élément, ou un fragment (balises, <style>, <script> qui utilise tl, D, W, H). Lis hyperframes-core et hyperframes-animation avant."
+        },
+        "fichiers": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Des fichiers à copier dans assets/ avant le rendu (polices de la charte, logo, images), sous leur nom : chemins absolus, « ~ », ou relatifs au dossier du projet. Le HTML les cite par url(\"assets/Outfit.ttf\") ou <img src=\"assets/logo.png\">. Un fichier du même nom déjà dans assets/ est remplacé."
         },
         "position": {
           "description": "Où poser le clip sur la timeline. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\".",

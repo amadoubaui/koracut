@@ -32,6 +32,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QRegularExpression>
+#include <QSet>
+#include <QUuid>
 
 #include <algorithm>
 #include <cmath>
@@ -171,6 +173,85 @@ QString mediaTypeName(ClipType::ProducerType type)
     default:
         return QStringLiteral("video");
     }
+}
+
+QString resolveUserPath(const QString &path, QJsonObject &failure)
+{
+    QString out = path.trimmed();
+    if (out == QLatin1String("~") || out.startsWith(QLatin1String("~/"))) {
+        return QDir::cleanPath(QDir::homePath() + out.mid(1));
+    }
+    if (QFileInfo(out).isAbsolute()) {
+        return QDir::cleanPath(out);
+    }
+    // Relatif au dossier du projet, s'il est vraiment sur le disque (un projet neuf porte une URL sans fichier).
+    KdenliveDoc *doc = pCore ? pCore->currentDoc() : nullptr;
+    const QString file = doc && !doc->url().isEmpty() ? doc->url().toLocalFile() : QString();
+    if (file.isEmpty() || !QFileInfo::exists(file)) {
+        failure = error(QStringLiteral("projet_absent"), QStringLiteral("Le chemin « %1 » est relatif, mais le projet n'est pas encore enregistré.").arg(path),
+                        QStringLiteral("Donne un chemin absolu, ou enregistre le projet d'abord."));
+        return QString();
+    }
+    return QDir::cleanPath(QFileInfo(file).absolutePath() + QLatin1Char('/') + out);
+}
+
+QJsonObject copyMotionAssets(const Args &args, const QString &compositionDir, QJsonArray &copied, bool checkOnly)
+{
+    if (!args.contains(QStringLiteral("fichiers"))) {
+        return {};
+    }
+    // Tout est vérifié avant la première copie : une liste fausse ne laisse rien à moitié.
+    QList<QFileInfo> sources;
+    QSet<QString> names;
+    const QJsonArray wanted = args.value(QStringLiteral("fichiers")).toArray();
+    for (const QJsonValue &v : wanted) {
+        QJsonObject failure;
+        const QString path = resolveUserPath(v.toString(), failure);
+        if (path.isEmpty()) {
+            return failure.isEmpty() ? error(QStringLiteral("entree_invalide"), QStringLiteral("fichiers contient un chemin vide.")) : failure;
+        }
+        const QFileInfo info(path);
+        if (!info.exists() || !info.isFile()) {
+            return error(QStringLiteral("fichier_introuvable"), QStringLiteral("Le fichier %1 n'existe pas (ou c'est un dossier).").arg(path),
+                         QStringLiteral("fichiers prend des fichiers : absolus, « ~ », ou relatifs au dossier du projet."));
+        }
+        if (names.contains(info.fileName().toLower())) {
+            return error(QStringLiteral("entree_invalide"), QStringLiteral("Deux fichiers s'appellent « %1 » : ils iraient au même endroit dans assets/.").arg(info.fileName()),
+                         QStringLiteral("Renomme l'un des deux avant de le donner."));
+        }
+        names.insert(info.fileName().toLower());
+        sources << info;
+    }
+    if (checkOnly) {
+        return {};
+    }
+    const QString assets = compositionDir + QStringLiteral("/assets");
+    if (!sources.isEmpty() && !QDir().mkpath(assets)) {
+        return error(QStringLiteral("ecriture_impossible"), QStringLiteral("Le dossier %1 n'a pas pu être créé.").arg(assets));
+    }
+    for (const QFileInfo &info : std::as_const(sources)) {
+        const QString target = assets + QLatin1Char('/') + info.fileName();
+        if (info.absoluteFilePath() != QFileInfo(target).absoluteFilePath()) {
+            QFile::remove(target);
+            if (!QFile::copy(info.absoluteFilePath(), target)) {
+                return error(QStringLiteral("ecriture_impossible"), QStringLiteral("Le fichier %1 n'a pas pu être copié dans %2.").arg(info.fileName(), assets));
+            }
+        }
+        copied.append(QString(QStringLiteral("assets/") + info.fileName()));
+    }
+    return {};
+}
+
+bool releaseMotionName(KoraCutMotionMirror *mirror, const QString &name, QString &trashed)
+{
+    if (!mirror->projects().contains(name)) {
+        return true;
+    }
+    if (!mirror->projectState(name).retired) {
+        return false;
+    }
+    trashed = mirror->trashProject(name);
+    return !trashed.isEmpty();
 }
 
 } // namespace KoraCutAgentToolsPrivate
@@ -715,6 +796,21 @@ QJsonObject ajouterClip(const Timeline &timeline, const Args &args)
         if (in < 0 || out <= in) {
             return error(QStringLiteral("entree_invalide"), QStringLiteral("Il faut entree et sortie, avec sortie strictement après entree."));
         }
+        // Au-delà de la fin du média : le dire avec sa durée (avant le 1er octobre 2026, la pose échouait
+        // et répondait place_occupee, un message faux). Une image, un titre ou une couleur n'ont pas de fin.
+        const std::shared_ptr<ProjectClip> media = pCore->projectItemModel()->getClipByBinID(mediaId);
+        const int mediaLength = media ? int(media->frameDuration()) : 0;
+        if (media && media->hasLimitedDuration() && mediaLength > 0 && out > mediaLength) {
+            QJsonObject e = error(QStringLiteral("hors_media"),
+                                  QStringLiteral("Le média %1 dure %2 images (%3) : sortie = %4 dépasse sa fin.")
+                                      .arg(mediaId)
+                                      .arg(mediaLength)
+                                      .arg(KoraCutAgentTools::timecode(mediaLength, projectFps()))
+                                      .arg(out),
+                                  QStringLiteral("Donne une sortie de %1 au plus (sortie est exclue : %1 prend le média jusqu'à sa dernière image).").arg(mediaLength));
+            e.insert(QStringLiteral("duree_media"), time(mediaLength));
+            return e;
+        }
         // Kdenlive : « id/entrée/sortie », sortie incluse.
         binId += QStringLiteral("/%1/%2").arg(in).arg(out - 1);
     }
@@ -778,15 +874,16 @@ QJsonObject listerMedias(const Timeline &, const Args &args)
             continue;
         }
         const QString type = mediaTypeName(clip->clipType());
-        QString folder;
-        if (auto parent = clip->parent(); parent && parent->clipId() != QLatin1String("-1")) {
-            folder = parent->name();
-        }
+        // Le chemin complet du dossier (« Script 01/01 Rushs ») : quatre dossiers « 01 Rushs » rangés dans
+        // quatre dossiers différents ne se distinguaient pas par leur seul dernier nom (1er octobre 2026).
+        const QString folder = KoraCutAgentTools::binFolderPath(id);
+        const QString folderName = folder.section(QLatin1Char('/'), -1);
         const QString tags = clip->tags();
         if (wantedType != QLatin1String("tous") && type != wantedType) {
             continue;
         }
-        if (!wantedFolder.isEmpty() && plain(folder) != wantedFolder) {
+        // Le filtre accepte le chemin complet ou le dernier nom (comme avant).
+        if (!wantedFolder.isEmpty() && plain(folder) != wantedFolder && plain(folderName) != wantedFolder) {
             continue;
         }
         if (!search.isEmpty() && !plain(clip->name()).contains(search) && !plain(folder).contains(search) && !plain(tags).contains(search)) {
@@ -802,6 +899,9 @@ QJsonObject listerMedias(const Timeline &, const Args &args)
                           {QStringLiteral("utilise"), int(clip->timelineInstances().size())}};
         if (!folder.isEmpty()) {
             media.insert(QStringLiteral("dossier"), folder);
+            if (folderName != folder) {
+                media.insert(QStringLiteral("dossier_nom"), folderName);
+            }
         }
         const QSize size = clip->frameSize();
         if (size.isValid() && type != QLatin1String("audio")) {
@@ -981,6 +1081,8 @@ KoraCutMotionMirror *motionOrFail(const Args &args, QString &project, QJsonObjec
         return nullptr;
     }
     g_motionMirror->rescan();
+    // Un clip supprimé ou une annulation de l'instant d'avant : l'état rendu est à jour.
+    g_motionMirror->flush();
     if (!needProject) {
         return g_motionMirror;
     }
@@ -1041,12 +1143,27 @@ QJsonObject elementJson(const Timeline &timeline, const KoraCutMotionMirror::Ele
     return o;
 }
 
-QJsonObject projectJson(const Timeline &timeline, KoraCutMotionMirror *mirror, const QString &name)
+QJsonObject projectJson(const Timeline &, KoraCutMotionMirror *mirror, const QString &name)
 {
     const KoraCutMotionMirror::ProjectState state = mirror->projectState(name);
     const KoraCutMotionSync *sync = mirror->sync(name);
     const double fps = projectFps();
     QJsonObject o{{QStringLiteral("nom"), name}, {QStringLiteral("dossier"), state.dir}, {QStringLiteral("fichier"), state.indexPath}};
+    // La séquence où vit la composition : ses clips sont là, quelle que soit la séquence devant. Les
+    // clip_id, piste_id et pos des éléments sont ceux de CETTE séquence.
+    const QString sequence = mirror->sequenceOf(name);
+    const Timeline timeline = mirror->timelineFor(name);
+    o.insert(QStringLiteral("sequence"), sequence);
+    if (pCore->projectItemModel()) {
+        const QString binId = pCore->projectItemModel()->getSequenceId(QUuid(sequence));
+        if (auto clip = binId.isEmpty() ? nullptr : pCore->projectItemModel()->getClipByBinID(binId)) {
+            o.insert(QStringLiteral("sequence_nom"), clip->clipName());
+        }
+    }
+    o.insert(QStringLiteral("sequence_active"), sequence == pCore->currentTimelineId().toString(QUuid::WithoutBraces));
+    if (!timeline) {
+        o.insert(QStringLiteral("sequence_ouverte"), false);
+    }
     // Une composition d'un seul élément (lot 5) : sa sorte, son nom lisible, la coupe qu'elle suit, son retrait.
     if (!state.element.isEmpty()) {
         o.insert(QStringLiteral("element_seul"), state.element);
@@ -1094,9 +1211,26 @@ QJsonObject motionLister(const Timeline &timeline, const Args &args)
     if (!mirror) {
         return failure;
     }
+    // Une composition retirée (son clip a quitté la timeline : supprimé, ou création annulée) n'est plus
+    // montrée ; son dossier reste, pour que Rétablir la remette. retirees = true les montre.
+    const bool withRetired = args.value(QStringLiteral("retirees")).toBool(false);
+    const QString onlySequence = args.value(QStringLiteral("sequence")).toString().trimmed();
     QJsonArray list;
+    int hidden = 0;
     for (const QString &name : mirror->projects()) {
-        list.append(projectJson(timeline, mirror, name));
+        if (!withRetired && mirror->projectState(name).retired) {
+            ++hidden;
+            continue;
+        }
+        const QJsonObject o = projectJson(timeline, mirror, name);
+        if (!onlySequence.isEmpty() && onlySequence != QLatin1String("active") && o.value(QStringLiteral("sequence")).toString() != onlySequence &&
+            o.value(QStringLiteral("sequence_nom")).toString().compare(onlySequence, Qt::CaseInsensitive) != 0) {
+            continue;
+        }
+        if (onlySequence == QLatin1String("active") && !o.value(QStringLiteral("sequence_active")).toBool()) {
+            continue;
+        }
+        list.append(o);
     }
     QJsonObject host{{QStringLiteral("etat"), hostStateName()}};
     const QString version = KoraCutMotionHost::installedVersion();
@@ -1107,6 +1241,9 @@ QJsonObject motionLister(const Timeline &timeline, const Args &args)
                        {QStringLiteral("hyperframes"), host},
                        {QStringLiteral("dossier"), mirror->motionRoot()},
                        {QStringLiteral("compositions"), list}};
+    if (hidden > 0) {
+        result.insert(QStringLiteral("retirees_masquees"), hidden);
+    }
     // La charte du client : un tokens.json à côté du fichier projet (ou dans motion/), rendu tel quel.
     QStringList candidates{mirror->motionRoot() + QStringLiteral("/tokens.json")};
     if (mirror->document() && !mirror->document()->url().isEmpty()) {
@@ -1141,7 +1278,7 @@ QJsonObject motionCreer(const Timeline &timeline, const Args &args)
         return error(QStringLiteral("entree_invalide"), QStringLiteral("Le nom « %1 » ne donne aucun nom de dossier utilisable.").arg(wanted),
                      QStringLiteral("Des lettres, des chiffres et des tirets : « bandeau-awa »."));
     }
-    if (mirror->projects().contains(clean)) {
+    if (mirror->projects().contains(clean) && !mirror->projectState(clean).retired) {
         return error(QStringLiteral("existe_deja"), QStringLiteral("Une composition « %1 » existe déjà.").arg(clean),
                      QStringLiteral("Écris dedans avec motion_ecrire, ou choisis un autre nom."));
     }
@@ -1166,20 +1303,47 @@ QJsonObject motionCreer(const Timeline &timeline, const Args &args)
         if (info.isDir() ? !QFileInfo::exists(info.absoluteFilePath() + QStringLiteral("/index.html")) : info.suffix().toLower() != QLatin1String("html")) {
             return error(QStringLiteral("entree_invalide"), QStringLiteral("La source doit être un dossier avec un index.html, ou un fichier .html."));
         }
+        // Les fichiers en plus sont vérifiés avant l'import, et copiés juste après (la source apporte déjà les siens).
+        QJsonArray copied;
+        if (QJsonObject e = copyMotionAssets(args, QString(), copied, true); !e.isEmpty()) {
+            return e;
+        }
+        QString trashed;
+        if (!releaseMotionName(mirror, clean, trashed)) {
+            return error(QStringLiteral("existe_deja"), QStringLiteral("Une composition « %1 » existe déjà.").arg(clean));
+        }
         QString why;
         const QString name = mirror->importProject(info.absoluteFilePath(), clean, &why);
         if (name.isEmpty()) {
             return error(QStringLiteral("entree_invalide"), why.isEmpty() ? QStringLiteral("La composition n'a pas pu être importée.") : why);
         }
+        if (QJsonObject e = copyMotionAssets(args, mirror->projectState(name).dir, copied); !e.isEmpty()) {
+            return e;
+        }
         QJsonObject result = projectJson(timeline, mirror, name);
         result.insert(QStringLiteral("ok"), true);
         result.insert(QStringLiteral("importee_de"), info.absoluteFilePath());
+        if (!copied.isEmpty()) {
+            result.insert(QStringLiteral("fichiers_copies"), copied);
+        }
+        if (!trashed.isEmpty()) {
+            result.insert(QStringLiteral("ancienne_retiree"), trashed);
+        }
         return result;
     }
     const QString html = args.value(QStringLiteral("html")).toString();
     if (!html.isEmpty() && !html.contains(QLatin1String("data-composition-id"))) {
         return error(QStringLiteral("entree_invalide"), QStringLiteral("Le HTML n'a pas de racine data-composition-id."),
                      QStringLiteral("Lis la compétence hyperframes-core : la racine porte data-composition-id, data-width, data-height, data-fps, data-duration."));
+    }
+    QString trashed;
+    if (!releaseMotionName(mirror, clean, trashed)) {
+        return error(QStringLiteral("existe_deja"), QStringLiteral("Une composition « %1 » existe déjà.").arg(clean));
+    }
+    // Les polices et les images sont dans assets/ avant la création : le premier rendu les trouve.
+    QJsonArray copied;
+    if (QJsonObject e = copyMotionAssets(args, mirror->motionRoot() + QLatin1Char('/') + clean, copied); !e.isEmpty()) {
+        return e;
     }
     QString why;
     const QString name = mirror->createProject(clean, &why, width, height, fps, html);
@@ -1188,6 +1352,12 @@ QJsonObject motionCreer(const Timeline &timeline, const Args &args)
     }
     QJsonObject result = projectJson(timeline, mirror, name);
     result.insert(QStringLiteral("ok"), true);
+    if (!copied.isEmpty()) {
+        result.insert(QStringLiteral("fichiers_copies"), copied);
+    }
+    if (!trashed.isEmpty()) {
+        result.insert(QStringLiteral("ancienne_retiree"), trashed);
+    }
     return result;
 }
 
@@ -1214,11 +1384,10 @@ QJsonObject motionEcrire(const Timeline &timeline, const Args &args)
     if (!mirror) {
         return failure;
     }
-    const QString html = args.value(QStringLiteral("html")).toString();
-    if (html.trimmed().isEmpty()) {
+    if (args.value(QStringLiteral("html")).toString().trimmed().isEmpty()) {
         return error(QStringLiteral("entree_invalide"), QStringLiteral("html est vide."), QStringLiteral("Pour retirer une composition, laisse-la : rien ne supprime un fichier."));
     }
-    if (!html.contains(QLatin1String("data-composition-id"))) {
+    if (!args.value(QStringLiteral("html")).toString().contains(QLatin1String("data-composition-id"))) {
         return error(QStringLiteral("entree_invalide"), QStringLiteral("Le HTML n'a pas de racine data-composition-id."),
                      QStringLiteral("Lis la compétence hyperframes-core : la racine porte data-composition-id, data-width, data-height, data-fps, data-duration."));
     }
@@ -1226,6 +1395,24 @@ QJsonObject motionEcrire(const Timeline &timeline, const Args &args)
     QMap<QString, QString> before;
     for (const KoraCutMotion::Element &e : sync->composition().elements) {
         before.insert(e.id, e.hash);
+    }
+    // Les fichiers d'abord : le nouveau rendu les trouve dans assets/.
+    QJsonArray copied;
+    if (QJsonObject e = copyMotionAssets(args, mirror->projectState(project).dir, copied); !e.isEmpty()) {
+        return e;
+    }
+    // Une composition ne change pas de séquence parce que le HTML réécrit a oublié data-koracut-sequence :
+    // la racine garde celle qu'elle avait.
+    QString html = args.value(QStringLiteral("html")).toString();
+    const QString sequenceBefore = sync->composition().sequence;
+    if (!sequenceBefore.isEmpty() && KoraCutMotion::analyse(html).sequence.isEmpty()) {
+        const QList<KoraCutMotion::Tag> tags = KoraCutMotion::tokenize(html);
+        for (const KoraCutMotion::Tag &t : tags) {
+            if (!t.closing && t.has(QStringLiteral("data-composition-id"))) {
+                html = KoraCutMotion::setAttribute(html, t, QStringLiteral("data-koracut-sequence"), sequenceBefore);
+                break;
+            }
+        }
     }
     if (!mirror->replaceHtml(project, html, i18nc("@action undo text", "Motion: rewrite %1", project))) {
         return error(QStringLiteral("entree_invalide"), QStringLiteral("Le fichier de « %1 » n'a pas pu être écrit.").arg(project));
@@ -1250,10 +1437,13 @@ QJsonObject motionEcrire(const Timeline &timeline, const Args &args)
     result.insert(QStringLiteral("ajoutes"), added);
     result.insert(QStringLiteral("retires"), removed);
     result.insert(QStringLiteral("rendus_relances"), rerendered);
+    if (!copied.isEmpty()) {
+        result.insert(QStringLiteral("fichiers_copies"), copied);
+    }
     return result;
 }
 
-QJsonObject motionElement(const Timeline &timeline, const Args &args)
+QJsonObject motionElement(const Timeline &, const Args &args)
 {
     QString project;
     QJsonObject failure;
@@ -1328,7 +1518,8 @@ QJsonObject motionElement(const Timeline &timeline, const Args &args)
     if (after) {
         for (const KoraCutMotionMirror::ElementState &s : mirror->elements(project)) {
             if (s.id == id) {
-                result.insert(QStringLiteral("element"), elementJson(timeline, s, projectFps()));
+                // Le clip est dans la séquence de la composition, pas forcément dans celle qui est devant.
+                result.insert(QStringLiteral("element"), elementJson(mirror->timelineFor(project), s, projectFps()));
             }
         }
         result.insert(QStringLiteral("rendu_relance"), after->hash != hashBefore && after->kind != KoraCutMotion::Kind::Audio);
@@ -1496,8 +1687,19 @@ QJsonObject motionPoser(const Timeline &timeline, const Args &args)
     if (!mirror) {
         return failure;
     }
+    // Elle se pose dans SA séquence. Fermée : rien à poser tant qu'elle n'est pas rouverte. Une piste_id
+    // est une piste de la séquence devant : elle ne vaut que si c'est celle de la composition.
+    const Timeline own = mirror->timelineFor(project);
+    if (!own) {
+        return error(QStringLiteral("sequence_fermee"), QStringLiteral("La séquence de « %1 » n'est pas ouverte.").arg(project),
+                     QStringLiteral("Active-la (projet.sequence faire=activer, ou activer_sequence) : ses clips sont posés à l'ouverture."));
+    }
     int trackId = -1;
     if (args.contains(QStringLiteral("piste_id"))) {
+        if (own != timeline) {
+            return error(QStringLiteral("autre_sequence"), QStringLiteral("« %1 » vit dans une autre séquence que celle qui est devant : piste_id ne s'y applique pas.").arg(project),
+                         QStringLiteral("Active sa séquence d'abord (motion_lister donne sequence et sequence_nom), ou laisse piste_id vide."));
+        }
         trackId = args.value(QStringLiteral("piste_id")).toInt(-1);
         if (QJsonObject e = trackIdCheck(timeline, trackId); !e.isEmpty()) {
             return e;
@@ -1587,6 +1789,23 @@ const QMap<QString, Tool> &tools()
 } // namespace
 
 namespace KoraCutAgentTools {
+
+QString binFolderPath(const QString &binId)
+{
+    auto model = pCore ? pCore->projectItemModel() : nullptr;
+    auto clip = model ? model->getClipByBinID(binId) : nullptr;
+    if (!clip) {
+        return QString();
+    }
+    QStringList parts;
+    const auto root = model->getRootFolder();
+    auto item = std::static_pointer_cast<AbstractProjectItem>(clip->parent());
+    while (item && item != root && item->clipId() != QLatin1String("-1")) {
+        parts.prepend(item->name());
+        item = std::static_pointer_cast<AbstractProjectItem>(item->parent());
+    }
+    return parts.join(QLatin1Char('/'));
+}
 
 int parseTime(const QJsonValue &value, double fps)
 {

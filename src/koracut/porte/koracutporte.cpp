@@ -1056,6 +1056,18 @@ bool KoraCutPorte::needsConfirmation(const Call &call, const QString &what, bool
     if (c && c->state && c->state->trusted && !always) {
         return false;
     }
+    // La personne qui lance KoraCut peut accorder la confiance d'avance, pour un travail sans personne devant l'écran :
+    // KORACUT_PORTE_CONFIANCE=koracut-ctl,claude (débuts de noms de clients, séparés par des virgules ; « * » : tous).
+    // Comme la case de la Console : quitter et écraser un fichier demandent toujours.
+    if (!always) {
+        const QStringList trustedNames = qEnvironmentVariable("KORACUT_PORTE_CONFIANCE").split(QLatin1Char(','), Qt::SkipEmptyParts);
+        for (const QString &name : trustedNames) {
+            const QString n = name.trimmed();
+            if (n == QLatin1String("*") || (!n.isEmpty() && call.client.startsWith(n, Qt::CaseInsensitive))) {
+                return false;
+            }
+        }
+    }
     auto d = std::make_shared<Demand>();
     d->id = QStringLiteral("d%1").arg(m_nextDemand++);
     d->clientId = call.clientId;

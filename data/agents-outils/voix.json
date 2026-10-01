@@ -1,7 +1,7 @@
 [
   {
     "name": "voix_off_generer",
-    "description": "Génère une voix off parlée à partir d'un texte, dans l'application : le moteur fait plusieurs prises, Whisper écoute chaque prise et garde la plus fidèle, la voix est nettoyée (silences, pauses de plus de 0,36 s raccourcies, traitement studio, -16 LUFS, crête -1,5 dBTP) et écrite en WAV dans le dossier « Voix off » du projet (« NN - Premiers mots.wav »), puis importée dans le chutier (dossier « Voix off »). Avec poser, le son est posé sur la piste audio « Voix off » (créée si besoin) à la position donnée. Le tout est une seule étape d'annulation. Une phrase par appel : un fichier par plan. L'appel attend la fin (15 à 60 s en local). Renvoie { ok, media_id, fichier, duree_s, moteur, voix, verifiee, fidelite (1 = tous les mots entendus), entendu, mots_douteux, a_reecouter, prises, lufs, crete_dbfs, clip_id?, piste_id?, position?, duree?, decalee?, pose_refusee?, credit? }. Si a_reecouter est vrai, lis entendu et mots_douteux, réécris le mot fautif dans dire et régénère. Moteur local absent : erreur moteur_absent avec la taille et le dossier ; demande l'accord de la personne puis appelle voix_off_installer.",
+    "description": "Génère une voix off parlée à partir d'un texte, dans l'application : le moteur fait plusieurs prises, Whisper écoute chaque prise et garde la plus fidèle, la voix est nettoyée (silences, pauses de plus de 0,36 s raccourcies, traitement studio, -16 LUFS, crête -1,5 dBTP) et écrite en WAV dans le dossier « Voix off » du projet (« NN - Premiers mots.wav »), puis importée dans le chutier (dossier « Voix off »). Avec dossier (relatif au dossier du projet, par exemple « Script 01/02 Son », créé au besoin), le fichier va là et le dossier du chutier suit le même chemin (réponse : dossier_chutier) ; le projet doit être enregistré (projet_absent), et le dossier rester dans le projet (hors_projet). Avec poser, le son est posé sur la piste audio « Voix off » (créée si besoin) à la position donnée. Le tout est une seule étape d'annulation. Une phrase par appel : un fichier par plan. L'appel attend la fin (15 à 60 s en local). Renvoie { ok, media_id, fichier, dossier_chutier, duree_s, moteur, voix, verifiee, fidelite (1 = tous les mots entendus), entendu, mots_douteux, a_reecouter, prises, lufs, crete_dbfs, clip_id?, piste_id?, position?, duree?, decalee?, pose_refusee?, credit? }. Si a_reecouter est vrai, lis entendu et mots_douteux, réécris le mot fautif dans dire et régénère. Moteur local absent : erreur moteur_absent avec la taille et le dossier ; demande l'accord de la personne puis appelle voix_off_installer.",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -56,6 +56,12 @@
           "type": "string",
           "maxLength": 48,
           "description": "La description courte du fichier, après le numéro. Défaut : les premiers mots du texte."
+        },
+        "dossier": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Où ranger le fichier, relatif au dossier du projet : « Script 01/02 Son ». Créé au besoin ; le dossier du chutier suit le même chemin. Défaut : « Voix off » à la racine du projet."
         },
         "poser": {
           "type": "object",

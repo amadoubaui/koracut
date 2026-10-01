@@ -10,6 +10,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QList>
 #include <QMap>
 #include <QObject>
+#include <QPointer>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -85,10 +86,22 @@ public:
 
     /** @brief Le projet KoraCut courant et sa timeline. Relit les projets Motion du dossier. */
     void setDocument(KdenliveDoc *doc, const std::shared_ptr<TimelineItemModel> &timeline);
-    /** @brief La séquence active a changé : le miroir la suit. Chaque composition vit dans une séquence
-     * (data-koracut-sequence ; sans : la séquence principale du projet) ; seules celles de la séquence active
-     * sont posées et réconciliées (montage Tek Tech, 24 septembre 2026 : deux séquences, 16:9 et 9:16). */
+    /** @brief La séquence active a changé. Chaque composition vit dans une séquence (data-koracut-sequence ;
+     * sans : la séquence principale du projet) et n'en sort jamais : pose, nouveau rendu, retime, retrait et
+     * annulation se font dans SA séquence, active ou non (1er octobre 2026 : quatre publicités dans un
+     * projet, des clips de la séquence 1 posés dans la séquence 3 parce qu'elle était devant à la fin du
+     * rendu). Une séquence dont l'onglet est fermé attend : ses compositions sont posées à sa réouverture. */
     void setTimeline(const std::shared_ptr<TimelineItemModel> &timeline);
+    /** @brief La séquence (uuid sans accolades) où vit cette composition. */
+    QString sequenceOf(const QString &project) const;
+    /** @brief La timeline de la séquence de cette composition, nul si son onglet est fermé. */
+    std::shared_ptr<TimelineItemModel> timelineFor(const QString &project) const;
+    /** @brief Applique tout de suite ce que la timeline a changé (clip supprimé, déplacé, annulation) sans
+     * attendre le regroupement de 200 ms : les outils lisent un état à jour. */
+    void flush();
+    /** @brief Range le dossier d'une composition dans `motion/.corbeille/<nom>-<date>/` et l'oublie : son
+     * nom redevient libre, rien n'est supprimé. @return le dossier de la corbeille, vide en cas d'échec. */
+    QString trashProject(const QString &project);
     void clear();
     /** @brief Relit le dossier motion/ du projet : nouvelles compositions enregistrées, disparues retirées.
      * Le dossier dépend de l'emplacement du fichier projet, qui peut changer après l'ouverture. */
@@ -151,7 +164,7 @@ public:
     void setPanelProject(const QString &project) { m_panelProject = project; }
     QString panelProject() const { return m_panelProject; }
 
-    /** @brief Vrai si ce clip de timeline vient d'un projet Motion. */
+    /** @brief Vrai si ce clip de timeline (de n'importe quelle séquence ouverte) vient d'un projet Motion. */
     bool isMotionClip(int clipId) const;
     struct ClipInfo
     {
@@ -204,14 +217,25 @@ private:
     bool applyFromFile(const QString &name, bool logUndo, const QString &undoText = QString(), Fun *outUndo = nullptr, Fun *outRedo = nullptr);
     /** @brief Les clips Motion supprimés à la main : leur élément quitte le HTML ; ceux qui reviennent (Annuler)
      * ramènent leur élément. @return les projets réécrits. */
-    QStringList reconcileRemovals(const std::shared_ptr<TimelineItemModel> &tl);
+    QStringList reconcileRemovals(const std::shared_ptr<TimelineItemModel> &tl, const QString &sequence);
     static int entryPoint(const KoraCutMotion::Element &element, double fps);
     void requestRender(Entry &entry, const KoraCutMotion::Element &element);
     void onRendered(const QString &project, const QString &elementId, const QString &hash, const QString &path);
     void onRenderFailed(const QString &project, const QString &elementId, const QString &error);
-    void scheduleReconcile();
+    void scheduleReconcile(const QString &sequence);
     void reconcileTimeline();
+    /** @brief Timeline → HTML pour une séquence : retraits, transitions, places et durées. */
+    void reconcileSequence(const QString &sequence);
     std::shared_ptr<TimelineItemModel> timeline() const;
+    /** @brief La séquence d'une composition : celle écrite, ou la principale. */
+    QString resolved(const QString &sequence) const;
+    /** @brief La timeline d'une séquence ouverte (active ou non), nul sinon. */
+    std::shared_ptr<TimelineItemModel> timelineOf(const QString &sequence) const;
+    /** @brief Écoute cette timeline : un clip Motion qui y bouge (à la main, par une annulation) est suivi. */
+    void watchModel(const std::shared_ptr<TimelineItemModel> &timeline);
+    static ClipInfo clipInfoIn(const std::shared_ptr<TimelineItemModel> &timeline, int clipId);
+    /** @brief Une composition neuve sans séquence écrite prend la séquence active (si ce n'est pas la principale). */
+    void stampSequence(const QString &indexPath) const;
     double fps() const;
     int ensureTrack(const Entry &entry, int trackIndex, bool audio, Fun &undo, Fun &redo);
     QString ensureFolder(Fun &undo, Fun &redo);
@@ -227,7 +251,7 @@ private:
     int elementTrack(const QString &project, int position, int length, Fun &undo, Fun &redo);
     /** @brief Les transitions suivent leur coupe : une coupe déplacée les recentre, une transition déplacée à la
      * main s'accroche à la coupe la plus proche de son milieu (ou se détache). @return les projets réécrits. */
-    QStringList retimeTransitions(const std::shared_ptr<TimelineItemModel> &tl);
+    QStringList retimeTransitions(const std::shared_ptr<TimelineItemModel> &tl, const QString &sequence);
     /** @brief Les clips des éléments seuls posés sous la transition @p transitionClip. */
     QList<int> followersOf(const std::shared_ptr<TimelineItemModel> &tl, const QString &transition, int transitionClip) const;
     /** @brief Une coupe (un plan qui finit où le suivant commence, sur une piste vidéo sous @p aboveTrack) à
@@ -247,9 +271,8 @@ private:
     QString m_lastOpened;
     QString m_panelProject;
     QList<QMetaObject::Connection> m_timelineConnections;
-    QList<QMetaObject::Connection> m_modelConnections; ///< celles de la timeline suivie, refaites à chaque changement de séquence
-    QString m_sequence;     ///< uuid (sans accolades) de la séquence suivie
+    QMap<QString, QPointer<TimelineItemModel>> m_watched; ///< les timelines écoutées, par séquence
+    QSet<QString> m_dirty;  ///< les séquences dont la timeline a bougé depuis la dernière réconciliation
+    QString m_sequence;     ///< uuid (sans accolades) de la séquence active
     QString m_mainSequence; ///< la séquence des compositions sans data-koracut-sequence
-    void connectModel(const std::shared_ptr<TimelineItemModel> &timeline);
-    bool belongs(const QString &sequence) const;
 };

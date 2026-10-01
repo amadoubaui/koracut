@@ -30,6 +30,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QElapsedTimer>
 #include <QTimer>
 #include <QUuid>
@@ -138,10 +139,14 @@ void KoraCutMotionMirror::clear()
         disconnect(c);
     }
     m_timelineConnections.clear();
-    for (const QMetaObject::Connection &c : std::as_const(m_modelConnections)) {
-        disconnect(c);
+    for (const QPointer<TimelineItemModel> &model : std::as_const(m_watched)) {
+        if (model) {
+            disconnect(model.data(), nullptr, this, nullptr);
+        }
     }
-    m_modelConnections.clear();
+    m_watched.clear();
+    m_dirty.clear();
+    m_reconcile->stop();
     m_sequence.clear();
     m_mainSequence.clear();
     for (auto it = m_entries.begin(); it != m_entries.end(); ++it) {
@@ -175,24 +180,73 @@ void KoraCutMotionMirror::setDocument(KdenliveDoc *doc, const std::shared_ptr<Ti
         m_mainSequence = m_sequence;
         doc->setDocumentProperty(QStringLiteral("koracut:motion_principale"), m_mainSequence);
     }
-    connectModel(timeline);
+    watchModel(timeline);
     // Le dossier motion/ suit le fichier projet : un projet neuf est nommé après connectDocument(),
     // un projet enregistré ailleurs change de dossier. On relit donc à chaque modification du document.
     m_timelineConnections << connect(doc, &KdenliveDoc::docModified, this, [this]() { m_rescan->start(); });
     rescan();
 }
 
-void KoraCutMotionMirror::connectModel(const std::shared_ptr<TimelineItemModel> &timeline)
+void KoraCutMotionMirror::watchModel(const std::shared_ptr<TimelineItemModel> &timeline)
 {
-    // Un clip qui bouge, se rogne ou disparaît : la timeline commande, le fichier suit.
-    m_modelConnections << connect(timeline.get(), &QAbstractItemModel::dataChanged, this, &KoraCutMotionMirror::scheduleReconcile);
-    m_modelConnections << connect(timeline.get(), &QAbstractItemModel::rowsRemoved, this, &KoraCutMotionMirror::scheduleReconcile);
-    m_modelConnections << connect(timeline.get(), &QAbstractItemModel::rowsInserted, this, &KoraCutMotionMirror::scheduleReconcile);
+    if (!timeline) {
+        return;
+    }
+    const QString sequence = timeline->uuid().toString(QUuid::WithoutBraces);
+    if (m_watched.value(sequence).data() == timeline.get()) {
+        return;
+    }
+    m_watched.insert(sequence, QPointer<TimelineItemModel>(timeline.get()));
+    // Un clip qui bouge, se rogne ou disparaît : la timeline commande, le fichier suit. Toutes les séquences
+    // ouvertes sont écoutées, pas seulement l'active : un Annuler peut défaire un geste d'une autre séquence.
+    connect(timeline.get(), &QAbstractItemModel::dataChanged, this, [this, sequence]() { scheduleReconcile(sequence); });
+    connect(timeline.get(), &QAbstractItemModel::rowsRemoved, this, [this, sequence]() { scheduleReconcile(sequence); });
+    connect(timeline.get(), &QAbstractItemModel::rowsInserted, this, [this, sequence]() { scheduleReconcile(sequence); });
 }
 
-bool KoraCutMotionMirror::belongs(const QString &sequence) const
+QString KoraCutMotionMirror::resolved(const QString &sequence) const
 {
-    return sequence.isEmpty() ? (m_mainSequence.isEmpty() || m_sequence == m_mainSequence) : sequence == m_sequence;
+    if (!sequence.isEmpty()) {
+        return sequence;
+    }
+    return m_mainSequence.isEmpty() ? m_sequence : m_mainSequence;
+}
+
+std::shared_ptr<TimelineItemModel> KoraCutMotionMirror::timelineOf(const QString &sequence) const
+{
+    if (!m_doc || pCore->currentDoc() != m_doc) {
+        return nullptr;
+    }
+    const QString wanted = resolved(sequence);
+    if (wanted.isEmpty() || wanted == m_sequence) {
+        return m_timeline.lock();
+    }
+    // Une autre séquence du projet : sa timeline si elle est ouverte dans un onglet. Fermée, elle attend
+    // (son modèle existe encore, mais sa durée et ses groupes ne sont plus tenus à jour).
+    const QUuid uuid(wanted);
+    if (uuid.isNull()) {
+        return nullptr;
+    }
+    auto tl = m_doc->getTimeline(uuid, true);
+    return tl && !tl->isClosed ? tl : nullptr;
+}
+
+QString KoraCutMotionMirror::sequenceOf(const QString &project) const
+{
+    return m_entries.contains(project) ? resolved(m_entries[project].sync->composition().sequence) : QString();
+}
+
+std::shared_ptr<TimelineItemModel> KoraCutMotionMirror::timelineFor(const QString &project) const
+{
+    return m_entries.contains(project) ? timelineOf(m_entries[project].sync->composition().sequence) : nullptr;
+}
+
+void KoraCutMotionMirror::flush()
+{
+    if (m_reconcile->isActive()) {
+        m_reconcile->stop();
+        reconcileTimeline();
+    }
 }
 
 void KoraCutMotionMirror::setTimeline(const std::shared_ptr<TimelineItemModel> &timeline)
@@ -200,22 +254,24 @@ void KoraCutMotionMirror::setTimeline(const std::shared_ptr<TimelineItemModel> &
     if (!m_doc || !timeline || timeline == m_timeline.lock()) {
         return;
     }
-    for (const QMetaObject::Connection &c : std::as_const(m_modelConnections)) {
-        disconnect(c);
-    }
-    m_modelConnections.clear();
+    // Ce que la séquence quittée vient de changer est écrit avant de passer à l'autre.
+    flush();
     m_timeline = timeline;
     m_sequence = timeline->uuid().toString(QUuid::WithoutBraces);
-    for (auto it = m_entries.begin(); it != m_entries.end(); ++it) {
-        // Les pistes et les plans retenus appartiennent à l'autre séquence.
-        it->homeTrack = -1;
-        it->cutBefore = -1;
-        it->cutAfter = -1;
+    watchModel(timeline);
+    if (pCore->currentDoc() == m_doc) {
+        const QList<QUuid> uuids = m_doc->getTimelinesUuids();
+        for (const QUuid &uuid : uuids) {
+            if (auto other = m_doc->getTimeline(uuid, true); other && !other->isClosed) {
+                watchModel(other);
+            }
+        }
     }
-    connectModel(timeline);
-    for (auto it = m_entries.begin(); it != m_entries.end(); ++it) {
-        if (belongs(it->sync->composition().sequence)) {
-            applyFromFile(it.key(), false);
+    // Les compositions de cette séquence qui attendaient (onglet fermé pendant leur rendu) sont posées.
+    const QStringList names = m_entries.keys();
+    for (const QString &name : names) {
+        if (m_entries.contains(name) && resolved(m_entries[name].sync->composition().sequence) == m_sequence) {
+            applyFromFile(name, false);
         }
     }
     Q_EMIT projectsChanged();
@@ -229,7 +285,9 @@ void KoraCutMotionMirror::rescan()
     const QString root = motionRoot();
     bool changed = false;
     for (auto it = m_entries.begin(); it != m_entries.end();) {
-        if (!it->dir.startsWith(root + QLatin1Char('/'))) {
+        // Hors du dossier motion/ du projet, ou dossier retiré à la main : la composition n'existe plus,
+        // son nom est libre tout de suite (avant le 1er octobre 2026 : seulement au lancement suivant).
+        if (!it->dir.startsWith(root + QLatin1Char('/')) || !QFile::exists(it->indexPath)) {
             delete it->sync;
             it = m_entries.erase(it);
             changed = true;
@@ -404,6 +462,7 @@ QString KoraCutMotionMirror::createProject(const QString &name, QString *error, 
         file.write(html.toUtf8());
         file.close();
     }
+    stampSequence(index);
     const QString clean = KoraCutMotionProject::sanitizeName(name);
     registerProject(clean, QFileInfo(index).absolutePath(), index);
     Q_EMIT projectsChanged();
@@ -429,11 +488,65 @@ QString KoraCutMotionMirror::importProject(const QString &source, const QString 
     if (index.isEmpty()) {
         return QString();
     }
+    stampSequence(index);
     const QString clean = KoraCutMotionProject::sanitizeName(wanted);
     registerProject(clean, QFileInfo(index).absolutePath(), index);
     Q_EMIT projectsChanged();
     applyFromFile(clean, true, i18nc("@action undo text", "Motion: import %1", clean));
     return clean;
+}
+
+void KoraCutMotionMirror::stampSequence(const QString &indexPath) const
+{
+    // Créée pendant qu'une autre séquence que la principale est devant : c'est là qu'elle vit. Sans cela,
+    // une composition sans data-koracut-sequence part dans la séquence principale du projet.
+    if (m_sequence.isEmpty() || m_sequence == m_mainSequence) {
+        return;
+    }
+    QFile file(indexPath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return;
+    }
+    QString html = QString::fromUtf8(file.readAll());
+    file.close();
+    const QList<KoraCutMotion::Tag> tags = KoraCutMotion::tokenize(html);
+    for (const KoraCutMotion::Tag &t : tags) {
+        if (!t.closing && t.has(QStringLiteral("data-composition-id"))) {
+            if (!t.attr(QStringLiteral("data-koracut-sequence")).trimmed().isEmpty()) {
+                return;
+            }
+            html = KoraCutMotion::setAttribute(html, t, QStringLiteral("data-koracut-sequence"), m_sequence);
+            if (file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+                file.write(html.toUtf8());
+            }
+            return;
+        }
+    }
+}
+
+QString KoraCutMotionMirror::trashProject(const QString &project)
+{
+    if (!m_entries.contains(project)) {
+        return QString();
+    }
+    const QString dir = m_entries[project].dir;
+    const QString trash = motionRoot() + QStringLiteral("/.corbeille");
+    if (!QDir().mkpath(trash)) {
+        return QString();
+    }
+    QString target = trash + QLatin1Char('/') + project + QLatin1Char('-') + QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
+    for (int n = 2; QFile::exists(target); ++n) {
+        target = trash + QLatin1Char('/') + project + QLatin1Char('-') + QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss")) + QLatin1Char('-') + QString::number(n);
+    }
+    // Le synchroniseur surveille le fichier : il le lâche avant le déplacement (Windows refuse sinon).
+    delete m_entries[project].sync;
+    m_entries.remove(project);
+    if (!QDir().rename(dir, target)) {
+        registerProject(project, dir, dir + QStringLiteral("/index.html"));
+        return QString();
+    }
+    Q_EMIT projectsChanged();
+    return target;
 }
 
 void KoraCutMotionMirror::renderAll(const QString &name, bool force)
@@ -602,10 +715,9 @@ bool KoraCutMotionMirror::isMotionClip(int clipId) const
     return !clipInfo(clipId).project.isEmpty();
 }
 
-KoraCutMotionMirror::ClipInfo KoraCutMotionMirror::clipInfo(int clipId) const
+KoraCutMotionMirror::ClipInfo KoraCutMotionMirror::clipInfoIn(const std::shared_ptr<TimelineItemModel> &tl, int clipId)
 {
     ClipInfo info;
-    auto tl = m_timeline.lock();
     if (!tl || clipId < 0 || !tl->isClip(clipId)) {
         return info;
     }
@@ -616,6 +728,28 @@ KoraCutMotionMirror::ClipInfo KoraCutMotionMirror::clipInfo(int clipId) const
     info.project = bin->getProducerProperty(kClipProject);
     info.elementId = bin->getProducerProperty(kClipElement);
     return info;
+}
+
+KoraCutMotionMirror::ClipInfo KoraCutMotionMirror::clipInfo(int clipId) const
+{
+    // La séquence active d'abord ; les identifiants de clips sont uniques dans toute l'application, un clip
+    // d'une autre séquence ouverte se retrouve donc sans ambiguïté.
+    auto active = m_timeline.lock();
+    if (active && active->isClip(clipId)) {
+        return clipInfoIn(active, clipId);
+    }
+    for (const QPointer<TimelineItemModel> &model : m_watched) {
+        if (model && model.data() != active.get() && model->isClip(clipId)) {
+            auto bin = pCore->projectItemModel()->getClipByBinID(model->getClipBinId(clipId));
+            ClipInfo info;
+            if (bin) {
+                info.project = bin->getProducerProperty(kClipProject);
+                info.elementId = bin->getProducerProperty(kClipElement);
+            }
+            return info;
+        }
+    }
+    return ClipInfo();
 }
 
 QString KoraCutMotionMirror::projectOfElement(const QString &elementId) const
@@ -630,7 +764,9 @@ QString KoraCutMotionMirror::projectOfElement(const QString &elementId) const
 
 int KoraCutMotionMirror::clipFor(const QString &project, const QString &elementId) const
 {
-    auto tl = m_timeline.lock();
+    // Dans la séquence de la composition, jamais ailleurs : c'est ce qui empêche de poser son clip dans la
+    // séquence qui se trouve devant quand son rendu se termine.
+    auto tl = m_entries.contains(project) ? timelineFor(project) : m_timeline.lock();
     if (!tl) {
         return -1;
     }
@@ -642,7 +778,7 @@ int KoraCutMotionMirror::clipFor(const QString &project, const QString &elementI
                 if (!tl->isClip(cid)) {
                     continue;
                 }
-                const ClipInfo info = clipInfo(cid);
+                const ClipInfo info = clipInfoIn(tl, cid);
                 if (info.project == project && info.elementId == elementId) {
                     return cid;
                 }
@@ -657,7 +793,7 @@ QString KoraCutMotionMirror::trackName(const Entry &entry, int trackIndex, bool 
     if (audio) {
         return i18nc("@item track name, sound of a Motion composition", "Motion · %1 · sound", entry.name);
     }
-    auto tl = m_timeline.lock();
+    auto tl = timelineOf(entry.sync->composition().sequence);
     int existing = 0;
     if (tl) {
         for (int tid : tl->getTracksIds(false)) {
@@ -675,7 +811,7 @@ QString KoraCutMotionMirror::trackName(const Entry &entry, int trackIndex, bool 
 
 int KoraCutMotionMirror::ensureTrack(const Entry &entry, int trackIndex, bool audio, Fun &undo, Fun &redo)
 {
-    auto tl = m_timeline.lock();
+    auto tl = timelineOf(entry.sync->composition().sequence);
     if (!tl) {
         return -1;
     }
@@ -730,7 +866,7 @@ QString KoraCutMotionMirror::ensureFolder(Fun &undo, Fun &redo)
 
 bool KoraCutMotionMirror::insertClip(const Entry &entry, const KoraCutMotion::Element &element, const QString &binId, int in, int length, Fun &undo, Fun &redo)
 {
-    auto tl = m_timeline.lock();
+    auto tl = timelineOf(entry.sync->composition().sequence);
     if (!tl || length <= 0) {
         return false;
     }
@@ -793,8 +929,7 @@ bool KoraCutMotionMirror::applyFromFile(const QString &name, bool logUndo, const
     if (!m_entries.contains(name)) {
         return false;
     }
-    auto tl = timeline();
-    if (!tl) {
+    if (!timeline()) {
         return false;
     }
     Entry &entry = m_entries[name];
@@ -827,10 +962,12 @@ bool KoraCutMotionMirror::applyFromFile(const QString &name, bool logUndo, const
             giveAutomaticName(bin, wanted);
         }
     }
-    if (!belongs(comp.sequence)) {
-        // Une composition d'une autre séquence : elle attend qu'on revienne sur la sienne.
+    // La timeline de SA séquence, qu'elle soit devant ou non. Onglet fermé : elle attend sa réouverture.
+    auto tl = timelineOf(comp.sequence);
+    if (!tl) {
         return false;
     }
+    watchModel(tl);
     const double projectFps = fps();
     m_applying = true;
     auto undo = std::make_shared<Fun>([]() { return true; });
@@ -971,7 +1108,7 @@ bool KoraCutMotionMirror::applyFromFile(const QString &name, bool logUndo, const
         for (int tid : tracks) {
             const auto items = tl->getItemsInRange(tid, 0, -1, false);
             for (int cid : items) {
-                const ClipInfo info = clipInfo(cid);
+                const ClipInfo info = clipInfoIn(tl, cid);
                 if (info.project == name && !ids.contains(info.elementId)) {
                     const int from = tl->getClipPosition(cid);
                     const int to = from + tl->getClipPlaytime(cid);
@@ -1013,8 +1150,7 @@ void KoraCutMotionMirror::onRendered(const QString &project, const QString &elem
     if (!m_entries.contains(project)) {
         return;
     }
-    auto tl = timeline();
-    if (!tl) {
+    if (!timeline()) {
         return;
     }
     Entry &entry = m_entries[project];
@@ -1072,6 +1208,12 @@ void KoraCutMotionMirror::onRendered(const QString &project, const QString &elem
             Q_EMIT elementsChanged(project);
             return; // déjà posé
         }
+        if (!timelineFor(project)) {
+            // Sa séquence n'est pas ouverte : le média est à jour dans le chutier, le clip sera posé à la
+            // réouverture de la séquence (setTimeline), jamais dans la séquence qui se trouve devant.
+            Q_EMIT elementsChanged(project);
+            return;
+        }
     }
     auto undo = std::make_shared<Fun>([]() { return true; });
     auto redo = std::make_shared<Fun>([]() { return true; });
@@ -1081,10 +1223,16 @@ void KoraCutMotionMirror::onRendered(const QString &project, const QString &elem
         if (!m_entries.contains(name)) {
             return;
         }
-        auto tl = timeline();
         auto bin = pCore->projectItemModel()->getClipByBinID(binId);
-        if (!tl || !bin) {
+        if (!timeline() || !bin) {
             return;
+        }
+        // La timeline de la séquence de l'élément, relue ici : la séquence active a pu changer pendant le
+        // rendu ou pendant le chargement du clip (défaut du 1er octobre 2026). Nulle (onglet fermé) : le
+        // clip du chutier est prêt, la pose attend la réouverture.
+        auto tl = timelineFor(name);
+        if (tl) {
+            watchModel(tl);
         }
         bin->setProducerProperty(kClipProject, name);
         bin->setProducerProperty(kClipElement, element.id);
@@ -1097,7 +1245,7 @@ void KoraCutMotionMirror::onRendered(const QString &project, const QString &elem
         bin->updateTimelineClips({TimelineModel::NameRole});
         m_applying = true;
         const int length = element.durationKnown ? frames(element.duration, fps()) : int(bin->frameDuration()) - in;
-        const bool ok = !retired && clipFor(name, element.id) < 0 && insertClip(m_entries[name], element, binId, in, length, *undo, *redo);
+        const bool ok = tl && !retired && clipFor(name, element.id) < 0 && insertClip(m_entries[name], element, binId, in, length, *undo, *redo);
         m_applying = false;
         if (ok) {
             m_entries[name].placed.insert(element.id);
@@ -1130,27 +1278,41 @@ void KoraCutMotionMirror::onRenderFailed(const QString &project, const QString &
 // ---------------------------------------------------------------------------------------------
 // timeline → HTML
 
-void KoraCutMotionMirror::scheduleReconcile()
+void KoraCutMotionMirror::scheduleReconcile(const QString &sequence)
 {
     if (m_applying || m_entries.isEmpty()) {
         return;
     }
+    m_dirty.insert(sequence);
     m_reconcile->start();
 }
 
 void KoraCutMotionMirror::reconcileTimeline()
 {
+    if (m_applying) {
+        return;
+    }
+    const QSet<QString> sequences = m_dirty;
+    m_dirty.clear();
+    for (const QString &sequence : sequences) {
+        reconcileSequence(sequence);
+    }
+}
+
+void KoraCutMotionMirror::reconcileSequence(const QString &sequence)
+{
     using namespace KoraCutMotion;
     if (m_applying) {
         return;
     }
-    auto tl = timeline();
+    m_dirty.remove(sequence);
+    auto tl = timelineOf(sequence);
     if (!tl) {
         return;
     }
     const double projectFps = fps();
-    QStringList rewritten = reconcileRemovals(tl);
-    for (const QString &name : retimeTransitions(tl)) {
+    QStringList rewritten = reconcileRemovals(tl, sequence);
+    for (const QString &name : retimeTransitions(tl, sequence)) {
         if (!rewritten.contains(name)) {
             rewritten << name;
         }
@@ -1160,8 +1322,8 @@ void KoraCutMotionMirror::reconcileTimeline()
         for (int tid : tracks) {
             const auto items = tl->getItemsInRange(tid, 0, -1, false);
             for (int cid : items) {
-                const ClipInfo info = clipInfo(cid);
-                if (info.project.isEmpty() || !m_entries.contains(info.project) || !belongs(m_entries.value(info.project).sync->composition().sequence)) {
+                const ClipInfo info = clipInfoIn(tl, cid);
+                if (info.project.isEmpty() || !m_entries.contains(info.project) || resolved(m_entries.value(info.project).sync->composition().sequence) != sequence) {
                     continue;
                 }
                 Entry &entry = m_entries[info.project];
@@ -1217,7 +1379,7 @@ void KoraCutMotionMirror::reconcileTimeline()
     }
 }
 
-QStringList KoraCutMotionMirror::reconcileRemovals(const std::shared_ptr<TimelineItemModel> &tl)
+QStringList KoraCutMotionMirror::reconcileRemovals(const std::shared_ptr<TimelineItemModel> &tl, const QString &sequence)
 {
     using namespace KoraCutMotion;
     QStringList rewritten;
@@ -1225,7 +1387,7 @@ QStringList KoraCutMotionMirror::reconcileRemovals(const std::shared_ptr<Timelin
         Entry &entry = it.value();
         const QString name = it.key();
         const Composition &single = entry.sync->composition();
-        if (!belongs(single.sequence)) {
+        if (resolved(single.sequence) != sequence) {
             continue;
         }
         if (single.isElement() && !single.elements.isEmpty()) {
@@ -1252,7 +1414,7 @@ QStringList KoraCutMotionMirror::reconcileRemovals(const std::shared_ptr<Timelin
         for (bool audio : {false, true}) {
             for (int tid : tl->getTracksIds(audio)) {
                 for (int cid : tl->getItemsInRange(tid, 0, -1, false)) {
-                    const ClipInfo info = clipInfo(cid);
+                    const ClipInfo info = clipInfoIn(tl, cid);
                     if (info.project != name || !entry.removed.contains(info.elementId) || entry.sync->composition().element(info.elementId)) {
                         continue;
                     }
@@ -1370,7 +1532,7 @@ bool KoraCutMotionMirror::setElementAttribute(const QString &project, const QStr
 
 bool KoraCutMotionMirror::moveElement(const QString &project, const QString &id, double seconds)
 {
-    auto tl = timeline();
+    auto tl = timelineFor(project);
     const int cid = clipFor(project, id);
     if (!tl || cid < 0) {
         return false;
@@ -1378,8 +1540,7 @@ bool KoraCutMotionMirror::moveElement(const QString &project, const QString &id,
     // Le vrai geste : le clip bouge dans la timeline (une étape d'annulation), le fichier suit.
     const bool ok = tl->requestClipMove(cid, tl->getClipTrackId(cid), frames(seconds, fps()), true, true, true);
     if (ok) {
-        m_reconcile->stop();
-        reconcileTimeline();
+        reconcileSequence(sequenceOf(project));
     }
     return ok;
 }
@@ -1463,10 +1624,16 @@ bool KoraCutMotionMirror::place(const QString &project, int trackId, double atSe
 {
     using namespace KoraCutMotion;
     rescan();
-    auto tl = timeline();
-    if (!tl || !m_entries.contains(project)) {
+    if (!timeline() || !m_entries.contains(project)) {
         if (error) {
             *error = QStringLiteral("projet_inconnu");
+        }
+        return false;
+    }
+    auto tl = timelineFor(project);
+    if (!tl) {
+        if (error) {
+            *error = QStringLiteral("sequence_fermee");
         }
         return false;
     }
@@ -1571,8 +1738,7 @@ bool KoraCutMotionMirror::place(const QString &project, int trackId, double atSe
                 }
             }
             m_applying = false;
-            m_reconcile->stop();
-            reconcileTimeline();
+            reconcileSequence(sequenceOf(project));
         }
     }
     if (changed) {
@@ -1630,7 +1796,7 @@ void KoraCutMotionMirror::announceOpened(const QString &project, const QString &
 
 int KoraCutMotionMirror::elementTrack(const QString &project, int position, int length, Fun &undo, Fun &redo)
 {
-    auto tl = m_timeline.lock();
+    auto tl = timelineFor(project);
     if (!tl || !m_entries.contains(project)) {
         return -1;
     }
@@ -1814,7 +1980,8 @@ QList<int> KoraCutMotionMirror::followersOf(const std::shared_ptr<TimelineItemMo
     const int end = start + tl->getClipPlaytime(transitionClip);
     for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it) {
         const KoraCutMotion::Composition &comp = it.value().sync->composition();
-        if (it.key() == transition || !comp.isElement() || comp.isTransition() || comp.retired || comp.elements.isEmpty()) {
+        if (it.key() == transition || !comp.isElement() || comp.isTransition() || comp.retired || comp.elements.isEmpty() ||
+            sequenceOf(it.key()) != sequenceOf(transition)) {
             continue;
         }
         const int cid = clipFor(it.key(), comp.elements.first().id);
@@ -1835,7 +2002,7 @@ QList<int> KoraCutMotionMirror::followersOf(const std::shared_ptr<TimelineItemMo
 
 QString KoraCutMotionMirror::followedTransition(const QString &name) const
 {
-    auto tl = m_timeline.lock();
+    auto tl = timelineFor(name);
     if (!tl || !m_entries.contains(name)) {
         return QString();
     }
@@ -1846,7 +2013,7 @@ QString KoraCutMotionMirror::followedTransition(const QString &name) const
     const int cid = clipFor(name, comp.elements.first().id);
     for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it) {
         const KoraCutMotion::Composition &other = it.value().sync->composition();
-        if (!other.isTransition() || other.cut < 0 || other.elements.isEmpty()) {
+        if (!other.isTransition() || other.cut < 0 || other.elements.isEmpty() || sequenceOf(it.key()) != sequenceOf(name)) {
             continue;
         }
         if (followersOf(tl, it.key(), clipFor(it.key(), other.elements.first().id)).contains(cid)) {
@@ -1856,7 +2023,7 @@ QString KoraCutMotionMirror::followedTransition(const QString &name) const
     return QString();
 }
 
-QStringList KoraCutMotionMirror::retimeTransitions(const std::shared_ptr<TimelineItemModel> &tl)
+QStringList KoraCutMotionMirror::retimeTransitions(const std::shared_ptr<TimelineItemModel> &tl, const QString &sequence)
 {
     using namespace KoraCutMotion;
     QStringList rewritten;
@@ -1864,7 +2031,7 @@ QStringList KoraCutMotionMirror::retimeTransitions(const std::shared_ptr<Timelin
     for (auto it = m_entries.begin(); it != m_entries.end(); ++it) {
         Entry &entry = it.value();
         const Composition &comp = entry.sync->composition();
-        if (!belongs(comp.sequence) || !comp.isTransition() || comp.cut < 0 || comp.elements.isEmpty()) {
+        if (resolved(comp.sequence) != sequence || !comp.isTransition() || comp.cut < 0 || comp.elements.isEmpty()) {
             continue;
         }
         const QString elementId = comp.elements.first().id;
@@ -1996,9 +2163,9 @@ void KoraCutMotionMirror::scheduleThumbnail(const QString &binId, int attempt)
 QString KoraCutMotionMirror::stateDump() const
 {
     QString out;
-    auto tl = m_timeline.lock();
     for (const QString &name : m_entries.keys()) {
         const auto list = elements(name);
+        auto tl = timelineFor(name);
         for (const ElementState &e : list) {
             QString render = QStringLiteral("aucun");
             if (e.pending) {

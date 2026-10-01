@@ -126,6 +126,19 @@ TEST_CASE("Outils d'organisation : chutier, fichiers, séquences, pistes, clips"
         CHECK(parentName(idA) == QStringLiteral("Jour 1"));
         CHECK(undoStack->index() == before + 1);
         CHECK(QFile::exists(rushA)); // disque false : le fichier ne bouge pas
+        // lister_medias dit le chemin complet du dossier (deux « Jour 1 » dans deux dossiers se distinguent),
+        // et le dernier nom à part ; le filtre prend l'un ou l'autre.
+        {
+            const QJsonObject listed = call(timeline, QStringLiteral("lister_medias"), {{QStringLiteral("dossier"), QStringLiteral("01 Rushs/Jour 1")}});
+            REQUIRE(listed.value(QStringLiteral("medias")).toArray().size() == 2);
+            const QJsonObject first = listed.value(QStringLiteral("medias")).toArray().first().toObject();
+            CHECK(first.value(QStringLiteral("dossier")).toString() == QStringLiteral("01 Rushs/Jour 1"));
+            CHECK(first.value(QStringLiteral("dossier_nom")).toString() == QStringLiteral("Jour 1"));
+            CHECK(call(timeline, QStringLiteral("lister_medias"), {{QStringLiteral("dossier"), QStringLiteral("Jour 1")}}).value(QStringLiteral("total")).toInt() == 2);
+            CHECK(call(timeline, QStringLiteral("lister_medias"), {{QStringLiteral("dossier"), QStringLiteral("02 Son/Jour 1")}}).value(QStringLiteral("total")).toInt() == 0);
+            CHECK(KoraCutAgentTools::binFolderPath(idA) == QStringLiteral("01 Rushs/Jour 1"));
+            CHECK(KoraCutAgentTools::binFolderPath(red).isEmpty());
+        }
         r = call(timeline, QStringLiteral("ranger_media"), {{QStringLiteral("media_ids"), QJsonArray{idA}}, {QStringLiteral("dossier"), QStringLiteral("Jour 1")}});
         CHECK(r.value(QStringLiteral("deja_la")).toArray().size() == 1);
         CHECK(undoStack->index() == before + 1);

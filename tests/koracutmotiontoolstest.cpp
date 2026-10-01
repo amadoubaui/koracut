@@ -5,6 +5,7 @@
 #include "catch.hpp"
 #include "test_utils.hpp"
 
+#include "bin/clipcreator.hpp"
 #include "bin/projectclip.h"
 #include "bin/projectitemmodel.h"
 #include "core.h"
@@ -452,5 +453,359 @@ TEST_CASE("Outils Motion : composition, éléments, rendu simulé, pose", "[Kora
     mirror.clear();
     KoraCutAgentTools::setMotionMirror(nullptr);
     Q_UNUSED(undoBefore);
+    pCore->projectManager()->closeCurrentDocument(false, false);
+}
+
+namespace {
+
+/** Le nombre de clips posés dans une séquence, toutes pistes confondues. */
+int clipsIn(const std::shared_ptr<TimelineItemModel> &tl)
+{
+    int n = 0;
+    for (bool audio : {false, true}) {
+        for (int tid : tl->getTracksIds(audio)) {
+            for (int id : tl->getItemsInRange(tid, 0, -1, false)) {
+                if (tl->isClip(id)) {
+                    ++n;
+                }
+            }
+        }
+    }
+    return n;
+}
+
+QJsonObject compositionOf(const QJsonObject &list, const QString &name)
+{
+    for (const QJsonValue &v : list.value(QStringLiteral("compositions")).toArray()) {
+        if (v.toObject().value(QStringLiteral("nom")).toString() == name) {
+            return v.toObject();
+        }
+    }
+    return {};
+}
+
+std::string dumpJson(const QJsonObject &o)
+{
+    return QJsonDocument(o).toJson(QJsonDocument::Compact).toStdString();
+}
+
+} // namespace
+
+// 1er octobre 2026, quatre publicités dans un projet : un rendu fini pendant qu'une autre séquence est
+// devant posait son clip dans cette autre séquence. Chaque élément reste dans SA séquence (pose, nouveau
+// rendu, retime, retrait, annulation, séquence fermée). Et dans la foulée : le nom d'une composition dont
+// la création est annulée redevient libre, et les outils savent apporter des polices et des images.
+TEST_CASE("Outils Motion : deux séquences, noms libérés, fichiers fournis", "[KoraCutMotionTools]")
+{
+    auto binModel = pCore->projectItemModel();
+    std::shared_ptr<DocUndoStack> undoStack = std::make_shared<DocUndoStack>(nullptr);
+    KdenliveDoc document(undoStack);
+    pCore->projectManager()->testSetDocument(&document);
+    QDateTime documentDate = QDateTime::currentDateTime();
+    KdenliveTests::updateTimeline(false, QString(), QString(), documentDate, 0);
+    auto timeline = document.getTimeline(document.uuid());
+    pCore->projectManager()->testSetActiveTimeline(timeline);
+    const double fps = pCore->getCurrentFps();
+
+    QTemporaryDir tmp;
+    REQUIRE(tmp.isValid());
+    document.setUrl(QUrl::fromLocalFile(tmp.path() + QStringLiteral("/pubs.koracut")));
+    {
+        QFile marker(tmp.path() + QStringLiteral("/pubs.koracut"));
+        REQUIRE(marker.open(QIODevice::WriteOnly));
+    }
+    const bool haveFfmpeg = !ffmpegPath().isEmpty();
+    KoraCutMotionRenderer::setSimulator([](const KoraCutMotionRenderRequest &r) {
+        // La durée : celle de l'enveloppe, sinon celle de la racine de l'index.html (élément seul).
+        double seconds = 3.;
+        const QRegularExpression duration(QStringLiteral("data-composition-id=\"[^\"]*\"[^>]*data-duration=\"([0-9.]+)\""));
+        QRegularExpressionMatch m = duration.match(r.envelopeHtml);
+        QFile index(r.projectDir + QStringLiteral("/index.html"));
+        if (!m.hasMatch() && index.open(QIODevice::ReadOnly)) {
+            m = duration.match(QString::fromUtf8(index.readAll()));
+        }
+        if (m.hasMatch()) {
+            seconds = m.captured(1).toDouble();
+        }
+        return fakeRender(r, seconds);
+    });
+
+    // La deuxième séquence du projet.
+    const QString seqBin = ClipCreator::createPlaylistClip(QStringLiteral("Publicité 2"), {2, 2}, QStringLiteral("-1"), binModel);
+    REQUIRE(seqBin != QLatin1String("-1"));
+    QUuid uuid2;
+    const QMap<QUuid, QString> sequences = binModel->getAllSequenceClips();
+    for (auto it = sequences.constBegin(); it != sequences.constEnd(); ++it) {
+        if (it.value() == seqBin) {
+            uuid2 = it.key();
+        }
+    }
+    REQUIRE_FALSE(uuid2.isNull());
+    auto timeline2 = document.getTimeline(uuid2);
+    REQUIRE(timeline2);
+    const QString seq1 = document.uuid().toString(QUuid::WithoutBraces);
+    const QString seq2 = uuid2.toString(QUuid::WithoutBraces);
+
+    KoraCutMotionMirror mirror;
+    mirror.setDocument(&document, timeline);
+    auto activate = [&](const std::shared_ptr<TimelineItemModel> &tl) {
+        pCore->projectManager()->testSetActiveTimeline(tl);
+        mirror.setTimeline(tl);
+    };
+    // Les deux onglets sont ouverts ; la séquence 1 est devant.
+    activate(timeline2);
+    activate(timeline);
+    const QString motionRoot = tmp.path() + QStringLiteral("/motion");
+
+    if (haveFfmpeg) {
+        SECTION("Un rendu qui finit pendant qu'une autre séquence est devant pose son clip dans SA séquence")
+        {
+            const int tracks2 = timeline2->getTracksCount();
+            // L'élément est demandé dans la séquence 1, sans attendre ; la séquence 2 passe devant avant la fin du rendu.
+            QJsonObject r = call(timeline, QStringLiteral("motion_element_seul"),
+                                 {{QStringLiteral("nom"), QStringLiteral("titre-s1")}, {QStringLiteral("sorte"), QStringLiteral("titre")}, {QStringLiteral("texte"), QStringLiteral("Pub un")},
+                                  {QStringLiteral("position"), 10}, {QStringLiteral("duree"), 50}, {QStringLiteral("attendre"), false}});
+            INFO(dumpJson(r));
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            CHECK(r.value(QStringLiteral("sequence")).toString() == seq1);
+            activate(timeline2);
+            REQUIRE(waitFor([&]() { return mirror.clipFor(QStringLiteral("titre-s1"), QStringLiteral("titre-s1")) >= 0; }, 20000));
+            const int cid1 = mirror.clipFor(QStringLiteral("titre-s1"), QStringLiteral("titre-s1"));
+            CHECK(timeline->isClip(cid1));
+            CHECK_FALSE(timeline2->isClip(cid1));
+            CHECK(timeline->getClipPosition(cid1) == 10);
+            CHECK(clipsIn(timeline) == 1);
+            CHECK(clipsIn(timeline2) == 0);
+            CHECK(timeline2->getTracksCount() == tracks2); // pas de piste « Animations » créée pour l'occasion
+            const QString index1 = motionRoot + QStringLiteral("/titre-s1/index.html");
+            CHECK(readAll(index1).contains(QStringLiteral("data-koracut-sequence=\"%1\"").arg(seq1)));
+
+            // motion_lister dit la séquence de chaque composition, et le clip dans cette séquence.
+            QJsonObject list = call(timeline2, QStringLiteral("motion_lister"), {});
+            QJsonObject comp = compositionOf(list, QStringLiteral("titre-s1"));
+            INFO(dumpJson(comp));
+            CHECK(comp.value(QStringLiteral("sequence")).toString() == seq1);
+            CHECK_FALSE(comp.value(QStringLiteral("sequence_active")).toBool());
+            CHECK(elementOf(comp, QStringLiteral("titre-s1")).value(QStringLiteral("clip_id")).toInt(-1) == cid1);
+            CHECK(elementOf(comp, QStringLiteral("titre-s1")).value(QStringLiteral("pos")).toInt(-1) == 10);
+            CHECK(call(timeline2, QStringLiteral("motion_lister"), {{QStringLiteral("sequence"), QStringLiteral("active")}}).value(QStringLiteral("compositions")).toArray().isEmpty());
+
+            // Nouveau rendu (le texte change) pendant que la séquence 2 est devant : même clip, même séquence.
+            r = call(timeline2, QStringLiteral("motion_element"),
+                     {{QStringLiteral("nom"), QStringLiteral("titre-s1")}, {QStringLiteral("id"), QStringLiteral("titre-s1")}, {QStringLiteral("texte"), QStringLiteral("Pub une")}});
+            INFO(dumpJson(r));
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            CHECK(r.value(QStringLiteral("rendu_relance")).toBool());
+            mirror.renderer()->waitForIdle(20000);
+            waitMs(1200);
+            CHECK(mirror.clipFor(QStringLiteral("titre-s1"), QStringLiteral("titre-s1")) == cid1);
+            CHECK(clipsIn(timeline) == 1);
+            CHECK(clipsIn(timeline2) == 0);
+            CHECK(timeline2->getTracksCount() == tracks2);
+
+            // Retime depuis l'autre séquence : c'est le clip de la séquence 1 qui bouge.
+            r = call(timeline2, QStringLiteral("motion_element"),
+                     {{QStringLiteral("nom"), QStringLiteral("titre-s1")}, {QStringLiteral("id"), QStringLiteral("titre-s1")}, {QStringLiteral("debut"), 30 / fps}});
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            CHECK(timeline->getClipPosition(cid1) == 30);
+            CHECK(clipsIn(timeline2) == 0);
+
+            // Un élément créé pendant que la séquence 2 est devant vit dans la séquence 2.
+            r = call(timeline2, QStringLiteral("motion_element_seul"),
+                     {{QStringLiteral("nom"), QStringLiteral("titre-s2")}, {QStringLiteral("sorte"), QStringLiteral("titre")}, {QStringLiteral("texte"), QStringLiteral("Pub deux")},
+                      {QStringLiteral("position"), 5}, {QStringLiteral("duree"), 40}});
+            INFO(dumpJson(r));
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            REQUIRE(r.contains(QStringLiteral("clip_id")));
+            const int cid2 = r.value(QStringLiteral("clip_id")).toInt();
+            CHECK(timeline2->isClip(cid2));
+            CHECK(r.value(QStringLiteral("sequence")).toString() == seq2);
+            CHECK(clipsIn(timeline) == 1);
+            CHECK(clipsIn(timeline2) == 1);
+            comp = compositionOf(call(timeline2, QStringLiteral("motion_lister"), {}), QStringLiteral("titre-s2"));
+            CHECK(comp.value(QStringLiteral("sequence_nom")).toString() == QStringLiteral("Publicité 2"));
+            CHECK(comp.value(QStringLiteral("sequence_active")).toBool());
+            // Une composition à plusieurs éléments créée là reçoit la séquence devant, elle aussi.
+            r = call(timeline2, QStringLiteral("motion_creer"), {{QStringLiteral("nom"), QStringLiteral("gabarit-s2")}});
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            CHECK(r.value(QStringLiteral("sequence")).toString() == seq2);
+            REQUIRE(waitFor([&]() { return mirror.clipFor(QStringLiteral("gabarit-s2"), QStringLiteral("titre-1")) >= 0; }, 20000));
+            CHECK(timeline2->isClip(mirror.clipFor(QStringLiteral("gabarit-s2"), QStringLiteral("titre-1"))));
+            CHECK(clipsIn(timeline) == 1);
+
+            // motion_ecrire avec un HTML qui a perdu data-koracut-sequence : la composition garde sa séquence.
+            QString html = call(timeline2, QStringLiteral("motion_lire"), {{QStringLiteral("nom"), QStringLiteral("titre-s1")}}).value(QStringLiteral("html")).toString();
+            REQUIRE(html.contains(QStringLiteral(" data-koracut-sequence=\"%1\"").arg(seq1)));
+            html.remove(QStringLiteral(" data-koracut-sequence=\"%1\"").arg(seq1));
+            html.replace(QStringLiteral("Pub une"), QStringLiteral("Pub réécrite"));
+            r = call(timeline2, QStringLiteral("motion_ecrire"), {{QStringLiteral("nom"), QStringLiteral("titre-s1")}, {QStringLiteral("html"), html}});
+            INFO(dumpJson(r));
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            CHECK(r.value(QStringLiteral("sequence")).toString() == seq1);
+            mirror.renderer()->waitForIdle(20000);
+            waitMs(1200);
+            CHECK(mirror.clipFor(QStringLiteral("titre-s1"), QStringLiteral("titre-s1")) == cid1);
+            CHECK(clipsIn(timeline) == 1);
+            CHECK(clipsIn(timeline2) == 2);
+
+            // piste_id est une piste de la séquence devant : refusée pour une composition d'une autre séquence.
+            CHECK(errorCode(call(timeline2, QStringLiteral("motion_poser"),
+                                 {{QStringLiteral("nom"), QStringLiteral("titre-s1")}, {QStringLiteral("piste_id"), timeline2->getTracksIds(false).first()}})) ==
+                  QStringLiteral("autre_sequence"));
+
+            // Retrait depuis l'autre séquence, puis Annuler : la composition est retirée, puis revient, dans la séquence 1.
+            REQUIRE(timeline->requestItemDeletion(cid1, true));
+            REQUIRE(waitFor([&]() { return readAll(index1).contains(QLatin1String("data-koracut-retire=\"1\"")); }, 4000));
+            list = call(timeline2, QStringLiteral("motion_lister"), {});
+            CHECK(compositionOf(list, QStringLiteral("titre-s1")).isEmpty());
+            CHECK(list.value(QStringLiteral("retirees_masquees")).toInt() == 1);
+            CHECK(compositionOf(call(timeline2, QStringLiteral("motion_lister"), {{QStringLiteral("retirees"), true}}), QStringLiteral("titre-s1")).value(QStringLiteral("retiree")).toBool());
+            undoStack->undo();
+            REQUIRE(waitFor([&]() { return !readAll(index1).contains(QLatin1String("data-koracut-retire")); }, 4000));
+            CHECK(clipsIn(timeline) == 1);
+            CHECK(clipsIn(timeline2) == 2);
+
+            // Sa séquence n'est plus ouverte dans un onglet quand son rendu se termine : rien n'est posé
+            // ailleurs, et tout est en place à la réouverture.
+            r = call(timeline2, QStringLiteral("motion_element"),
+                     {{QStringLiteral("nom"), QStringLiteral("titre-s1")}, {QStringLiteral("id"), QStringLiteral("titre-s1")}, {QStringLiteral("texte"), QStringLiteral("Pub fermée")}});
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            const int tracks2Before = timeline2->getTracksCount();
+            timeline->isClosed = true;
+            mirror.renderer()->waitForIdle(20000);
+            waitMs(1200);
+            CHECK(clipsIn(timeline2) == 2);
+            const int tracks2After = timeline2->getTracksCount();
+            CHECK(tracks2After == tracks2Before); // pas de piste créée pour l'occasion
+            CHECK(errorCode(call(timeline2, QStringLiteral("motion_poser"), {{QStringLiteral("nom"), QStringLiteral("titre-s1")}})) == QStringLiteral("sequence_fermee"));
+            CHECK(compositionOf(call(timeline2, QStringLiteral("motion_lister"), {}), QStringLiteral("titre-s1")).value(QStringLiteral("sequence_ouverte")).toBool(true) == false);
+            activate(timeline); // testSetActiveTimeline la rouvre
+            mirror.renderer()->waitForIdle(20000);
+            waitMs(1200);
+            CHECK(clipsIn(timeline) == 1);
+            CHECK(clipsIn(timeline2) == 2);
+            CHECK(timeline2->getTracksCount() == tracks2After);
+            CHECK(elementOf(compositionOf(call(timeline, QStringLiteral("motion_lister"), {}), QStringLiteral("titre-s1")), QStringLiteral("titre-s1")).value(QStringLiteral("rendu")).toString() ==
+                  QStringLiteral("pret"));
+        }
+
+        SECTION("Annuler une création libère le nom ; un dossier retiré à la main aussi")
+        {
+            QJsonObject r = call(timeline, QStringLiteral("motion_element_seul"),
+                                 {{QStringLiteral("nom"), QStringLiteral("titre-b")}, {QStringLiteral("sorte"), QStringLiteral("titre")}, {QStringLiteral("texte"), QStringLiteral("Premier jet")},
+                                  {QStringLiteral("position"), 0}, {QStringLiteral("duree"), 40}});
+            INFO(dumpJson(r));
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            REQUIRE(r.contains(QStringLiteral("clip_id")));
+            const QString dir = motionRoot + QStringLiteral("/titre-b");
+            CHECK(errorCode(call(timeline, QStringLiteral("motion_element_seul"),
+                                 {{QStringLiteral("nom"), QStringLiteral("titre-b")}, {QStringLiteral("texte"), QStringLiteral("x")}, {QStringLiteral("position"), 100}, {QStringLiteral("duree"), 40}})) ==
+                  QStringLiteral("existe_deja"));
+            // Annuler : le clip part ; la composition n'est plus dans la liste, son dossier reste (Rétablir la remet).
+            undoStack->undo();
+            CHECK(clipsIn(timeline) == 0);
+            QJsonObject list = call(timeline, QStringLiteral("motion_lister"), {});
+            CHECK(compositionOf(list, QStringLiteral("titre-b")).isEmpty());
+            CHECK(list.value(QStringLiteral("retirees_masquees")).toInt() == 1);
+            CHECK(QFile::exists(dir + QStringLiteral("/index.html")));
+            undoStack->redo();
+            REQUIRE(waitFor([&]() { return !readAll(dir + QStringLiteral("/index.html")).contains(QLatin1String("data-koracut-retire")); }, 4000));
+            CHECK(clipsIn(timeline) == 1);
+            CHECK_FALSE(compositionOf(call(timeline, QStringLiteral("motion_lister"), {}), QStringLiteral("titre-b")).isEmpty());
+            undoStack->undo();
+            // Le nom est libre : l'ancien dossier part dans la corbeille du projet, rien n'est supprimé.
+            r = call(timeline, QStringLiteral("motion_element_seul"),
+                     {{QStringLiteral("nom"), QStringLiteral("titre-b")}, {QStringLiteral("sorte"), QStringLiteral("titre")}, {QStringLiteral("texte"), QStringLiteral("Second jet")},
+                      {QStringLiteral("position"), 0}, {QStringLiteral("duree"), 40}});
+            INFO(dumpJson(r));
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            REQUIRE(r.contains(QStringLiteral("clip_id")));
+            const QString trashed = r.value(QStringLiteral("ancienne_retiree")).toString();
+            CHECK(trashed.startsWith(motionRoot + QStringLiteral("/.corbeille/titre-b-")));
+            CHECK(readAll(trashed + QStringLiteral("/index.html")).contains(QLatin1String("Premier jet")));
+            CHECK(readAll(dir + QStringLiteral("/index.html")).contains(QLatin1String("Second jet")));
+            list = call(timeline, QStringLiteral("motion_lister"), {{QStringLiteral("retirees"), true}});
+            CHECK(list.value(QStringLiteral("compositions")).toArray().size() == 1); // la corbeille n'est pas une composition
+            CHECK_FALSE(compositionOf(list, QStringLiteral("titre-b")).value(QStringLiteral("retiree")).toBool());
+            mirror.renderer()->waitForIdle(20000);
+            waitMs(900);
+
+            // Un dossier supprimé à la main : le nom est libre tout de suite, sans relancer l'application.
+            r = call(timeline, QStringLiteral("motion_creer"), {{QStringLiteral("nom"), QStringLiteral("a-la-main")}});
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            mirror.renderer()->waitForIdle(20000);
+            waitMs(900);
+            CHECK(errorCode(call(timeline, QStringLiteral("motion_creer"), {{QStringLiteral("nom"), QStringLiteral("a-la-main")}})) == QStringLiteral("existe_deja"));
+            REQUIRE(QDir(motionRoot + QStringLiteral("/a-la-main")).removeRecursively());
+            CHECK(compositionOf(call(timeline, QStringLiteral("motion_lister"), {}), QStringLiteral("a-la-main")).isEmpty());
+            r = call(timeline, QStringLiteral("motion_creer"), {{QStringLiteral("nom"), QStringLiteral("a-la-main")}});
+            INFO(dumpJson(r));
+            CHECK(r.value(QStringLiteral("ok")).toBool());
+        }
+    } else {
+        WARN("ffmpeg introuvable : les séquences et l'annulation ne sont pas vérifiées (elles demandent un rendu).");
+    }
+
+    SECTION("fichiers : des polices et des images copiées dans assets/ avant le rendu")
+    {
+        QDir().mkpath(tmp.path() + QStringLiteral("/Charte"));
+        const QString font = tmp.path() + QStringLiteral("/Charte/Outfit.ttf");
+        const QString logo = tmp.path() + QStringLiteral("/logo.png");
+        for (const QString &path : {font, logo}) {
+            QFile f(path);
+            REQUIRE(f.open(QIODevice::WriteOnly));
+            f.write(path.toUtf8());
+        }
+        const QString brief = QStringLiteral("<style>@font-face{font-family:\"Outfit\";src:url(\"assets/Outfit.ttf\")}#t{font-family:\"Outfit\"}</style>"
+                                             "<h1 id=\"t\" data-koracut-texte=\"1\">Univers</h1><img src=\"assets/logo.png\">"
+                                             "<script>tl.fromTo(\"#t\",{opacity:0},{opacity:1,duration:0.4},0);</script>");
+        // Un fichier absent : rien n'est créé.
+        QJsonObject r = call(timeline, QStringLiteral("motion_element_seul"),
+                             {{QStringLiteral("nom"), QStringLiteral("carte-absente")}, {QStringLiteral("sorte"), QStringLiteral("autre")}, {QStringLiteral("brief_html"), brief},
+                              {QStringLiteral("fichiers"), QJsonArray{font, QStringLiteral("absent.ttf")}}, {QStringLiteral("position"), 100}, {QStringLiteral("duree"), 30},
+                              {QStringLiteral("attendre"), false}});
+        CHECK(errorCode(r) == QStringLiteral("fichier_introuvable"));
+        CHECK_FALSE(QFile::exists(motionRoot + QStringLiteral("/carte-absente")));
+        // Deux fichiers du même nom iraient au même endroit.
+        QDir().mkpath(tmp.path() + QStringLiteral("/Autre"));
+        REQUIRE(QFile::copy(font, tmp.path() + QStringLiteral("/Autre/Outfit.ttf")));
+        CHECK(errorCode(call(timeline, QStringLiteral("motion_element_seul"),
+                             {{QStringLiteral("nom"), QStringLiteral("carte-double")}, {QStringLiteral("sorte"), QStringLiteral("autre")}, {QStringLiteral("brief_html"), brief},
+                              {QStringLiteral("fichiers"), QJsonArray{font, QStringLiteral("Autre/Outfit.ttf")}}, {QStringLiteral("position"), 100}, {QStringLiteral("duree"), 30}})) ==
+              QStringLiteral("entree_invalide"));
+        // Absolu et relatif au dossier du projet.
+        r = call(timeline, QStringLiteral("motion_element_seul"),
+                 {{QStringLiteral("nom"), QStringLiteral("carte")}, {QStringLiteral("sorte"), QStringLiteral("autre")}, {QStringLiteral("brief_html"), brief},
+                  {QStringLiteral("fichiers"), QJsonArray{font, QStringLiteral("logo.png")}}, {QStringLiteral("position"), 100}, {QStringLiteral("duree"), 30},
+                  {QStringLiteral("attendre"), false}});
+        INFO(dumpJson(r));
+        REQUIRE(r.value(QStringLiteral("ok")).toBool());
+        CHECK(r.value(QStringLiteral("fichiers_copies")).toArray() == QJsonArray{QStringLiteral("assets/Outfit.ttf"), QStringLiteral("assets/logo.png")});
+        CHECK(readAll(motionRoot + QStringLiteral("/carte/assets/Outfit.ttf")) == font);
+        CHECK(QFile::exists(motionRoot + QStringLiteral("/carte/assets/logo.png")));
+        CHECK(QFile::exists(motionRoot + QStringLiteral("/carte/assets/gsap.min.js")));
+        // motion_creer et motion_ecrire prennent la même liste.
+        r = call(timeline, QStringLiteral("motion_creer"), {{QStringLiteral("nom"), QStringLiteral("habillage")}, {QStringLiteral("fichiers"), QJsonArray{QStringLiteral("Charte/Outfit.ttf")}}});
+        INFO(dumpJson(r));
+        REQUIRE(r.value(QStringLiteral("ok")).toBool());
+        CHECK(QFile::exists(motionRoot + QStringLiteral("/habillage/assets/Outfit.ttf")));
+        const QString html = call(timeline, QStringLiteral("motion_lire"), {{QStringLiteral("nom"), QStringLiteral("habillage")}}).value(QStringLiteral("html")).toString();
+        r = call(timeline, QStringLiteral("motion_ecrire"),
+                 {{QStringLiteral("nom"), QStringLiteral("habillage")}, {QStringLiteral("html"), QString(html).replace(QStringLiteral("Nouveau titre"), QStringLiteral("Avec logo"))},
+                  {QStringLiteral("fichiers"), QJsonArray{logo}}});
+        INFO(dumpJson(r));
+        REQUIRE(r.value(QStringLiteral("ok")).toBool());
+        CHECK(r.value(QStringLiteral("fichiers_copies")).toArray() == QJsonArray{QStringLiteral("assets/logo.png")});
+        CHECK(QFile::exists(motionRoot + QStringLiteral("/habillage/assets/logo.png")));
+        CHECK(errorCode(call(timeline, QStringLiteral("motion_ecrire"),
+                             {{QStringLiteral("nom"), QStringLiteral("habillage")}, {QStringLiteral("html"), html}, {QStringLiteral("fichiers"), QJsonArray{QStringLiteral("~/koracut-absent-xyz.png")}}})) ==
+              QStringLiteral("fichier_introuvable"));
+    }
+
+    mirror.renderer()->waitForIdle(20000);
+    waitMs(800);
+    KoraCutMotionRenderer::setSimulator({});
+    mirror.clear();
+    KoraCutAgentTools::setMotionMirror(nullptr);
     pCore->projectManager()->closeCurrentDocument(false, false);
 }

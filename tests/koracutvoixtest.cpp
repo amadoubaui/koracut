@@ -10,6 +10,8 @@
 #include "catch.hpp"
 #include "test_utils.hpp"
 
+#include "bin/projectclip.h"
+#include "bin/projectitemmodel.h"
 #include "core.h"
 #include "doc/docundostack.hpp"
 #include "doc/kdenlivedoc.h"
@@ -154,6 +156,43 @@ TEST_CASE("Voix off : moteur, fichiers, outils et annulation", "[KoraCutVoix]")
         CHECK(int(binModel->getAllClipIds().size()) == medias);
         // Le fichier reste sur le disque : annuler ne supprime jamais un fichier.
         CHECK(QFileInfo::exists(voices + QStringLiteral("/01 - Bienvenue dans KoraCut.wav")));
+    }
+
+    SECTION("dossier : la voix va dans un sous-dossier du projet, le chutier suit le même chemin")
+    {
+        // Relatif au projet : il faut un projet sur le disque.
+        CHECK(errorCode(call(timeline, QStringLiteral("voix_off_generer"), {{QStringLiteral("texte"), QStringLiteral("Bonjour.")}, {QStringLiteral("dossier"), QStringLiteral("Script 01/02 Son")}})) ==
+              QStringLiteral("projet_absent"));
+        const QString projectFile = dir.filePath(QStringLiteral("Projet/pubs.koracut"));
+        QDir().mkpath(QFileInfo(projectFile).absolutePath());
+        touch(projectFile);
+        document.setUrl(QUrl::fromLocalFile(projectFile));
+        CHECK(errorCode(call(timeline, QStringLiteral("voix_off_generer"), {{QStringLiteral("texte"), QStringLiteral("Bonjour.")}, {QStringLiteral("dossier"), QStringLiteral("../Ailleurs")}})) ==
+              QStringLiteral("hors_projet"));
+        CHECK(errorCode(call(timeline, QStringLiteral("voix_off_generer"), {{QStringLiteral("texte"), QStringLiteral("Bonjour.")}, {QStringLiteral("dossier"), dir.path()}})) ==
+              QStringLiteral("hors_projet"));
+        const int steps = undoStack->index();
+        QJsonObject r = call(timeline, QStringLiteral("voix_off_generer"), {{QStringLiteral("texte"), QStringLiteral("La peau respire.")}, {QStringLiteral("dossier"), QStringLiteral("Script 01/02 Son")}});
+        INFO(dump(r));
+        REQUIRE(r.value(QStringLiteral("ok")).toBool());
+        const QString folder = dir.filePath(QStringLiteral("Projet/Script 01/02 Son"));
+        CHECK(r.value(QStringLiteral("fichier")).toString() == folder + QStringLiteral("/01 - La peau respire.wav"));
+        CHECK(QFileInfo::exists(r.value(QStringLiteral("fichier")).toString()));
+        CHECK(r.value(QStringLiteral("dossier_chutier")).toString() == QStringLiteral("Script 01/02 Son"));
+        CHECK(KoraCutAgentTools::binFolderPath(r.value(QStringLiteral("media_id")).toVariant().toString()) == QStringLiteral("Script 01/02 Son"));
+        CHECK(undoStack->index() == steps + 1);
+        CHECK_FALSE(QFileInfo::exists(voices)); // rien dans « Voix off »
+        // La suivante retrouve les deux dossiers, sans les recréer, et prend le numéro suivant.
+        r = call(timeline, QStringLiteral("voix_off_generer"), {{QStringLiteral("texte"), QStringLiteral("Elle rayonne.")}, {QStringLiteral("dossier"), QStringLiteral("Script 01/02 Son")}});
+        INFO(dump(r));
+        REQUIRE(r.value(QStringLiteral("ok")).toBool());
+        CHECK(r.value(QStringLiteral("fichier")).toString() == folder + QStringLiteral("/02 - Elle rayonne.wav"));
+        CHECK(r.value(QStringLiteral("dossier_chutier")).toString() == QStringLiteral("Script 01/02 Son"));
+        CHECK(binModel->getFolderIdByName(QStringLiteral("02 Son")) == binModel->getClipByBinID(r.value(QStringLiteral("media_id")).toVariant().toString())->parent()->clipId());
+        // Annuler retire le média ; le premier Annuler retire aussi les dossiers créés avec lui.
+        undoStack->undo();
+        undoStack->undo();
+        CHECK(binModel->getFolderIdByName(QStringLiteral("02 Son")).isEmpty());
     }
 
     SECTION("Sans position : la tête de lecture, puis juste après ce qui l'occupe")

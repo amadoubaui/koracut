@@ -226,6 +226,51 @@ TEST_CASE("Le niveau sonore à l'export : mesure, gain fixe, rendu", "[KoraCutLo
         }
     }
 
+    SECTION("Sans niveau demandé, le fichier contient ce que mesurer_audio annonce (le master est rendu)")
+    {
+        // 1er octobre 2026 : un export sans niveau sortait à -23,0 LUFS alors que mesurer_audio annonçait -14.
+        // La cause était la cible du type de vidéo, appliquée d'office par export.lancer ; on prouve ici que
+        // l'effet de normalisation posé sur le master est bien dans le fichier quand aucun niveau n'est demandé.
+        const bool canRender = QFileInfo::exists(KdenliveSettings::meltpath());
+        const QString ffmpeg = ffmpegPath();
+        if (canRender && !ffmpeg.isEmpty()) {
+            r = call(timeline, QStringLiteral("normaliser_loudness"), {{QStringLiteral("cible"), QStringLiteral("mixage")}, {QStringLiteral("lufs_cible"), -18}});
+            INFO(dump(r));
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            const QJsonObject announced = call(timeline, QStringLiteral("mesurer_audio"), {{QStringLiteral("cible"), QStringLiteral("mixage")}});
+            INFO(dump(announced));
+            REQUIRE(announced.value(QStringLiteral("ok")).toBool());
+            const double expected = announced.value(QStringLiteral("lufs_integre")).toDouble();
+            CHECK(std::abs(expected + 18.) < 1.);
+            QTemporaryDir folder;
+            REQUIRE(folder.isValid());
+            const QString out = folder.filePath(QStringLiteral("tel-quel.mp4"));
+            r = call(timeline, QStringLiteral("exporter"),
+                     {{QStringLiteral("preset"), QStringLiteral("personnalise")}, {QStringLiteral("nom_preset_kdenlive"), QStringLiteral("MP4-H264/AAC")}, {QStringLiteral("chemin"), out}});
+            INFO(dump(r));
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            CHECK_FALSE(r.contains(QStringLiteral("niveau_lufs")));
+            const QString id = r.value(QStringLiteral("export_id")).toString();
+            QElapsedTimer timer;
+            timer.start();
+            QString etat;
+            while (timer.elapsed() < 180000) {
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+                const QJsonObject st = call(timeline, QStringLiteral("etat_exports"), {{QStringLiteral("export_id"), id}});
+                etat = st.value(QStringLiteral("exports")).toArray().first().toObject().value(QStringLiteral("etat")).toString();
+                if (etat == QLatin1String("termine") || etat == QLatin1String("echec") || etat == QLatin1String("annule")) {
+                    INFO(dump(st));
+                    break;
+                }
+            }
+            REQUIRE(etat == QStringLiteral("termine"));
+            const double lufs = integratedLufs(ffmpeg, out);
+            INFO("LUFS du fichier : " << lufs << ", annoncé par mesurer_audio : " << expected);
+            REQUIRE(std::isfinite(lufs));
+            CHECK(std::abs(lufs - expected) < 0.5);
+        }
+    }
+
     SECTION("Une voix muette et des sons courts très forts : la crête reste sous -1 dBTP, le niveau suit")
     {
         // Le défaut du 27 septembre 2026 (vidéos AFEBABA sans voix) : la voix muette, il reste des sons
