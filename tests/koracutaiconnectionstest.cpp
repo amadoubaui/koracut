@@ -192,7 +192,9 @@ TEST_CASE("Connexions IA : le coffre des clés et la liste ordonnée", "[KoraCut
         CHECK(found);
         const QFileInfo info(dir.filePath(QStringLiteral("koracut-cles-ia.json")));
         REQUIRE(info.exists());
+#ifndef Q_OS_WIN // 0600 n'existe pas sous Windows : le fichier vit dans le profil de la personne (ACL du dossier)
         CHECK(info.permissions() == (QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ReadUser | QFileDevice::WriteUser));
+#endif
         CHECK(KoraCutAiSecrets::remove(QStringLiteral("c1")));
         KoraCutAiSecrets::read(QStringLiteral("c1"), &found);
         CHECK_FALSE(found);

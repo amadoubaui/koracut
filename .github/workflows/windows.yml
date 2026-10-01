@@ -37,16 +37,27 @@ jobs:
             kiconthemes:p kio:p kitemviews:p knewstuff:p knotifications:p knotifyconfig:p ktextwidgets:p
             kwidgetsaddons:p kxmlgui:p mlt:p opentimelineio:p purpose:p shared-mime-info:p qqc2-desktop-style:p
             qt6-base:p qt6-declarative:p qt6-multimedia:p qt6-networkauth:p qt6-svg:p qt6-websockets:p
-            qtkeychain-qt6:p solid:p ffmpeg:p imath:p python:p
+            qtkeychain-qt6:p solid:p ffmpeg:p imath:p python:p ccache:p
+
+      # ccache : la première compilation prend 2 heures, les suivantes ne refont que ce qui a changé.
+      - name: Cache de compilation
+        uses: actions/cache@v4
+        with:
+          path: ccache
+          key: ccache-windows-${{ github.sha }}
+          restore-keys: ccache-windows-
 
       - name: Configurer
         run: |
-          cmake -S src -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX="$MINGW_PREFIX" \
+          export CCACHE_DIR="$PWD/ccache" CCACHE_MAXSIZE=3G
+          cmake -S src -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_INSTALL_PREFIX="$MINGW_PREFIX" \
             -DBUILD_TESTING=ON -DKORACUT_AGENTS=ON -DUSE_DBUS=OFF -DRELEASE_BUILD=ON 2>&1 | tail -40
 
       - name: Compiler
         run: |
+          export CCACHE_DIR="$PWD/ccache" CCACHE_MAXSIZE=3G
           cmake --build build -j 4 > build.log 2>&1; code=$?
+          ccache -s | head -8
           grep -E "error|FAILED" build.log | head -200
           exit $code
 
@@ -56,6 +67,9 @@ jobs:
       - name: Tests
         continue-on-error: true
         run: |
+          # Les tests initialisent MLT à côté de leur dossier (build/lib/mlt, build/share/mlt) : on y pose l'installation.
+          mkdir -p build/lib build/share
+          cp -r "$MINGW_PREFIX/lib/mlt" build/lib/ && cp -r "$MINGW_PREFIX/share/mlt" build/share/
           cd build
           # Les tests tournent depuis build/bin : sous Windows, MLT chercherait ses modules à côté (build/lib/mlt).
           export MLT_REPOSITORY="$(cygpath -w "$MINGW_PREFIX/lib/mlt")" MLT_DATA="$(cygpath -w "$MINGW_PREFIX/share/mlt")"
@@ -67,6 +81,9 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p captures
+          # Un écran de 1920 x 1080 en mode sombre, pour comparer avec les captures du Mac et de Linux.
+          powershell -Command "Set-DisplayResolution -Width 1920 -Height 1080 -Force" || true
+          reg add 'HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' //v AppsUseLightTheme //t REG_DWORD //d 0 //f || true
           printf '[startup]\nshowWelcome=false\n' > "$LOCALAPPDATA/koracut-capturesrc"
           export KORACUT_SHOT="$(cygpath -w "$PWD/captures/windows.png")" KORACUT_SHOT_SIZE=1440x900 KORACUT_SHOT_DELAY=15000
           export KORACUT_SHOT_MODULES=montage,etalonnage,audio,export

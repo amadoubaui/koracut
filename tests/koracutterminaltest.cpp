@@ -184,7 +184,9 @@ TEST_CASE("Init des agents : la configuration MCP garde les autres serveurs", "[
         KoraCutAgentsCli::Agent crush;
         crush.mcp = QJsonObject{{QStringLiteral("format"), QStringLiteral("crushrc")}, {QStringLiteral("fichier"), QStringLiteral(".crushrc")}};
         CHECK_FALSE(KoraCutAgentInit::writeMcpConfig(dir.path(), crush, ctx).isEmpty());
+#ifndef Q_OS_WIN // guillemets du shell POSIX ; sous Windows, ceux de cmd.exe
         CHECK(readAll(dir.filePath(QStringLiteral(".crushrc"))).contains(QStringLiteral("mcp add koracut --command /usr/local/bin/node --args '/Applications/KoraCut dev/mcp/main.js'")));
+#endif
     }
 
     SECTION("Codex en ligne de commande : des valeurs TOML, sans guillemets en trop")
@@ -212,6 +214,12 @@ TEST_CASE("Agents en ligne de commande : catalogue, PATH élargi, premier messag
     const KoraCutAgentsCli::Agent *gemini = KoraCutAgentsCli::byId(QStringLiteral("gemini-cli"));
     REQUIRE(gemini);
     CHECK(KoraCutAgentsCli::launchCommand(*gemini, QStringLiteral("Bonjour")) == QStringList{QStringLiteral("gemini"), QStringLiteral("-i"), QStringLiteral("Bonjour")});
+#ifdef Q_OS_WIN
+    // La suite essaie les guillemets POSIX, un faux « claude » en script sh et un PATH séparé par « : » :
+    // sous Windows, ces chemins sont essayés par l'application elle-même (workflow, capture du terminal).
+    CHECK(KoraCutAgentsCli::shellLine({QStringLiteral("claude"), QStringLiteral("dis")}) == QStringLiteral("\"claude\" \"dis\""));
+    return;
+#endif
     CHECK(KoraCutAgentsCli::shellLine({QStringLiteral("claude"), QStringLiteral("dis l'état")}) == QStringLiteral("claude 'dis l'\\''état'"));
 
     // Un faux « claude » posé dans un dossier du PATH : il est trouvé.
