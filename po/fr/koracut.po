@@ -55265,3 +55265,66 @@ msgstr "Détourer le sujet"
 msgctxt "@info:status subject cut-out progress, %1 percent, %2 clip name"
 msgid "Cutting out the subject: %1% · %2"
 msgstr "Détourage du sujet : %1 % · %2"
+
+#. KoraCut, document 18 (1er octobre 2026) : Monter avec Claude Code.
+msgctxt "@action:button one click: prepare the project and launch Claude Code in the terminal"
+msgid "Edit with Claude Code"
+msgstr "Monter avec Claude Code"
+
+msgctxt "@action"
+msgid "Edit with Claude Code"
+msgstr "Monter avec Claude Code"
+
+msgctxt "@info:tooltip"
+msgid "Prepares the project and launches Claude Code in the KoraCut terminal, connected to KoraCut, with your own Claude account"
+msgstr "Prépare le projet et lance Claude Code dans le terminal de KoraCut, branché sur KoraCut, avec ton compte Claude"
+
+msgctxt "@info:tooltip"
+msgid "Prepares this project, installs the KoraCut skills and launches Claude Code here, connected to KoraCut. If Claude Code is missing, KoraCut offers to install it. The first time, Claude Code opens your browser so you sign in to your Claude account yourself."
+msgstr "Prépare ce projet, pose les compétences KoraCut et lance Claude Code ici, branché sur KoraCut. Si Claude Code manque, KoraCut propose de l'installer. La première fois, Claude Code ouvre ton navigateur : c'est toi qui te connectes à ton compte Claude."
+
+msgctxt "@info:tooltip"
+msgid "Opens the terminal and launches Claude Code on this project, connected to KoraCut, with your own Claude account. If Claude Code is missing, KoraCut offers to install it."
+msgstr "Ouvre le terminal et lance Claude Code sur ce projet, branché sur KoraCut, avec ton compte Claude. Si Claude Code manque, KoraCut propose de l'installer."
+
+msgctxt "@info"
+msgid "KoraCut is busy with another command. Try again in a moment."
+msgstr "KoraCut est occupée par une autre commande. Réessaie dans un instant."
+
+msgctxt "@info line in the terminal"
+msgid "KoraCut skills: not installed (%1)."
+msgstr "Compétences KoraCut : pas posées (%1)."
+
+msgctxt "@info line in the terminal; %1 number of skills"
+msgid "%1 KoraCut skill ready for Claude Code"
+msgid_plural "%1 KoraCut skills ready for Claude Code"
+msgstr[0] "%1 compétence KoraCut prête pour Claude Code"
+msgstr[1] "%1 compétences KoraCut prêtes pour Claude Code"
+
+msgctxt "@info part of a sentence"
+msgid "%1 installed"
+msgid_plural "%1 installed"
+msgstr[0] "%1 posée"
+msgstr[1] "%1 posées"
+
+msgctxt "@info part of a sentence"
+msgid "%1 updated"
+msgid_plural "%1 updated"
+msgstr[0] "%1 mise à jour"
+msgstr[1] "%1 mises à jour"
+
+msgctxt "@info part of a sentence; skills changed by the person are not replaced"
+msgid "%1 kept as you changed it"
+msgid_plural "%1 kept as you changed them"
+msgstr[0] "%1 gardée car tu l'as modifiée"
+msgstr[1] "%1 gardées car tu les as modifiées"
+
+msgctxt "@info part of a sentence"
+msgid "%1 removed"
+msgid_plural "%1 removed"
+msgstr[0] "%1 retirée"
+msgstr[1] "%1 retirées"
+
+msgctxt "@info line in the terminal after Claude Code exits; keep the button name as translated"
+msgid "Claude Code has stopped. To start it again connected to KoraCut, click “Edit with Claude Code”."
+msgstr "Claude Code s'est arrêté. Pour le relancer branché sur KoraCut, clique sur « Monter avec Claude Code »."

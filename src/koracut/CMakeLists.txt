@@ -92,6 +92,7 @@ set(koracut_SRCS
     koracut/terminal/koracutterminalview.cpp
     koracut/terminal/koracutagentscli.cpp
     koracut/terminal/koracutagentinit.cpp
+    koracut/terminal/koracutskills.cpp
     koracut/terminal/koracutterminalpanel.cpp
     koracut/terminal/libvterm/src/encoding.c
     koracut/terminal/libvterm/src/keyboard.c

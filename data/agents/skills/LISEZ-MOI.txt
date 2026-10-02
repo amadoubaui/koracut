@@ -1,0 +1,2 @@
+Copie des compétences KoraCut, faite par Sources/outils-multiplateforme/synchroniser-outils.sh.
+Ne pas modifier ici : la source est « Sources/koracut-skills/ » dans le dossier KoraCut.

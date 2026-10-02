@@ -62,6 +62,14 @@ QString findMcpServer();
 /** @brief Les compétences KoraCut trouvées sur cette machine (~/.claude/skills/koracut-*, Sources/koracut-skills). */
 QStringList findSkills();
 
+/** @brief Un fichier ou un dossier livré avec l'application sous `agents/` (scripts d'installation,
+ *  compétences, serveur MCP), ou sa source dans le dossier de développement ; vide s'il manque. */
+QString findData(const QString &relative);
+/** @brief Le dossier des compétences `koracut-*` livrées avec l'application, vide s'il manque. */
+QString bundledSkillsRoot();
+/** @brief Les compétences qu'un agent lit en premier, dans l'ordre. */
+QStringList firstSkills();
+
 /** @brief Le premier message envoyé à l'agent, dans la langue de l'interface. */
 QString firstMessage();
 

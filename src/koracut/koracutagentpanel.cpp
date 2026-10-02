@@ -152,6 +152,21 @@ KoraCutAgentPanel::KoraCutAgentPanel(KoraCutAgentSession *session, QWidget *pare
     header->addWidget(m_connectModel);
     root->addLayout(header);
 
+    // L'autre façon de monter avec une IA (document 18, 1er octobre 2026) : Claude Code dans le terminal de
+    // KoraCut, avec le compte Claude de la personne. Une rangée à elle, pour ne pas élargir le panneau.
+    auto *claudeRow = new QHBoxLayout();
+    claudeRow->setContentsMargins(0, 0, 0, 0);
+    auto *claude = new QPushButton(i18nc("@action:button one click: prepare the project and launch Claude Code in the terminal", "Edit with Claude Code"), this);
+    claude->setObjectName(QStringLiteral("koracutAgentButton"));
+    claude->setCursor(Qt::PointingHandCursor);
+    claude->setToolTip(i18nc("@info:tooltip",
+                             "Opens the terminal and launches Claude Code on this project, connected to KoraCut, with your own Claude account. "
+                             "If Claude Code is missing, KoraCut offers to install it."));
+    connect(claude, &QPushButton::clicked, this, &KoraCutAgentPanel::claudeCodeRequested);
+    claudeRow->addWidget(claude);
+    claudeRow->addStretch(1);
+    root->addLayout(claudeRow);
+
     // La conversation.
     m_scroll = new QScrollArea(this);
     m_scroll->setObjectName(QStringLiteral("koracutAgentScroll"));

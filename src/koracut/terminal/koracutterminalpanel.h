@@ -44,6 +44,14 @@ public:
     /** @brief Écrit les instructions et le MCP de l'agent, puis le lance dans un nouvel onglet. Avec
      *  @p install, lance d'abord son installation officielle s'il manque. Rend false si rien n'a démarré. */
     bool launchAgent(const QString &id, bool install);
+    /** @brief « Monter avec Claude Code » : tout en un clic. Vérifie l'installation (propose de l'installer
+     *  par la voie officielle, accord demandé dans le terminal), écrit les consignes du projet, pose les
+     *  compétences, branche KoraCut et lance Claude Code dans le dossier du projet. Un onglet Claude Code
+     *  déjà ouvert est ramené devant. Projet pas enregistré : le dit, propose de l'enregistrer, et reprend
+     *  ensuite (resumePending). */
+    bool editWithClaudeCode();
+    /** @brief Relance l'agent resté en attente d'un projet enregistré, s'il y en a un. */
+    void resumePending();
     /** @brief La même chose dans le terminal du système (l'option d'avant, et le seul chemin sous Windows
      *  tant que ConPTY n'est pas écrit). */
     bool openInSystemTerminal(const QString &agentId = QString());
@@ -90,6 +98,10 @@ private:
     QPushButton *m_launchButton{nullptr};
     QPushButton *m_siteButton{nullptr};
     QPushButton *m_nodeButton{nullptr};
+    QToolButton *m_claudeButton{nullptr};
+    QPointer<KoraCutTerminalView> m_claudeView;
+    QString m_pendingAgent;   ///< l'agent à lancer dès que le projet a un dossier
+    QString m_lastSkills;     ///< la dernière phrase sur les compétences (essais)
     QString m_linkDir;
     int m_shellCount{0};
     int m_scriptCount{0};

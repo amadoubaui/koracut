@@ -15,6 +15,7 @@ add_subdirectory(profiles)
 add_subdirectory(resourceproviders)
 add_subdirectory(shortcuts)
 add_subdirectory(luts)
+add_subdirectory(agents)
 
 install(FILES
   meta_magiclantern.png

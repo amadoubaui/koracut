@@ -16,6 +16,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QStandardPaths>
 #include <QTextStream>
 
 #include <functional>
@@ -195,6 +196,14 @@ QString KoraCutAgentInit::firstMessage()
                  "Do not change anything yet.");
 }
 
+QStringList KoraCutAgentInit::firstSkills()
+{
+    return {QStringLiteral("koracut-piloter"), QStringLiteral("koracut-methode-monter-une-video"), QStringLiteral("koracut-retours-cibles"),
+            QStringLiteral("koracut-montage-visible"), QStringLiteral("koracut-quand-un-outil-manque")};
+}
+
+// Le gabarit du 1er octobre 2026 (document 18, journal) : court, le rôle d'abord, puis l'état du
+// projet, comment agir, les règles, les compétences à lire. Le détail du métier est dans les compétences.
 QString KoraCutAgentInit::instructionsBlock(const Context &ctx, const QString &agentName)
 {
     const QJsonObject &info = ctx.project;
@@ -205,47 +214,30 @@ QString KoraCutAgentInit::instructionsBlock(const Context &ctx, const QString &a
     const QString typeId = info.value(QStringLiteral("type_video")).toString();
     const KoraCutVideoTypes::VideoType *type = typeId.isEmpty() ? nullptr : KoraCutVideoTypes::byId(typeId);
     const QString ctlCmd = ctl(ctx.reglage);
+    const bool isClaude = agentName == QLatin1String("Claude Code");
 
     QString text;
     QTextStream out(&text);
     out << "# Projet de montage KoraCut : " << (name.isEmpty() ? QStringLiteral("sans nom") : name) << "\n\n";
-    out << "Tu es dans le dossier d'un projet de montage vidéo KoraCut. KoraCut est ouverte à côté, ce projet chargé, et t'écoute par sa "
-           "porte de commande : tout ce que tu y fais se voit à l'écran et se défait d'un seul Annuler. Tu es le monteur ; la personne qui "
-           "t'a lancé";
+
+    out << "## Où tu es, ton rôle\n\n";
+    out << "Tu tournes dans le terminal de **KoraCut**, une application de montage vidéo. Ce dossier est celui du projet ouvert dans l'application, "
+           "juste au-dessus de toi. Tu n'es pas là pour écrire du code : **tu es le monteur, aux commandes de l'application**. La personne qui t'a lancé";
     if (!agentName.isEmpty()) {
         out << " (dans " << agentName << ")";
     }
-    out << " regarde l'écran. Réponds dans sa langue, le français par défaut, en phrases simples.\n\n";
+    out << " regarde l'écran pendant que tu montes. Tout ce que tu fais passe par la porte de commande de KoraCut, se voit à l'écran et se défait "
+           "d'un Annuler. Réponds dans sa langue, le français par défaut, en la tutoyant, en phrases simples et courtes.\n\n";
 
-    out << "## La vidéo à monter\n\n";
-    out << "- Projet : `" << (projectFile.isEmpty() ? QStringLiteral("pas encore enregistré") : projectFile) << "`";
+    out << "## Le projet ouvert\n\n";
+    out << "- Nom : " << (name.isEmpty() ? QStringLiteral("sans nom") : name) << "\n";
+    out << "- Fichier : `" << (projectFile.isEmpty() ? QStringLiteral("pas encore enregistré") : projectFile) << "`";
     if (info.value(QStringLiteral("modifie")).toBool()) {
-        out << " (modifié, pas encore enregistré)";
+        out << " (des changements ne sont pas enregistrés)";
     }
     out << "\n";
-    if (type) {
-        out << "- Type de vidéo : **" << type->name << "**. " << type->description << "\n";
-        if (!type->platforms.isEmpty()) {
-            out << "- Plateformes : " << type->platforms << "\n";
-        }
-        if (!type->duration.isEmpty()) {
-            out << "- Durée visée : " << type->duration << "\n";
-        }
-        out << "- Export prévu : " << type->exportLufs << " LUFS";
-        if (!type->exportCodec.isEmpty()) {
-            out << ", " << type->exportCodec;
-        }
-        out << "\n";
-        if (!type->tips.isEmpty()) {
-            out << "- Conseils du guide pour ce type :\n";
-            for (const QString &tip : type->tips) {
-                out << "  - " << tip << "\n";
-            }
-        }
-    } else if (!typeId.isEmpty()) {
-        out << "- Type de vidéo : " << info.value(QStringLiteral("type_video_nom")).toString(typeId) << "\n";
-    } else {
-        out << "- Type de vidéo : pas choisi. Demande-le si le sujet ne le dit pas (publicité, podcast, tutoriel, clip…).\n";
+    if (!dir.isEmpty()) {
+        out << "- Dossier : `" << QDir::toNativeSeparators(dir) << "`\n";
     }
     if (!profile.isEmpty()) {
         out << "- Format : " << profile.value(QStringLiteral("largeur")).toInt() << " × " << profile.value(QStringLiteral("hauteur")).toInt() << " à "
@@ -260,32 +252,46 @@ QString KoraCutAgentInit::instructionsBlock(const Context &ctx, const QString &a
         }
         out << "\n";
     }
+    if (type) {
+        out << "- Type de vidéo : **" << type->name << "**. " << type->description << "\n";
+        if (!type->platforms.isEmpty()) {
+            out << "- Plateformes : " << type->platforms << "\n";
+        }
+        if (!type->duration.isEmpty()) {
+            out << "- Durée visée : " << type->duration << "\n";
+        }
+        out << "- Export prévu : " << type->exportLufs << " LUFS";
+        if (!type->exportCodec.isEmpty()) {
+            out << ", " << type->exportCodec;
+        }
+        out << "\n";
+    } else if (!typeId.isEmpty()) {
+        out << "- Type de vidéo : " << info.value(QStringLiteral("type_video_nom")).toString(typeId) << "\n";
+    } else {
+        out << "- Type de vidéo : pas choisi. Demande-le si le sujet ne le dit pas (publicité, podcast, tutoriel, clip…).\n";
+    }
     const QJsonObject folders = info.value(QStringLiteral("dossiers")).toObject();
     for (const QString &key : {QStringLiteral("rushs"), QStringLiteral("exports")}) {
         if (folders.contains(key)) {
             out << "- Dossier " << key << " : `" << relative(dir, folders.value(key).toString()) << "/`\n";
         }
     }
-
-    out << "\n### Les médias du chutier\n\n";
     if (ctx.medias.isEmpty()) {
-        out << "Le chutier est vide. Les rushs sont peut-être déjà dans le dossier : `" << ctlCmd << " fichiers lister recursif=true`.\n";
+        out << "- Chutier : vide. Les rushs sont peut-être déjà dans le dossier (`" << ctlCmd << " fichiers lister recursif=true`).\n";
     } else {
+        out << "- Chutier (" << ctx.medias.size() << (ctx.medias.size() > 1 ? " médias" : " média") << ") :\n";
         int shown = 0;
         for (const QJsonValue &v : ctx.medias) {
             const QJsonObject m = v.toObject();
-            if (++shown > 40) {
-                out << "- … et " << (ctx.medias.size() - 40) << " autres (`medias lister`)\n";
+            if (++shown > 20) {
+                out << "  - … et " << (ctx.medias.size() - 20) << " autres (`" << ctlCmd << " medias lister`)\n";
                 break;
             }
-            out << "- `" << m.value(QStringLiteral("id")).toVariant().toString() << "` " << m.value(QStringLiteral("nom")).toString() << " ("
+            out << "  - `" << m.value(QStringLiteral("id")).toVariant().toString() << "` " << m.value(QStringLiteral("nom")).toString() << " ("
                 << m.value(QStringLiteral("type")).toString();
             const QString d = tc(m.value(QStringLiteral("duree")));
             if (!d.isEmpty() && d != QLatin1String("00:00:00:00")) {
                 out << ", " << d;
-            }
-            if (m.contains(QStringLiteral("dossier"))) {
-                out << ", dossier " << m.value(QStringLiteral("dossier")).toString();
             }
             if (m.value(QStringLiteral("utilise")).toInt() > 0) {
                 out << ", déjà dans la timeline";
@@ -293,8 +299,6 @@ QString KoraCutAgentInit::instructionsBlock(const Context &ctx, const QString &a
             out << ")\n";
         }
     }
-
-    out << "\n### Le script\n\n";
     const QString scriptJson = info.value(QStringLiteral("proprietes")).toObject().value(KoraCutScript::PropertyName).toString();
     bool scriptOk = false;
     const KoraCutScript script = scriptJson.isEmpty() ? KoraCutScript() : KoraCutScript::fromString(scriptJson, &scriptOk);
@@ -302,81 +306,92 @@ QString KoraCutAgentInit::instructionsBlock(const Context &ctx, const QString &a
     if (!markdown.isEmpty()) {
         QStringList lines = markdown.split(QLatin1Char('\n'));
         const int total = int(lines.size());
-        if (total > 60) {
-            lines = lines.mid(0, 60);
+        if (total > 20) {
+            lines = lines.mid(0, 20);
         }
-        out << "Le projet a un script (panneau Script). Le début :\n\n";
+        out << "- Script (panneau Script), le début :\n\n";
         for (const QString &l : std::as_const(lines)) {
             out << "> " << l << "\n";
         }
-        if (total > 60) {
+        if (total > 20) {
             out << "> …\n";
         }
-        out << "\nLe script entier : `" << ctlCmd << " timeline outil nom=script_lire`. Chaque séquence a son script : sans `sequence`, c'est celui de la "
-               "séquence active ; `sequence=<rang ou nom>` vise une autre séquence.\n";
+        out << "\n  Le script entier : `" << ctlCmd << " timeline outil nom=script_lire` (`sequence=<rang ou nom>` pour une autre séquence).\n";
     } else {
-        out << "Pas encore de script. Si la personne n'en donne pas, comprends la vidéo à partir de sa demande et des rushs (transcription : `"
-            << ctlCmd << " medias analyser media_id=<id> quoi=transcription`), puis écris-le avec `script_modele` et `script_ecrire` avant de monter. Chaque séquence a son script (`sequence=<rang ou nom>`, sinon la séquence active).\n";
+        out << "- Script : aucun pour l'instant. Avant de monter, écris-le avec `script_modele` et `script_ecrire` (transcription d'un rush : `" << ctlCmd
+            << " medias analyser media_id=<id> quoi=transcription`).\n";
     }
+    out << "\nCet état date du lancement. Relis-le toujours dans l'application avant d'agir.\n";
 
-    out << "\n## Au démarrage\n\n";
-    out << "1. Lis l'état : `" << ctlCmd << " projet info`, `" << ctlCmd << " medias lister`, `" << ctlCmd << " timeline etat niveau=resume`.\n";
-    out << "2. Dis en quelques lignes ce que tu comprends de la vidéo à monter (sujet, durée, format, ce qui manque) et propose ton plan. "
-           "Attends l'accord avant de toucher au montage.\n";
-
-    out << "\n## La méthode\n\n";
-    out << "1. **Ranger d'abord.** Un dossier par sorte de fichier (`Rushs/`, `Sons/`, `Musique/`, `Images/`, `Exports/`), chaque rush renommé "
-           "et numéroté selon ce qu'il montre (`01 - Intro plan large.mp4`), le chutier rangé pareil. `fichiers creer_dossier`, `fichiers renommer`, "
-           "`fichiers deplacer` (le chutier suit), `medias renommer`. Jamais de suppression.\n";
-    out << "2. **Le script ensuite.** Lis-le, ou écris-le s'il manque. Chaque plan du montage doit venir d'une ligne du script.\n";
-    out << "3. **Monter sous les yeux de la personne.** Un geste à la fois par la porte (poser, couper, rogner, déplacer), la tête de lecture "
-           "sur ce que tu fais, pas de gros script qui fait tout en arrière-plan. Chaque étape de travail dans un tour : "
-           "`historique tour faire=debut titre='…'` puis `faire=fin`.\n";
-    out << "4. **Vérifier.** Relis `timeline etat` après chaque coupe ; `ui capture` pour regarder une image, jamais pour cliquer.\n";
-    out << "5. **Exporter** seulement quand la personne le demande (`export lancer`, le niveau sonore du type de vidéo).\n";
-
-    out << "\n## Piloter KoraCut\n\n";
-    out << "La porte est déjà connue de ce terminal (`KORACUT_PORTE`). La commande est `" << ctlCmd
-        << " <famille> <methode> clef=valeur` ; `koracut-ctl --aide` liste tout. Exemples :\n\n";
+    out << "\n## Comment agir\n\n";
+    out << "La porte de commande est déjà connue de ce terminal (`KORACUT_PORTE`). Deux façons, qui font la même chose :\n\n";
+    if (!ctx.mcpScript.isEmpty()) {
+        out << "- Les outils MCP `koracut` (`koracut_projet_info`, `koracut_timeline_etat`, `koracut_timeline_outil`, `koracut_medias_importer`…), branchés pour toi.\n";
+    }
+    out << "- La ligne de commande `" << ctlCmd << " <famille> <methode> clef=valeur` ; `koracut-ctl --aide` liste tout.\n\n";
     out << "```sh\n";
+    out << ctlCmd << " projet info\n";
     out << ctlCmd << " timeline etat niveau=resume\n";
-    out << ctlCmd << " fichiers lister dossier=Rushs\n";
     out << ctlCmd << " medias importer chemins='[\"Rushs/01 - Intro.mp4\"]' dossier=Rushs\n";
     out << ctlCmd << " timeline outil nom=ajouter_clip args='{\"media_id\": \"3\", \"piste_id\": 2, \"position\": 0}'\n";
-    out << ctlCmd << " export lancer prereglage='MP4-H264/AAC' chemin=Exports/final.mp4 niveau_lufs=-14\n";
     out << "```\n\n";
-    if (!ctx.mcpScript.isEmpty()) {
-        out << "Le serveur MCP `koracut` est branché pour toi dans ce dossier : ses outils (`koracut_timeline_etat`, `koracut_medias_importer`…) "
-               "font la même chose que `koracut-ctl`. Utilise l'un ou l'autre.\n";
-    }
+    out << "N'écris pas dans le fichier `.koracut` et ne lance pas ffmpeg à la place de l'application : passe par la porte.\n";
+
+    out << "\n## Au démarrage\n\n";
+    out << "1. Lis l'état : `projet info`, `medias lister`, `timeline etat niveau=resume`.\n";
+    out << "2. Dis en quelques lignes ce que tu comprends de la vidéo à monter et propose ton plan. Attends l'accord avant de toucher au montage.\n";
 
     out << "\n## Les règles\n\n";
-    out << "1. Lis `timeline etat` avant d'agir, et relis-le après une coupe ou un Annuler : les identifiants changent.\n";
-    out << "2. Ne supprime jamais un fichier. `fichiers corbeille` existe, à confirmation ; rien d'autre. Renommer et déplacer restent dans le dossier du projet.\n";
-    out << "3. Une réponse `confirmation_requise` attend la personne dans la Console de KoraCut : ne relance pas en boucle. `occupe` : réessaie une seconde plus tard.\n";
-    out << "4. Les temps sont en images ou en timecode `HH:MM:SS:II` ; `out` est exclu.\n";
-    out << "5. Si KoraCut ne sait pas faire ce qu'il faut, dis-le clairement plutôt que de contourner.\n";
+    out << "1. **Montage visible.** Un geste à la fois par la porte, la tête de lecture sur ce que tu fais, la personne voit chaque étape et peut "
+           "t'arrêter. Pas de gros script qui fait tout en arrière-plan. Une étape de travail = un tour (`historique tour faire=debut titre='…'`, "
+           "puis `faire=fin`) : un seul Annuler la défait.\n";
+    out << "2. **Retours ciblés.** Quand la personne demande un changement, tu modifies cela et rien d'autre. Tu ne remontes jamais la vidéo, "
+           "tu ne retouches pas ce qui n'a pas été demandé.\n";
+    out << "3. **Quand un outil manque, dis-le.** Si KoraCut ne sait pas faire proprement ce qu'il faut, arrête-toi et dis clairement ce qui manque, "
+           "plutôt que contourner ou livrer un résultat médiocre.\n";
+    out << "4. **L'étalonnage par défaut est clair et vif** : ombres relevées, hautes lumières retenues, couleurs franches, tout se lit "
+           "(fiche `koracut-etalonnage-hdr-clair`). Un autre style seulement si la personne le demande.\n";
+    out << "5. **Rien sur un visage ni sur un téléphone.** Aucun titre, bandeau, sous-titre, logo ou animation ne recouvre un visage, ni l'écran "
+           "d'un téléphone montré à l'image.\n";
+    out << "6. Lis `timeline etat` avant d'agir et relis-le après une coupe ou un Annuler : les identifiants changent. Les temps sont en images "
+           "ou en timecode `HH:MM:SS:II`, `out` est exclu.\n";
+    out << "7. Ne supprime jamais un fichier. `fichiers corbeille` existe, à confirmation. Renommer et déplacer restent dans le dossier du projet.\n";
+    out << "8. `confirmation_requise` : la personne doit répondre dans KoraCut, ne relance pas en boucle. `occupe` : réessaie une seconde plus tard.\n";
+    out << "9. N'exporte que quand la personne le demande (`export lancer`).\n";
 
-    if (!ctx.skills.isEmpty()) {
-        out << "\n## Les compétences\n\n";
-        out << "Lis `koracut-piloter` en premier, puis `koracut-methode-monter-une-video` s'il existe, puis celle du travail en cours.\n\n";
-        if (agentName == QLatin1String("Claude Code")) {
-            // Claude Code les charge lui-même (~/.claude/skills) : leurs noms suffisent.
-            QStringList names;
-            for (const QString &s : ctx.skills) {
-                names << QStringLiteral("`") + s.section(QLatin1Char('|'), 0, 0) + QStringLiteral("`");
-            }
-            out << "Elles sont installées pour toi : " << names.join(QStringLiteral(", ")) << ".\n";
-        } else {
-            out << "Ce sont des fichiers Markdown : ouvre celui qu'il te faut avant d'agir.\n\n";
-            for (const QString &s : ctx.skills) {
-                const QStringList parts = s.split(QLatin1Char('|'));
-                out << "- `" << parts.value(0) << "` : " << parts.value(1) << " (`" << parts.value(2) << "`)\n";
+    out << "\n## Les compétences\n\n";
+    QStringList known;
+    for (const QString &s : ctx.skills) {
+        known << s.section(QLatin1Char('|'), 0, 0);
+    }
+    out << "Le métier est dans les compétences KoraCut";
+    if (isClaude) {
+        out << ", installées pour toi (" << (ctx.skills.isEmpty() ? QStringLiteral("dossier `~/.claude/skills/`") : QStringLiteral("%1 fiches `koracut-*`").arg(ctx.skills.size()))
+            << ")";
+    }
+    out << ". Lis ces cinq-là d'abord, dans cet ordre, avant ton premier geste :\n\n";
+    int rank = 0;
+    for (const QString &first : firstSkills()) {
+        out << ++rank << ". `" << first << "`";
+        for (const QString &s : ctx.skills) {
+            const QStringList parts = s.split(QLatin1Char('|'));
+            if (parts.value(0) == first && !isClaude && !parts.value(2).isEmpty()) {
+                out << " (`" << parts.value(2) << "`)";
             }
         }
-        out << "\nPour tout motion design (titre animé, bandeau, habillage) : écris la composition dans `motion/<nom>/` et pose-la avec "
-               "`timeline outil nom=motion_poser`.\n";
+        if (!ctx.skills.isEmpty() && !known.contains(first)) {
+            out << " (absente de cette machine)";
+        }
+        out << "\n";
     }
+    out << "\nPuis celle du travail en cours : son nom dit son sujet (`koracut-son-*`, `koracut-etalonnage-*`, `koracut-organiser-*`, `koracut-script-*`, "
+           "`koracut-sous-titres`, `koracut-animer`, `koracut-export-*`…).";
+    if (!isClaude && !ctx.skills.isEmpty()) {
+        const QString anyPath = ctx.skills.first().section(QLatin1Char('|'), 2);
+        out << " Ce sont des fichiers Markdown, dans `" << QFileInfo(QFileInfo(anyPath).absolutePath()).absolutePath() << "`.";
+    }
+    out << "\n\nPour tout motion design (titre animé, bandeau, habillage) : écris la composition dans `motion/<nom>/` et pose-la avec "
+           "`timeline outil nom=motion_poser`.\n";
     out.flush();
     return text;
 }
@@ -597,6 +612,10 @@ QString KoraCutAgentInit::findMcpServer()
     if (!env.isEmpty() && QFileInfo::exists(env)) {
         return env;
     }
+    const QString shipped = QStandardPaths::locate(QStandardPaths::AppDataLocation, QStringLiteral("agents/mcp/main.js"));
+    if (!shipped.isEmpty()) {
+        return QFileInfo(shipped).canonicalFilePath();
+    }
     const QString appDir = QCoreApplication::applicationDirPath();
     QStringList candidates = {appDir + QStringLiteral("/../Resources/mcp/main.js"), appDir + QStringLiteral("/../share/koracut/mcp/main.js"),
                               appDir + QStringLiteral("/mcp/main.js")};
@@ -611,12 +630,52 @@ QString KoraCutAgentInit::findMcpServer()
     return QString();
 }
 
+QString KoraCutAgentInit::findData(const QString &relative)
+{
+    const QString path = QStringLiteral("agents/") + relative;
+    QString found = QStandardPaths::locate(QStandardPaths::AppDataLocation, path);
+    if (found.isEmpty()) {
+        found = QStandardPaths::locate(QStandardPaths::AppDataLocation, path, QStandardPaths::LocateDirectory);
+    }
+#ifdef KORACUT_SOURCE_ROOT
+    if (found.isEmpty()) {
+        const QString dev = QStringLiteral(KORACUT_SOURCE_ROOT) + QStringLiteral("/Sources/kdenlive/data/") + path;
+        if (QFileInfo::exists(dev)) {
+            found = dev;
+        }
+    }
+#endif
+    return found;
+}
+
+QString KoraCutAgentInit::bundledSkillsRoot()
+{
+    // KORACUT_SKILLS_DIR : un autre dossier pour les essais.
+    const QString env = qEnvironmentVariable("KORACUT_SKILLS_DIR");
+    if (!env.isEmpty()) {
+        return QFileInfo(env).isDir() ? env : QString();
+    }
+    const QString shipped = QStandardPaths::locate(QStandardPaths::AppDataLocation, QStringLiteral("agents/skills"), QStandardPaths::LocateDirectory);
+    if (!shipped.isEmpty()) {
+        return shipped;
+    }
+#ifdef KORACUT_SOURCE_ROOT
+    const QString dev = QStringLiteral(KORACUT_SOURCE_ROOT) + QStringLiteral("/Sources/koracut-skills");
+    if (QFileInfo(dev).isDir()) {
+        return dev;
+    }
+#endif
+    return QString();
+}
+
 QStringList KoraCutAgentInit::findSkills()
 {
+    // Celles de la personne d'abord (Claude Code les lit là), puis celles livrées avec l'application.
     QStringList roots = {QDir::homePath() + QStringLiteral("/.claude/skills")};
-#ifdef KORACUT_SOURCE_ROOT
-    roots << QStringLiteral(KORACUT_SOURCE_ROOT) + QStringLiteral("/Sources/koracut-skills");
-#endif
+    const QString bundled = bundledSkillsRoot();
+    if (!bundled.isEmpty()) {
+        roots << bundled;
+    }
     QStringList out;
     QStringList seen;
     static const QRegularExpression descRe(QStringLiteral("^description:\\s*(.+)$"), QRegularExpression::MultilineOption);

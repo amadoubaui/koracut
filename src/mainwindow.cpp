@@ -1114,7 +1114,12 @@ void MainWindow::init()
         if (QAction *save = actionCollection()->action(KStandardAction::name(KStandardAction::Save))) {
             save->trigger();
         }
+        // Le projet a maintenant un dossier : l'agent qui l'attendait part tout seul.
+        QTimer::singleShot(0, m_terminalPanel, &KoraCutTerminalPanel::resumePending);
     });
+#if KORACUT_AGENTS
+    connect(m_agentPanel, &KoraCutAgentPanel::claudeCodeRequested, this, &MainWindow::slotEditWithClaudeCode);
+#endif
 
     // KoraCut, document 21 : le panneau Script, l'éditeur du script du projet (onglet du bloc de droite).
     auto *scriptPanel = new KoraCutScriptPanel(this);
@@ -4786,6 +4791,11 @@ void MainWindow::setupActions()
     auto *terminalPanel = new QAction(QIcon::fromTheme(QStringLiteral("utilities-terminal")), i18nc("@action", "Terminal"), this);
     terminalPanel->setToolTip(i18nc("@info:tooltip", "A terminal inside KoraCut, in the project folder, where a command line agent edits with you"));
     connect(terminalPanel, &QAction::triggered, this, &MainWindow::slotToggleTerminalPanel);
+    // « Monter avec Claude Code » (document 18, 1er octobre 2026) : un clic, tout est prêt. Sans raccourci.
+    auto *claudeCode = new QAction(QIcon::fromTheme(QStringLiteral("utilities-terminal")), i18nc("@action", "Edit with Claude Code"), this);
+    claudeCode->setToolTip(i18nc("@info:tooltip", "Prepares the project and launches Claude Code in the KoraCut terminal, connected to KoraCut, with your own Claude account"));
+    connect(claudeCode, &QAction::triggered, this, &MainWindow::slotEditWithClaudeCode);
+    addAction(QStringLiteral("koracut_claude_code"), claudeCode, QKeySequence(), koraCutActions);
 #ifdef Q_OS_MACOS
     addActionWithShortcuts(QStringLiteral("koracut_terminal_panel"), terminalPanel,
                            {QKeySequence(Qt::META | Qt::Key_QuoteLeft), QKeySequence(Qt::META | Qt::Key_Ugrave)}, koraCutActions);
@@ -5498,6 +5508,24 @@ void MainWindow::slotShowTerminalPanel()
     if (!m_terminalDock) {
         return;
     }
+    koraCutRevealTerminalDock();
+    // Au tour de boucle suivant, pour la même raison que « Monter avec Claude Code » plus bas.
+    QTimer::singleShot(0, m_terminalPanel, [this]() { m_terminalPanel->openHere(); });
+}
+
+void MainWindow::slotEditWithClaudeCode()
+{
+    if (!m_terminalDock) {
+        return;
+    }
+    koraCutRevealTerminalDock();
+    // Au tour de boucle suivant : déclenchée par la porte (actions.declencher), l'action doit d'abord
+    // rendre la main, sinon la porte répond « occupé » quand le panneau lit le projet.
+    QTimer::singleShot(0, m_terminalPanel, [this]() { m_terminalPanel->editWithClaudeCode(); });
+}
+
+void MainWindow::koraCutRevealTerminalDock()
+{
     if (!m_terminalDock->isOpen()) {
         // Jamais posé (un plan de travail qui ne le connaît pas) : sous la timeline, comme dans VS Code.
         if (m_terminalDock->dockWidget()->hasPreviousDockedLocation()) {
@@ -5512,7 +5540,6 @@ void MainWindow::slotShowTerminalPanel()
         }
     }
     m_terminalDock->setAsCurrentTab();
-    m_terminalPanel->openHere();
 }
 
 void MainWindow::slotToggleTerminalPanel()

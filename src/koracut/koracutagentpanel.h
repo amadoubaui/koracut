@@ -56,6 +56,12 @@ public:
     /** @brief Une ligne du service local (démarrage, bascule d'une connexion IA à la suivante). */
     void showServiceNote(const QString &text);
 
+Q_SIGNALS:
+    /** @brief « Monter avec Claude Code » : la fenêtre principale ouvre le terminal et lance Claude Code. */
+    void claudeCodeRequested();
+
+public:
+
 protected:
     void resizeEvent(QResizeEvent *event) override;
 

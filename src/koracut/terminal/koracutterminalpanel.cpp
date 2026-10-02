@@ -9,6 +9,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "koracut/porte/koracutporte.h"
 #include "koracut/porte/koracutterminal.h"
 #include "koracutpty.h"
+#include "koracutskills.h"
 #include "koracutterminalview.h"
 
 #include <KLocalizedString>
@@ -31,6 +32,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QStackedWidget>
 #include <QTabBar>
 #include <QTextStream>
+#include <QTimer>
 #include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -38,6 +40,14 @@ SPDX-License-Identifier: GPL-3.0-or-later
 namespace {
 
 constexpr int IdRole = Qt::UserRole + 1;
+const QString kClaudeId = QStringLiteral("claude-code");
+
+// La langue des scripts livrés (agents/installer-*.sh) : celle de l'interface.
+QString scriptLanguage()
+{
+    const QStringList languages = KLocalizedString::languages();
+    return languages.isEmpty() ? QStringLiteral("en") : languages.first().left(2);
+}
 
 QString clientName()
 {
@@ -152,6 +162,23 @@ KoraCutTerminalPanel::KoraCutTerminalPanel(KoraCutPorte *porte, QWidget *parent)
     m_newTab->setToolTip(i18nc("@info:tooltip", "New terminal in the project folder"));
     connect(m_newTab, &QToolButton::clicked, this, [this]() { newShell(); });
     barLayout->addWidget(m_newTab);
+
+    // « Monter avec Claude Code » : le chemin en un clic (document 18, 1er octobre 2026).
+    if (const KoraCutAgentsCli::Agent *claude = KoraCutAgentsCli::byId(kClaudeId)) {
+        m_claudeButton = new QToolButton(bar);
+        m_claudeButton->setObjectName(QStringLiteral("koracutTerminalClaude"));
+        m_claudeButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        m_claudeButton->setAutoRaise(true);
+        m_claudeButton->setIconSize(KoraCutMetrics::iconDefault());
+        m_claudeButton->setIcon(KoraCutAgentsCli::icon(*claude, 16));
+        m_claudeButton->setText(i18nc("@action:button one click: prepare the project and launch Claude Code in the terminal", "Edit with Claude Code"));
+        m_claudeButton->setToolTip(i18nc("@info:tooltip",
+                                         "Prepares this project, installs the KoraCut skills and launches Claude Code here, connected to KoraCut. "
+                                         "If Claude Code is missing, KoraCut offers to install it. The first time, Claude Code opens your browser so you sign in "
+                                         "to your Claude account yourself."));
+        connect(m_claudeButton, &QToolButton::clicked, this, [this]() { editWithClaudeCode(); });
+        barLayout->addWidget(m_claudeButton);
+    }
 
     m_agentButton = new QToolButton(bar);
     m_agentButton->setObjectName(QStringLiteral("koracutTerminalAgent"));
@@ -680,7 +707,10 @@ bool KoraCutTerminalPanel::prepareProject(QString &dir, KoraCutAgentInit::Contex
     }
     const KoraCutPorte::Reply info = m_porte->call(clientName(), QStringLiteral("projet.info"), {});
     if (!info.ok()) {
-        message = i18nc("@info", "No project is open yet.");
+        // Lancé depuis une commande de la porte encore en cours : KoraCut est occupée, pas sans projet.
+        message = info.error.value(QStringLiteral("code")).toString() == QLatin1String("occupe")
+            ? i18nc("@info", "KoraCut is busy with another command. Try again in a moment.")
+            : i18nc("@info", "No project is open yet.");
         m_saveButton->hide();
         return false;
     }
@@ -817,11 +847,24 @@ bool KoraCutTerminalPanel::launchAgent(const QString &id, bool install)
     QString dir;
     QString message;
     KoraCutAgentInit::Context ctx;
+    // Les compétences KoraCut, posées là où Claude Code les lit, avant de les annoncer dans les consignes.
+    QString skillsLine;
+    if (id == kClaudeId) {
+        const QString bundled = KoraCutSkills::bundledRoot();
+        if (!bundled.isEmpty()) {
+            const KoraCutSkills::Result skills = KoraCutSkills::install(bundled, KoraCutSkills::userRoot());
+            skillsLine = KoraCutSkills::summary(skills);
+            m_lastSkills = skillsLine;
+        }
+    }
     if (!prepareProject(dir, ctx, message)) {
+        // Le projet n'a pas encore de dossier : on le dit, on propose de l'enregistrer, et on reprend après.
+        m_pendingAgent = m_saveButton->isHidden() ? QString() : id;
         showChooser();
         setMessage(message, true);
         return false;
     }
+    m_pendingAgent.clear();
     setMessage(QString(), false);
     const QString exe = KoraCutAgentsCli::locate(*agent);
     if (exe.isEmpty()) {
@@ -851,33 +894,64 @@ bool KoraCutTerminalPanel::launchAgent(const QString &id, bool install)
     for (const QString &e : std::as_const(errors)) {
         body += printfLine(i18nc("@info %1 technical reason", "Not written: %1", e), QStringLiteral("33"));
     }
+    if (!skillsLine.isEmpty()) {
+        body += printfLine(skillsLine);
+    }
     if (exe.isEmpty()) {
-        body += printfLine(i18nc("@info %1 agent name", "KoraCut installs %1 with its official command:", agent->name), QStringLiteral("1"));
-        body += printfLine(QStringLiteral("  ") + agent->install.command, QStringLiteral("36"));
+        const QString failed = i18nc("@info", "The installation did not finish. Read the messages above, then close this tab and try again.");
+        const QString exeName = agent->executables.value(0);
+        // Un script livré avec KoraCut explique, demande l'accord dans le terminal, puis installe par la
+        // voie officielle (Claude Code) ; sinon la commande officielle, déjà montrée avant le clic.
+        const QString script = agent->install.script.isEmpty() ? QString() : KoraCutAgentInit::findData(agent->install.script);
+        const bool simulated = id == kClaudeId && qEnvironmentVariableIntValue("KORACUT_CLAUDE_ABSENT") > 0;
 #ifdef Q_OS_WIN
-        // Les commandes d'installation de Windows sont souvent en PowerShell (« irm … | iex »).
-        if (agent->install.shell == QLatin1String("powershell")) {
-            body += QStringLiteral("powershell -NoProfile -ExecutionPolicy Bypass -Command %1\n").arg(KoraCutAgentsCli::shellQuote(agent->install.command));
+        if (!script.isEmpty()) {
+            body += QStringLiteral("set \"KORACUT_LANGUE=%1\"\n").arg(scriptLanguage());
+            if (simulated) {
+                body += QStringLiteral("set \"KORACUT_CLAUDE_ABSENT=1\"\nset \"KORACUT_INSTALLER_SIMULER=1\"\n");
+            }
+            body += QStringLiteral("powershell -NoProfile -ExecutionPolicy Bypass -File %1\n").arg(KoraCutAgentsCli::shellQuote(QDir::toNativeSeparators(script)));
+            // Refusé ou échoué : le script l'a dit, l'onglet garde un shell dans le dossier du projet.
+            body += QStringLiteral("if errorlevel 1 goto :eof\n");
+            body += QStringLiteral("set \"PATH=%USERPROFILE%\\.local\\bin;%PATH%\"\n");
         } else {
-            body += QStringLiteral("call ") + agent->install.command + QLatin1Char('\n');
+            body += printfLine(i18nc("@info %1 agent name", "KoraCut installs %1 with its official command:", agent->name), QStringLiteral("1"));
+            body += printfLine(QStringLiteral("  ") + agent->install.command, QStringLiteral("36"));
+            // Les commandes d'installation de Windows sont souvent en PowerShell (« irm … | iex »).
+            if (agent->install.shell == QLatin1String("powershell")) {
+                body += QStringLiteral("powershell -NoProfile -ExecutionPolicy Bypass -Command %1\n").arg(KoraCutAgentsCli::shellQuote(agent->install.command));
+            } else {
+                body += QStringLiteral("call ") + agent->install.command + QLatin1Char('\n');
+            }
         }
         // Le PATH de ce shell ne voit pas encore ce qui vient d'être installé : on relit celui de l'utilisateur.
         body += QStringLiteral("for /f \"usebackq tokens=2,*\" %%A in (`reg query HKCU\\Environment /v Path 2^>nul`) do set \"PATH=%%B;%PATH%\"\n");
-        body += QStringLiteral("where %1 >nul 2>nul\nif errorlevel 1 (\n").arg(agent->executables.value(0));
-        body += QStringLiteral("  ") + printfLine(i18nc("@info", "The installation did not finish. Read the messages above, then close this tab and try again."),
-                                                  QStringLiteral("31"));
+        body += QStringLiteral("where %1 >nul 2>nul\nif errorlevel 1 (\n").arg(exeName);
+        body += QStringLiteral("  ") + printfLine(failed, QStringLiteral("31"));
         body += QStringLiteral("  goto :eof\n)\n");
-    }
 #else
-        body += agent->install.command + QLatin1Char('\n');
-        // Un installeur qui pose sa commande dans ~/.local/bin ne met pas toujours le PATH de ce shell à jour.
-        body += QStringLiteral("hash -r 2>/dev/null\n");
-        body += QStringLiteral("if ! command -v %1 >/dev/null 2>&1; then\n").arg(KoraCutAgentsCli::shellQuote(agent->executables.value(0)));
-        body += QStringLiteral("  ") + printfLine(i18nc("@info", "The installation did not finish. Read the messages above, then close this tab and try again."),
-                                                  QStringLiteral("31"));
-        body += QStringLiteral("  exec %1 -l\nfi\n").arg(KoraCutAgentsCli::shellQuote(KoraCutAgentsCli::userShell()));
-    }
+        const QString backToShell = QStringLiteral("exec %1 -l\n").arg(KoraCutAgentsCli::shellQuote(KoraCutAgentsCli::userShell()));
+        if (!script.isEmpty()) {
+            QString line = QStringLiteral("KORACUT_LANGUE=%1 ").arg(scriptLanguage());
+            if (simulated) {
+                line += QStringLiteral("KORACUT_CLAUDE_ABSENT=1 KORACUT_INSTALLER_SIMULER=1 ");
+            }
+            body += line + QStringLiteral("/bin/sh ") + KoraCutAgentsCli::shellQuote(script) + QLatin1Char('\n');
+            // Refusé ou échoué : le script l'a dit, l'onglet garde un shell dans le dossier du projet.
+            body += QStringLiteral("if [ $? -ne 0 ]; then\n  ") + backToShell + QStringLiteral("fi\n");
+        } else {
+            body += printfLine(i18nc("@info %1 agent name", "KoraCut installs %1 with its official command:", agent->name), QStringLiteral("1"));
+            body += printfLine(QStringLiteral("  ") + agent->install.command, QStringLiteral("36"));
+            body += agent->install.command + QLatin1Char('\n');
+        }
+        // Un installeur qui pose sa commande dans ~/.local/bin ne met pas le PATH de ce shell à jour, et
+        // le dossier n'existait peut-être pas quand KoraCut a préparé le PATH du terminal.
+        body += QStringLiteral("PATH=\"$HOME/.local/bin:$PATH\"; export PATH\nhash -r 2>/dev/null\n");
+        body += QStringLiteral("if ! command -v %1 >/dev/null 2>&1; then\n").arg(KoraCutAgentsCli::shellQuote(exeName));
+        body += QStringLiteral("  ") + printfLine(failed, QStringLiteral("31"));
+        body += QStringLiteral("  ") + backToShell + QStringLiteral("fi\n");
 #endif
+    }
     QStringList command = KoraCutAgentsCli::launchCommand(*agent, KoraCutAgentInit::firstMessage());
     if (!exe.isEmpty() && !command.isEmpty()) {
         command[0] = exe;
@@ -889,8 +963,16 @@ bool KoraCutTerminalPanel::launchAgent(const QString &id, bool install)
     body += QStringLiteral("call ");
 #endif
     body += KoraCutAgentsCli::shellLine(command) + QLatin1Char('\n');
+    if (id == kClaudeId) {
+        // Claude Code s'est arrêté : l'onglet garde un shell, où « claude » tapé à la main n'a pas KoraCut branché.
+        body += printfLine(i18nc("@info line in the terminal after Claude Code exits; keep the button name as translated",
+                                 "Claude Code has stopped. To start it again connected to KoraCut, click “Edit with Claude Code”."));
+    }
 
     auto *view = addTerminal(agent->name, KoraCutAgentsCli::icon(*agent, 16));
+    if (id == kClaudeId) {
+        m_claudeView = view;
+    }
     const bool ok = startScript(view, dir, body);
     refreshChooser();
     if (m_tabs->count() > 0) {
@@ -898,6 +980,36 @@ bool KoraCutTerminalPanel::launchAgent(const QString &id, bool install)
         view->setFocus(Qt::OtherFocusReason);
     }
     return ok;
+}
+
+bool KoraCutTerminalPanel::editWithClaudeCode()
+{
+    // Une session Claude Code déjà ouverte ici : on la ramène devant, on n'en lance pas une seconde.
+    if (m_claudeView && m_claudeView->isRunning()) {
+        for (int i = 0; i < m_tabs->count(); ++i) {
+            if (m_tabs->tabData(i).value<QObject *>() == m_claudeView) {
+                m_tabs->setCurrentIndex(i);
+                m_stack->setCurrentWidget(m_claudeView);
+                m_claudeView->setFocus(Qt::OtherFocusReason);
+                return true;
+            }
+        }
+    }
+    if (!KoraCutAgentsCli::byId(kClaudeId)) {
+        return false;
+    }
+    // Avec « installer » : un Claude Code absent est proposé par le script, accord demandé dans le terminal.
+    return launchAgent(kClaudeId, true);
+}
+
+void KoraCutTerminalPanel::resumePending()
+{
+    if (m_pendingAgent.isEmpty()) {
+        return;
+    }
+    const QString id = m_pendingAgent;
+    m_pendingAgent.clear();
+    launchAgent(id, true);
 }
 
 bool KoraCutTerminalPanel::openInSystemTerminal(const QString &agentId)
@@ -945,6 +1057,10 @@ QString KoraCutTerminalPanel::debugCommand(const QString &command)
         newShell();
     } else if (verb == QLatin1String("agent")) {
         return QStringLiteral("agent %1 %2").arg(arg, launchAgent(arg, false) ? QStringLiteral("ok") : QStringLiteral("echec"));
+    } else if (verb == QLatin1String("claude")) {
+        return QStringLiteral("claude %1 %2").arg(editWithClaudeCode() ? QStringLiteral("ok") : QStringLiteral("echec"), m_message->text());
+    } else if (verb == QLatin1String("reprendre")) {
+        resumePending();
     } else if (verb == QLatin1String("installer")) {
         return QStringLiteral("installer %1 %2").arg(arg, launchAgent(arg, true) ? QStringLiteral("ok") : QStringLiteral("echec"));
     } else if (verb == QLatin1String("taper")) {
@@ -982,6 +1098,9 @@ QString KoraCutTerminalPanel::debugCommand(const QString &command)
     }
     state.insert(QStringLiteral("agents"), agents);
     state.insert(QStringLiteral("dernier"), KoraCutAgentsCli::lastChoice());
+    state.insert(QStringLiteral("message"), m_message->isHidden() ? QString() : m_message->text());
+    state.insert(QStringLiteral("en_attente"), m_pendingAgent);
+    state.insert(QStringLiteral("competences"), m_lastSkills);
     if (KoraCutTerminalView *view = currentView()) {
         state.insert(QStringLiteral("ecran"), QJsonArray::fromStringList(view->screenLines()));
     }

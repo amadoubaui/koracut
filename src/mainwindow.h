@@ -572,6 +572,10 @@ private Q_SLOTS:
     void slotToggleTerminalPanel();
     /** @brief KoraCut : ouvre le panneau Terminal et y lance l'agent choisi (bouton de la Console). */
     void slotShowTerminalPanel();
+    /** @brief « Monter avec Claude Code » : ouvre le terminal et y lance Claude Code sur le projet. */
+    void slotEditWithClaudeCode();
+    /** @brief Montre le panneau Terminal sans rien y lancer. */
+    void koraCutRevealTerminalDock();
     /** @brief KoraCut : ouvre le panneau Motion (document 19). */
     void slotShowMotionPanel();
     void slotStopRenderProject();

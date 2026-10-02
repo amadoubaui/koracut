@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!DOCTYPE kpartgui SYSTEM "kpartgui.dtd">
-<kpartgui name="koracut" version="271" translationDomain="koracut">
+<kpartgui name="koracut" version="272" translationDomain="koracut">
   <MenuBar>
     <Menu name="file">
       <Action name="file_new"/>
@@ -373,6 +373,7 @@
       <Action name="koracut_agents_panel"/>
       <Action name="koracut_console_panel"/>
       <Action name="koracut_terminal_panel"/>
+      <Action name="koracut_claude_code"/>
       <Action name="koracut_extensions"/>
       <Separator/>
       <Action name="koracut_diagnostic_panel"/>

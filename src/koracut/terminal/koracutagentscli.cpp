@@ -96,6 +96,7 @@ QList<KoraCutAgentsCli::Agent> load()
             const QJsonObject i = install.toObject();
             a.install.command = i.value(QStringLiteral("commande")).toString();
             a.install.shell = i.value(QStringLiteral("shell")).toString();
+            a.install.script = i.value(QStringLiteral("script")).toString();
             a.install.requirements = strings(i.value(QStringLiteral("requiert")));
         }
         a.launch = strings(o.value(QStringLiteral("lancement")));
@@ -244,6 +245,11 @@ QString KoraCutAgentsCli::findExecutable(const QString &name)
 
 QString KoraCutAgentsCli::locate(const Agent &agent)
 {
+    // KORACUT_CLAUDE_ABSENT=1 : fait comme si Claude Code n'était pas installé, pour essayer le parcours
+    // d'installation sans rien désinstaller.
+    if (agent.id == QLatin1String("claude-code") && qEnvironmentVariableIntValue("KORACUT_CLAUDE_ABSENT") > 0) {
+        return QString();
+    }
     for (const QString &exe : agent.executables) {
         const QString found = findExecutable(exe);
         if (!found.isEmpty()) {

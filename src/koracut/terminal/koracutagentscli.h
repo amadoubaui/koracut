@@ -25,6 +25,7 @@ struct Install
 {
     QString command;       ///< la commande officielle, vide si ce système n'est pas pris en charge
     QString shell;         ///< « powershell » sous Windows quand il le faut
+    QString script;        ///< un script livré avec KoraCut (agents/<script>) qui explique, demande l'accord, puis installe
     QStringList requirements;///< node>=18, python>=3.10, brew, git, wsl
 };
 
