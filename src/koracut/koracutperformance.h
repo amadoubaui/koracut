@@ -55,6 +55,36 @@ int proxyHeavyMinWidth();
 bool simplifiedHeavyEffects();
 int producerCacheMax();
 
+/** @brief Garde de la place dans le cache des décodeurs de MLT tant qu'une copie de la scène vit.
+ *
+ * Ce cache (« producer_avformat ») est commun à tout le processus. Une copie XML de la timeline ouvre
+ * un décodeur par producteur : dans un cache plein, elle évince ceux du moniteur alors que ses images
+ * les tiennent encore. Quand le moniteur les rouvre, MLT 7.41 se trompe dans ses comptes
+ * (mlt_cache_put garde le même mlt_cache_item pour l'ancien et le nouveau décodeur) et ferme le
+ * nouveau décodeur pendant que le fil de rendu décode avec : plantages du 2 octobre 2026 (document 6).
+ * À déclarer AVANT le producteur de la copie, pour être détruit après lui (sa fermeture retire ses
+ * entrées du cache, puis la taille d'origine revient).
+ */
+class DecoderCacheRoom
+{
+public:
+    /** @p producers : le nombre de producteurs que la copie va ouvrir. */
+    explicit DecoderCacheRoom(int producers);
+    /** La place est comptée dans le XML de la scène. */
+    explicit DecoderCacheRoom(const QString &sceneXml);
+    ~DecoderCacheRoom();
+    DecoderCacheRoom(const DecoderCacheRoom &) = delete;
+    DecoderCacheRoom &operator=(const DecoderCacheRoom &) = delete;
+
+    /** @brief Le nombre de producteurs décrits par un XML MLT, avec une marge pour les fichiers imbriqués. */
+    static int producersIn(const QString &sceneXml);
+    /** @brief La taille que le cache aurait sans aucune garde en cours. */
+    static int baseSize();
+
+private:
+    int m_extra{0};
+};
+
 /** @brief Ce que le Diagnostic et les Préférences affichent pour le décodage : la puce, le processeur,
  * ou le processeur pour ce projet parce qu'un clip ne passe pas par la puce. @p tooltip reçoit les clips en cause. */
 QString decodingLabel(QString *tooltip = nullptr);

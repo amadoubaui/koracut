@@ -10,6 +10,8 @@
 #include "koracut/koracutperformance.h"
 #include "utils/machineprofile.h"
 
+#include <framework/mlt.h>
+
 using Level = MachineProfile::Level;
 
 static MachineProfile::Hardware machine(int cores, int ramGb, bool appleSilicon = false, double diskMbs = 0.)
@@ -206,4 +208,96 @@ TEST_CASE("Effets lourds : la liste livrée", "[KoraCut]")
     CHECK_FALSE(KoraCutPerformance::HeavyEffects::isHeavy(QStringLiteral("koracut_grade")));
     CHECK_FALSE(KoraCutPerformance::HeavyEffects::isHeavy(QStringLiteral("qtblend")));
     CHECK_FALSE(KoraCutPerformance::HeavyEffects::isHeavy(QString()));
+}
+
+// Plantages du 2 octobre 2026 (document 6) : une copie de la scène chargée par un outil (mesurer_image,
+// voir_image) évinçait du cache de MLT les décodeurs que les images du moniteur tenaient encore.
+namespace {
+int s_closedDecoders = 0;
+void closeDecoder(void *)
+{
+    ++s_closedDecoders;
+}
+// Le cache ne lit jamais le service : son adresse sert de clef.
+mlt_service fakeService(int *slot)
+{
+    return reinterpret_cast<mlt_service>(slot);
+}
+} // namespace
+
+TEST_CASE("Cache des décodeurs : une copie de la scène n'évince pas ceux du moniteur", "[KoraCut]")
+{
+    const char *cache = "producer_avformat";
+    const int before = mlt_service_cache_get_size(nullptr, cache);
+    mlt_service_cache_set_size(nullptr, cache, 4);
+    int monitor = 0;
+    int copy[4] = {0, 0, 0, 0};
+    int data = 0;
+
+    SECTION("Sans garde, le décodeur du moniteur sort du cache alors qu'une image le tient")
+    {
+        s_closedDecoders = 0;
+        mlt_service_cache_put(fakeService(&monitor), cache, &data, 0, closeDecoder);
+        mlt_cache_item shown = mlt_service_cache_get(fakeService(&monitor), cache);
+        REQUIRE(shown != nullptr);
+        for (int &c : copy) {
+            mlt_service_cache_put(fakeService(&c), cache, &data, 0, closeDecoder);
+        }
+        CHECK(mlt_service_cache_get(fakeService(&monitor), cache) == nullptr); // évincé : c'est le départ du défaut
+        CHECK(s_closedDecoders == 0);                                          // l'image le tient encore
+        mlt_cache_item_close(shown);
+        CHECK(s_closedDecoders == 1);
+        for (int &c : copy) {
+            mlt_service_cache_purge(fakeService(&c));
+        }
+    }
+
+    SECTION("Avec la garde, il reste en place, et la taille revient")
+    {
+        s_closedDecoders = 0;
+        mlt_service_cache_put(fakeService(&monitor), cache, &data, 0, closeDecoder);
+        mlt_cache_item shown = mlt_service_cache_get(fakeService(&monitor), cache);
+        REQUIRE(shown != nullptr);
+        {
+            const KoraCutPerformance::DecoderCacheRoom room(4);
+            CHECK(mlt_service_cache_get_size(nullptr, cache) == 8);
+            CHECK(KoraCutPerformance::DecoderCacheRoom::baseSize() == 4);
+            {
+                const KoraCutPerformance::DecoderCacheRoom nested(2);
+                CHECK(mlt_service_cache_get_size(nullptr, cache) == 10);
+            }
+            CHECK(mlt_service_cache_get_size(nullptr, cache) == 8);
+            for (int &c : copy) {
+                mlt_service_cache_put(fakeService(&c), cache, &data, 0, closeDecoder);
+            }
+            mlt_cache_item again = mlt_service_cache_get(fakeService(&monitor), cache);
+            CHECK(again == shown); // toujours dans le cache : pas de second décodeur, pas de compte faussé
+            mlt_cache_item_close(again);
+            // La copie se ferme avant la garde : ses entrées quittent le cache.
+            for (int &c : copy) {
+                mlt_service_cache_purge(fakeService(&c));
+            }
+            CHECK(s_closedDecoders == 4);
+        }
+        CHECK(mlt_service_cache_get_size(nullptr, cache) == 4);
+        mlt_cache_item_close(shown);
+        CHECK(s_closedDecoders == 4); // le cache garde le décodeur du moniteur ouvert
+        mlt_service_cache_purge(fakeService(&monitor));
+        CHECK(s_closedDecoders == 5);
+    }
+
+    SECTION("La place demandée ne dépasse jamais ce que MLT accepte")
+    {
+        const KoraCutPerformance::DecoderCacheRoom room(5000);
+        CHECK(mlt_service_cache_get_size(nullptr, cache) == 200);
+    }
+
+    SECTION("Les producteurs d'un XML MLT sont comptés, avec une marge")
+    {
+        const QString xml = QStringLiteral("<mlt><producer id=\"a\"/><chain id=\"b\"/><producer id=\"c\"/><playlist id=\"d\"/></mlt>");
+        CHECK(KoraCutPerformance::DecoderCacheRoom::producersIn(xml) == 3 + 16);
+        CHECK(KoraCutPerformance::DecoderCacheRoom::producersIn(QString()) == 16);
+    }
+
+    mlt_service_cache_set_size(nullptr, cache, before);
 }

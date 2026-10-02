@@ -10,6 +10,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "koracutagenttools.h"
 #include "koracutagenttools_p.h"
+#include "koracut/koracutperformance.h"
 #include "koracutautocut.h"
 #include "koracutducking.h"
 #include "koracutloudness.h"
@@ -1336,6 +1337,7 @@ QJsonObject voirImage(const Timeline &timeline, const Args &args)
         const QSize size = clip->getFrameSize();
         const int height = size.width() > 0 ? std::max(1, width * size.height() / size.width()) : width * projectHeight / projectWidth;
         if (!clip->url().isEmpty() && QFileInfo::exists(clip->url())) {
+            const KoraCutPerformance::DecoderCacheRoom room(4);
             Mlt::Producer producer(pCore->getProjectProfile(), clip->url().toUtf8().constData());
             if (producer.is_valid()) {
                 image = KThumb::getFrame(producer, frame, width, height);
@@ -1359,6 +1361,7 @@ QJsonObject voirImage(const Timeline &timeline, const Args &args)
             return error(QStringLiteral("hors_clip"), QStringLiteral("La timeline dure %1 images : l'image %2 n'existe pas.").arg(timeline->duration()).arg(position));
         }
         const QString xml = timeline->sceneList(QString());
+        const KoraCutPerformance::DecoderCacheRoom room(xml);
         Mlt::Producer producer(pCore->getProjectProfile(), "xml-string", xml.toUtf8().constData());
         if (producer.is_valid()) {
             image = KThumb::getFrame(producer, position, width, std::max(1, width * projectHeight / projectWidth));

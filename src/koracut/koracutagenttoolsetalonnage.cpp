@@ -10,6 +10,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "koracutagenttools.h"
 #include "koracutagenttools_p.h"
+#include "koracut/koracutperformance.h"
 
 #include "bin/projectclip.h"
 #include "bin/projectitemmodel.h"
@@ -357,6 +358,8 @@ QImage clipFrame(const Timeline &timeline, int cid, int positionInClip, bool wit
     if (xml.isEmpty()) {
         return {};
     }
+    // La copie ne doit pas évincer les décodeurs du moniteur (plantages du 2 octobre 2026).
+    const KoraCutPerformance::DecoderCacheRoom room(xml);
     Mlt::Producer producer(pCore->getProjectProfile(), "xml-string", xml.toUtf8().constData());
     if (!producer.is_valid()) {
         return {};

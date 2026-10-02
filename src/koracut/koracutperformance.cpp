@@ -192,6 +192,52 @@ int producerCacheMax()
     return group().readEntry("cacheProducteursMax", 0);
 }
 
+namespace {
+const char *kDecoderCache = "producer_avformat";
+const int kMltCacheMax = 200; // MAX_CACHE_SIZE de mlt_cache.c : au-delà, MLT ignore la demande
+std::mutex s_roomMutex;
+int s_roomDepth = 0;
+int s_roomBase = 0;
+int s_roomExtra = 0;
+} // namespace
+
+DecoderCacheRoom::DecoderCacheRoom(int producers)
+    : m_extra(qMax(0, producers))
+{
+    const std::lock_guard<std::mutex> lock(s_roomMutex);
+    if (s_roomDepth++ == 0) {
+        s_roomBase = mlt_service_cache_get_size(nullptr, kDecoderCache);
+        s_roomExtra = 0;
+    }
+    s_roomExtra += m_extra;
+    mlt_service_cache_set_size(nullptr, kDecoderCache, qMin(kMltCacheMax, s_roomBase + s_roomExtra));
+}
+
+DecoderCacheRoom::DecoderCacheRoom(const QString &sceneXml)
+    : DecoderCacheRoom(producersIn(sceneXml))
+{
+}
+
+DecoderCacheRoom::~DecoderCacheRoom()
+{
+    const std::lock_guard<std::mutex> lock(s_roomMutex);
+    s_roomExtra -= m_extra;
+    --s_roomDepth;
+    mlt_service_cache_set_size(nullptr, kDecoderCache, s_roomDepth == 0 ? s_roomBase : qMin(kMltCacheMax, s_roomBase + s_roomExtra));
+}
+
+int DecoderCacheRoom::producersIn(const QString &sceneXml)
+{
+    // Un fichier .mlt imbriqué (plan stabilisé) ouvre lui-même au moins un décodeur : d'où la marge.
+    return int(sceneXml.count(QLatin1String("<producer ")) + sceneXml.count(QLatin1String("<chain "))) + 16;
+}
+
+int DecoderCacheRoom::baseSize()
+{
+    const std::lock_guard<std::mutex> lock(s_roomMutex);
+    return s_roomDepth > 0 ? s_roomBase : mlt_service_cache_get_size(nullptr, kDecoderCache);
+}
+
 QString decodingLabel(QString *tooltip)
 {
     const QString hw = KdenliveSettings::hwDecoding();

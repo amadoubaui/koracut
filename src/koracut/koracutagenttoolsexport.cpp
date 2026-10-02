@@ -13,6 +13,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "koracutagenttools.h"
 #include "koracut/koracuthwdecode.h"
 #include "koracutagenttools_p.h"
+#include "koracut/koracutperformance.h"
 #include "koracutloudness.h"
 #include "export/koracutexportqueue.h"
 #include "export/koracutdeliverpage.h"
@@ -938,6 +939,7 @@ QJsonObject exporterImage(const Timeline &timeline, const Args &args)
     const QString xml = timeline->sceneList(QString());
     QImage image;
     if (!xml.isEmpty()) {
+        const KoraCutPerformance::DecoderCacheRoom room(xml);
         Mlt::Producer producer(pCore->getProjectProfile(), "xml-string", xml.toUtf8().constData());
         if (producer.is_valid()) {
             image = KThumb::getFrame(producer, position, width, height);

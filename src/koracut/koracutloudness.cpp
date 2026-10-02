@@ -4,6 +4,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 */
 
 #include "koracutloudness.h"
+#include "koracut/koracutperformance.h"
 
 #include "core.h"
 #include "doc/kdenlivedoc.h"
@@ -161,6 +162,7 @@ Measure measureImpl(const QString &xml, double fps, int start, int endInclusive,
     if (xml.isEmpty() || fps <= 0 || endInclusive < start) {
         return m;
     }
+    const KoraCutPerformance::DecoderCacheRoom room(xml);
     Mlt::Producer producer(pCore->getProjectProfile(), "xml-string", xml.toUtf8().constData());
     if (!producer.is_valid()) {
         return m;
