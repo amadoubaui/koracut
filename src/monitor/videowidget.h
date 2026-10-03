@@ -16,6 +16,7 @@
 #include <QRect>
 #include <QSemaphore>
 #include <QThread>
+#include <QElapsedTimer>
 #include <QTimer>
 
 #include "scopes/sharedframe.h"
@@ -243,6 +244,8 @@ private:
     std::unique_ptr<Mlt::Event> m_displayEvent;
     FrameRenderer *m_frameRenderer;
     QTimer m_refreshTimer;
+    /** KoraCut (chantier 10) : l'heure du dernier rafraîchissement, pour limiter une rafale sans retarder un geste seul. */
+    QElapsedTimer m_lastRefresh;
     int m_colorSpace;
     double m_dar;
     bool m_isZoneMode;

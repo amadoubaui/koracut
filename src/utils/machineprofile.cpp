@@ -172,14 +172,18 @@ MachineProfile::Recommendation MachineProfile::recommend(Level level, const Hard
         break;
     case Level::Comfortable:
         r.previewScaling = 1;
-        r.adaptivePreviewFloorHeight = 0;
+        // 2 octobre 2026 (document 6, journal) : même un M2 Pro saute 45 à 78 images sur 300 avec des plans
+        // HEVC 10 bits étalonnés et des sujets détourés en ProRes 4444 ; à 540p, plus aucune. L'aperçu ne
+        // descend que si des images sautent, et l'image nette revient à la pause.
+        r.adaptivePreviewFloorHeight = 540;
         r.enableProxy = true;
         r.generateProxy = false;
         r.proxyMinSize = 3840;
         r.proxyScale = 1280;
         r.proxyForHeavyCodecs = false;
         r.proxyThreads = std::min(4, std::max(1, cores / 2));
-        r.previewRenderHeight = 0;
+        // Le rendu d'aperçu à la hauteur la plus grande que le moniteur affiche (2 octobre 2026).
+        r.previewRenderHeight = 1080;
         r.autoPreview = true;
         r.processingThreads = std::max(2, cores - 2);
         r.maxCacheSizeMb = 10000;

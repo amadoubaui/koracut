@@ -25,7 +25,14 @@ void Lut3D::apply(const float in[3], float out[3]) const
 {
     const int n = m_size - 1;
     float c[3];
-    for (int i = 0; i < 3; ++i) {
+    // Chemin direct (chantier 10) : LUT cuite, sans courbe 1D et de plage 0..1, la division en double
+    // de la boucle générale rend exactement la valeur d'entrée, on s'en passe.
+    const bool unit = shaperSize <= 1 && domainMin[0] == 0. && domainMin[1] == 0. && domainMin[2] == 0. && domainMax[0] == 1. && domainMax[1] == 1.
+        && domainMax[2] == 1.;
+    for (int i = 0; unit && i < 3; ++i) {
+        c[i] = std::clamp(in[i], 0.f, 1.f) * n;
+    }
+    for (int i = 0; !unit && i < 3; ++i) {
         float v = in[i];
         if (shaperSize > 1) {
             // LUT 1D du même fichier, interpolée linéairement.

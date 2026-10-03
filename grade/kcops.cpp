@@ -620,42 +620,53 @@ double Qualifier::key(const Vec3 &rgb) const
         }
     } else {
         const double lum = luma709(r, g, b) * 100.;
+        // Chantier 10 : la teinte coûte un atan2 et un fmod par pixel. Quand la luminance ou la saturation
+        // donnent déjà une clé nulle, le produit vaut 0 quoi qu'il arrive : on saute la teinte.
+        // L'ordre des multiplications reste celui d'origine (même résultat au bit près).
+        const double lumKey = lumOn ? rangeKey(lum, lumLow, lumHigh, lumLowSoft, lumHighSoft) : 1.;
         if (mode == "hsl") {
-            const Vec3 yc = mul(hslMatrix(), Vec3{r, g, b});
-            // Échelle de teinte de Resolve (barre du qualificateur) : magenta 0, rouge 16,7, jaune 33,3,
-            // vert 50, cyan 66,7, bleu 83,3. L'angle du plan C1/C2 tourne dans l'autre sens.
-            const double angle = std::atan2(yc[2], yc[1]) * 180. / kPi;
-            const double h = std::fmod(60. - angle + 720., 360.) / 3.6;
             const double mx = std::max({r, g, b}), mn = std::min({r, g, b});
             const double l = (mx + mn) / 2.;
             const double sat = (mx - mn) < 1e-9 ? 0. : (mx - mn) / (1. - std::abs(2. * l - 1.) + 1e-9) * 100.;
-            if (hueOn) {
-                double d = h - hueCenter;
-                while (d > 50.) {
-                    d -= 100.;
+            const double satKey = satOn ? rangeKey(sat, satLow, satHigh, satLowSoft, satHighSoft) : 1.;
+            if (lumKey == 0. || satKey == 0.) {
+                k = 0.;
+            } else {
+                if (hueOn) {
+                    const Vec3 yc = mul(hslMatrix(), Vec3{r, g, b});
+                    // Échelle de teinte de Resolve (barre du qualificateur) : magenta 0, rouge 16,7, jaune 33,3,
+                    // vert 50, cyan 66,7, bleu 83,3. L'angle du plan C1/C2 tourne dans l'autre sens.
+                    const double angle = std::atan2(yc[2], yc[1]) * 180. / kPi;
+                    const double h = std::fmod(60. - angle + 720., 360.) / 3.6;
+                    double d = h - hueCenter;
+                    while (d > 50.) {
+                        d -= 100.;
+                    }
+                    while (d < -50.) {
+                        d += 100.;
+                    }
+                    const double half = hueWidth / 2.;
+                    const double skew = std::clamp((hueSym - 50.) / 50., -1., 1.);
+                    const double softL = hueSoft * (1. - skew), softR = hueSoft * (1. + skew);
+                    double hk;
+                    if (std::abs(d) <= half) {
+                        hk = 1.;
+                    } else if (d < 0) {
+                        hk = softL > 0 ? 1. - smoothstep(0., softL, -d - half) : 0.;
+                    } else {
+                        hk = softR > 0 ? 1. - smoothstep(0., softR, d - half) : 0.;
+                    }
+                    k *= hk;
                 }
-                while (d < -50.) {
-                    d += 100.;
+                if (satOn) {
+                    k *= satKey;
                 }
-                const double half = hueWidth / 2.;
-                const double skew = std::clamp((hueSym - 50.) / 50., -1., 1.);
-                const double softL = hueSoft * (1. - skew), softR = hueSoft * (1. + skew);
-                double hk;
-                if (std::abs(d) <= half) {
-                    hk = 1.;
-                } else if (d < 0) {
-                    hk = softL > 0 ? 1. - smoothstep(0., softL, -d - half) : 0.;
-                } else {
-                    hk = softR > 0 ? 1. - smoothstep(0., softR, d - half) : 0.;
+                if (lumOn) {
+                    k *= lumKey;
                 }
-                k *= hk;
             }
-            if (satOn) {
-                k *= rangeKey(sat, satLow, satHigh, satLowSoft, satHighSoft);
-            }
-        }
-        if (lumOn) {
-            k *= rangeKey(lum, lumLow, lumHigh, lumLowSoft, lumHighSoft);
+        } else if (lumOn) {
+            k *= lumKey;
         }
     }
     // Clip noir et clip blanc de la clé (Matte Finesse).

@@ -331,6 +331,22 @@ Monitor::Monitor(Kdenlive::MonitorId id, MonitorManager *manager, QWidget *paren
     scalingAction->setFont(QFontDatabase::systemFont(QFontDatabase::SmallestReadableFont));
     m_toolbar->addWidget(scalingAction);
 
+    // KoraCut (2 octobre 2026, document 6) : l'étalonnage en pause dans l'aperçu, à côté de la résolution
+    // d'aperçu (les deux règlent ce que coûte l'image). Une mention discrète dit l'état quand il est coupé.
+    if (m_id == Kdenlive::ProjectMonitor) {
+        QAction *gradePause = KoraCutPerformance::gradePauseAction();
+        m_toolbar->addAction(gradePause);
+        m_koraCutGradePaused = new QLabel(i18nc("@info:status monitor badge, grading is turned off in the preview", "Grading paused"), this);
+        m_koraCutGradePaused->setObjectName(QStringLiteral("koracutEtalonnagePause"));
+        m_koraCutGradePaused->setToolTip(gradePause->toolTip());
+        QAction *badge = m_toolbar->addWidget(m_koraCutGradePaused);
+        badge->setVisible(gradePause->isChecked());
+        connect(gradePause, &QAction::toggled, this, [this, badge, gradePause](bool paused) {
+            badge->setVisible(paused);
+            m_koraCutGradePaused->setToolTip(gradePause->toolTip());
+        });
+    }
+
     // KoraCut, document 20 : le pourcentage de zoom, toujours visible, en chiffres monospace.
     // Un clic ouvre le menu : Ajuster, les crans, zoom avant et arrière.
     m_koraZoomButton = new QToolButton(this);

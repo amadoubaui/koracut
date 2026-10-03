@@ -11,11 +11,19 @@ SPDX-License-Identifier: GPL-3.0-or-later
 //   _koracut_comparer comparaison avant/après pour le module Étalonnage : « » (rien), « split »
 //                     (la moitié gauche sans grade) ; le « _ » l'exclut de l'enregistrement du projet.
 //   _koracut_position position du partage, 0..1 (défaut 0,5).
+//
+// Propriétés globales de MLT (mlt_global_properties), posées par l'application seulement :
+//   koracut_etalonnage_pause  1 : l'étalonnage est en pause dans l'aperçu (le filtre laisse l'image telle quelle)
+//   koracut_etalonnage_force  1 : un calcul d'image de l'application garde l'étalonnage malgré la pause
 
 #include "../kcgrade.h"
 
 #include <framework/mlt.h>
 
+#include <atomic>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -78,12 +86,24 @@ kcgrade::Runner mltRunner()
     };
 }
 
+// L'étalonnage en pause dans l'aperçu (bouton du moniteur, 2 octobre 2026). Ces propriétés globales ne sont
+// posées que par l'application : koracut_render (export, rendu d'aperçu) et melt ne les voient jamais.
+// « koracut_etalonnage_force » : un calcul d'image de l'application qui doit rester étalonné (voir_image…).
+bool previewPaused()
+{
+    mlt_properties globals = mlt_global_properties();
+    return globals && mlt_properties_get_int(globals, "koracut_etalonnage_pause") > 0 && mlt_properties_get_int(globals, "koracut_etalonnage_force") <= 0;
+}
+
 int filter_get_image(mlt_frame frame, uint8_t **image, mlt_image_format *format, int *width, int *height, int writable)
 {
     (void)writable;
     auto filter = static_cast<mlt_filter>(mlt_frame_pop_service(frame));
     auto *cache = static_cast<Cache *>(filter->child);
     mlt_properties props = MLT_FILTER_PROPERTIES(filter);
+    if (previewPaused()) {
+        return mlt_frame_get_image(frame, image, format, width, height, writable);
+    }
     std::shared_ptr<const kcgrade::Grade> grade = gradeFor(filter, cache);
     if (!grade || grade->isIdentity()) {
         return mlt_frame_get_image(frame, image, format, width, height, writable);
@@ -102,10 +122,21 @@ int filter_get_image(mlt_frame frame, uint8_t **image, mlt_image_format *format,
         before.assign(*image, *image + size);
     }
     const kcgrade::Runner run = mltRunner();
+    // Mesure (chantier 10) : KORACUT_GRADE_TRACE=1 écrit le temps moyen et la taille toutes les 100 images.
+    static const bool trace = std::getenv("KORACUT_GRADE_TRACE") != nullptr;
+    const auto t0 = trace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
     if (*format == mlt_image_rgba64) {
         grade->processRgba16(reinterpret_cast<uint16_t *>(*image), *width, *height, *width * 8, run);
     } else {
         grade->processRgba8(*image, *width, *height, *width * 4, run);
+    }
+    if (trace) {
+        static std::atomic<long> calls{0}, micros{0};
+        micros += long(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count());
+        if (++calls % 100 == 0) {
+            fprintf(stderr, "KORACUT-GRADE %ld images, %.1f ms en moyenne, derniere %dx%d %s%s\n", calls.load(), double(micros.exchange(0)) / 100000.,
+                    *width, *height, *format == mlt_image_rgba64 ? "16 bits" : "8 bits", grade->isPerPixel() ? " LUT" : " image");
+        }
     }
     if (split) {
         // Avant / après : la partie gauche garde l'image d'origine, un trait fin marque la coupure.

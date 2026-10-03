@@ -1109,6 +1109,20 @@
     }
   },
   {
+    "name": "pause_etalonnage",
+    "description": "Met l'étalonnage en pause dans l'aperçu de l'application, ou le remet (le bouton « Étalonnage en pause » du moniteur Programme, ⌘⇧D). En pause, les moniteurs montrent les plans sans étalonnage et la lecture est plus légère ; l'export, le rendu d'aperçu, voir_image et mesurer_image gardent toujours l'étalonnage. Le module Étalonnage le remet tant qu'on y travaille. Ne change ni le projet ni l'historique. À proposer quand la lecture saccade pendant le montage, à remettre avant de juger les couleurs. Sans pause : lit l'état. Renvoie { pause, export }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "pause": {
+          "type": "boolean",
+          "description": "true : étalonnage en pause dans l'aperçu ; false : étalonnage visible. Absent : lire l'état sans rien changer."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
     "name": "couleur_clip",
     "description": "Change la couleur d'un ou plusieurs clips dans la timeline, comme les couleurs de clip de DaVinci Resolve ou les étiquettes de Premiere Pro. Sert à repérer d'un coup d'œil : les plans d'interview, les plans de coupe, les passages à revoir. La couleur ne change rien à l'image ni au son. « defaut » rend au clip la couleur de sa piste. Annulable en une étape. Renvoie { ok, clip_ids, couleur }.",
     "input_schema": {

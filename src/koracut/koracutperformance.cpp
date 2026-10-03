@@ -15,7 +15,11 @@
 #include "timeline2/view/timelinewidget.h"
 
 #include <KConfig>
+#include <KLocalizedString>
 #include <KSharedConfig>
+#include <QAction>
+#include <QIcon>
+#include <QPointer>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFileInfo>
@@ -25,6 +29,7 @@
 #include <QThread>
 #include <QTimer>
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <mlt++/Mlt.h>
@@ -169,7 +174,13 @@ void applyFirstLaunchDefaults(bool firstRun)
 
 int adaptiveFloor()
 {
-    return group().readEntry("apercuAdaptatif", 0);
+    const KConfigGroup g = group();
+    if (g.hasKey("apercuAdaptatif")) {
+        return g.readEntry("apercuAdaptatif", 0);
+    }
+    // Pas de choix enregistré (configuration antérieure au 29 septembre 2026, que les défauts du profil
+    // n'ont jamais réécrite) : le plancher du profil en service, sans rien écrire.
+    return MachineProfile::scalingForHeight(MachineProfile::recommend(level(), MachineProfile::Hardware()).adaptivePreviewFloorHeight);
 }
 
 int dropDivisor()
@@ -369,7 +380,139 @@ QJsonObject stateJson()
                        {QStringLiteral("proxy_largeur_min"), KdenliveSettings::proxyminsize()},
                        {QStringLiteral("proxy_codec_lourd_largeur"), proxyHeavyMinWidth()},
                        {QStringLiteral("effets_lourds_simplifies"), simplifiedHeavyEffects()},
+                       {QStringLiteral("etalonnage_en_pause"), gradePaused()},
                        {QStringLiteral("cache_mo"), KdenliveSettings::maxcachesize()}};
+}
+
+// ---- Étalonnage en pause dans l'aperçu (2 octobre 2026) ------------------------------------
+
+namespace {
+GradePauseState s_gradePause;
+std::atomic<int> s_gradeBypass{0};
+// QPointer : l'action appartient à la fenêtre, détruite avant la fin du processus.
+QPointer<QAction> s_gradePauseAction;
+
+// Les noms lus par le filtre (grade/mlt/filter_koracut_grade.cpp).
+void writeGradeGlobals()
+{
+    if (mlt_properties globals = mlt_global_properties()) {
+        mlt_properties_set_int(globals, "koracut_etalonnage_pause", s_gradePause.paused ? 1 : 0);
+        mlt_properties_set_int(globals, "koracut_etalonnage_force", s_gradeBypass.load() > 0 ? 1 : 0);
+    }
+}
+
+void updateGradePauseAction()
+{
+    if (!s_gradePauseAction) {
+        return;
+    }
+    const bool paused = s_gradePause.paused;
+    if (s_gradePauseAction->isChecked() != paused) {
+        s_gradePauseAction->setChecked(paused);
+    }
+    s_gradePauseAction->setIcon(QIcon::fromTheme(paused ? QStringLiteral("koracut-etalonnage-pause") : QStringLiteral("koracut-etalonnage-actif")));
+    s_gradePauseAction->setToolTip(
+        paused ? i18nc("@info:tooltip", "Grading is paused in the preview: playback is lighter. The export always keeps the grading. Click to bring it back.")
+               : i18nc("@info:tooltip", "Pause grading in the preview for lighter playback while you edit. The export always keeps the grading."));
+}
+
+void applyGradePause()
+{
+    writeGradeGlobals();
+    updateGradePauseAction();
+    if (pCore && pCore->monitorManager()) {
+        pCore->monitorManager()->refreshMonitors();
+    }
+}
+} // namespace
+
+bool gradePauseOnModule(GradePauseState &state, bool colorModule)
+{
+    if (colorModule && state.paused) {
+        // On ne peut pas étalonner à l'aveugle : l'étalonnage revient le temps du module.
+        state.paused = false;
+        state.resumedByColor = true;
+        return true;
+    }
+    if (!colorModule && state.resumedByColor) {
+        state.resumedByColor = false;
+        state.paused = true;
+        return true;
+    }
+    return false;
+}
+
+bool gradePauseSet(GradePauseState &state, bool paused)
+{
+    state.resumedByColor = false;
+    if (state.paused == paused) {
+        return false;
+    }
+    state.paused = paused;
+    return true;
+}
+
+bool gradePaused()
+{
+    return s_gradePause.paused;
+}
+
+void setGradePaused(bool paused)
+{
+    if (gradePauseSet(s_gradePause, paused)) {
+        qInfo().noquote() << "KORACUT-PERF étalonnage de l'aperçu" << (paused ? "en pause" : "actif");
+    }
+    applyGradePause();
+}
+
+QAction *gradePauseAction()
+{
+    if (!s_gradePauseAction) {
+        QObject *parent = pCore && pCore->window() ? static_cast<QObject *>(pCore->window()) : static_cast<QObject *>(qApp);
+        s_gradePauseAction = new QAction(i18nc("@action", "Pause Grading in Preview"), parent);
+        s_gradePauseAction->setObjectName(QStringLiteral("koracut_grade_pause"));
+        s_gradePauseAction->setCheckable(true);
+        s_gradePauseAction->setWhatsThis(xi18nc("@info:whatsthis", "Turns off all grading in the monitors so that playback stays smooth while you edit. "
+                                                                  "Click again to bring it back. The export and the background render always keep the grading, "
+                                                                  "and the Color module brings it back while you work in it."));
+        QObject::connect(s_gradePauseAction, &QAction::triggered, s_gradePauseAction, [](bool checked) { setGradePaused(checked); });
+        updateGradePauseAction();
+    }
+    return s_gradePauseAction;
+}
+
+void initGradePause()
+{
+    gradePauseAction();
+    writeGradeGlobals();
+    if (!pCore) {
+        return;
+    }
+    QObject::connect(pCore.get(), &Core::loadLayoutById, s_gradePauseAction, [](const QString &id) {
+        const bool color = id == QLatin1String("etalonnage");
+        if (!gradePauseOnModule(s_gradePause, color)) {
+            return;
+        }
+        applyGradePause();
+        if (color) {
+            pCore->displayMessage(i18nc("@info:status", "Grading is back so you can see what you do. It pauses again when you leave the Color module."),
+                                  InformationMessage, 5000);
+        }
+    });
+}
+
+GradeBypass::GradeBypass()
+{
+    if (++s_gradeBypass == 1) {
+        writeGradeGlobals();
+    }
+}
+
+GradeBypass::~GradeBypass()
+{
+    if (--s_gradeBypass == 0) {
+        writeGradeGlobals();
+    }
 }
 
 namespace HeavyEffects {

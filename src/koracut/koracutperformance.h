@@ -12,6 +12,8 @@
 #include <QString>
 #include <functional>
 
+class QAction;
+
 namespace Mlt {
 class Tractor;
 }
@@ -96,6 +98,41 @@ void testHwDecoding(const std::function<void(const QString &decoder, const QStri
 
 /** @brief Ce qui est en service, pour le panneau Diagnostic et la porte. */
 QJsonObject stateJson();
+
+/** @brief L'étalonnage en pause dans l'aperçu (2 octobre 2026, document 6, journal).
+ *
+ * Un bouton du moniteur Programme (⌘⇧D, action koracut_grade_pause) coupe tous les filtres koracut_grade
+ * dans l'aperçu de l'application. Le filtre lit la propriété globale de MLT « koracut_etalonnage_pause » :
+ * elle n'existe que dans le processus de l'application, donc koracut_render (export, rendu d'aperçu) et
+ * melt gardent toujours l'étalonnage. Le module Étalonnage le remet en entrant et le repause en sortant
+ * si c'est lui qui l'avait remis. Rien n'est enregistré : à l'ouverture, l'étalonnage est actif. */
+struct GradePauseState {
+    bool paused{false};
+    bool resumedByColor{false}; ///< remis par l'entrée dans le module Étalonnage
+};
+/** @brief Règle du module : @p colorModule vrai à l'entrée de l'Étalonnage. Rend vrai si la pause a changé. */
+bool gradePauseOnModule(GradePauseState &state, bool colorModule);
+/** @brief Choix de la personne, d'un outil ou de la porte : efface la reprise automatique. Rend vrai si la pause a changé. */
+bool gradePauseSet(GradePauseState &state, bool paused);
+
+bool gradePaused();
+/** @brief Met en pause ou remet l'étalonnage de l'aperçu, rafraîchit les moniteurs et l'action. */
+void setGradePaused(bool paused);
+/** @brief L'action à cocher (créée au premier appel, enregistrée par MainWindow avec son raccourci). */
+QAction *gradePauseAction();
+/** @brief Branche l'entrée et la sortie du module Étalonnage. À appeler une fois, la fenêtre créée. */
+void initGradePause();
+
+/** @brief Remet l'étalonnage le temps d'un calcul d'image fait dans l'application (voir_image,
+ * mesurer_image, image d'export) : ces images doivent être celles de l'export, pause ou pas. */
+class GradeBypass
+{
+public:
+    GradeBypass();
+    ~GradeBypass();
+    GradeBypass(const GradeBypass &) = delete;
+    GradeBypass &operator=(const GradeBypass &) = delete;
+};
 
 /** @brief Aperçu simplifié des effets lourds (document 6, section 3g).
  *

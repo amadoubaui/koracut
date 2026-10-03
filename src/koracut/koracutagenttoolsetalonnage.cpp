@@ -360,6 +360,8 @@ QImage clipFrame(const Timeline &timeline, int cid, int positionInClip, bool wit
     }
     // La copie ne doit pas évincer les décodeurs du moniteur (plantages du 2 octobre 2026).
     const KoraCutPerformance::DecoderCacheRoom room(xml);
+    // La mesure porte sur l'image étalonnée, même si l'étalonnage est en pause dans l'aperçu.
+    const KoraCutPerformance::GradeBypass graded;
     Mlt::Producer producer(pCore->getProjectProfile(), "xml-string", xml.toUtf8().constData());
     if (!producer.is_valid()) {
         return {};

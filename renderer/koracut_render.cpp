@@ -14,6 +14,7 @@
 #include <QCommandLineParser>
 #include <QDebug>
 #include <QDir>
+#include <memory>
 #include <QDomDocument>
 #include <QImageReader>
 #include <QTemporaryFile>
@@ -117,6 +118,23 @@ int main(int argc, char **argv)
         QStringList consumerParams = args.takeFirst().split(QLatin1Char(' '), Qt::SkipEmptyParts);
 
         profile.set_explicit(1);
+        // KoraCut (chantier 10, 2 octobre 2026) : avec « s=LxH », l'image était calculée à la taille du projet
+        // puis réduite à l'écriture (mesuré : l'étalonnage tournait en 1080×1920 pour un aperçu en 608×1080).
+        // Comme le moniteur, le consommateur reçoit un profil à la taille voulue : les effets calculent alors
+        // l'image à cette taille (le Transformer et les autres se règlent sur le rapport des deux profils).
+        std::unique_ptr<Mlt::Profile> consumerProfile;
+        for (const QString &param : std::as_const(consumerParams)) {
+            if (param.startsWith(QLatin1String("s=")) && param.contains(QLatin1Char('x'))) {
+                const int w = param.mid(2).section(QLatin1Char('x'), 0, 0).toInt();
+                const int h = param.mid(2).section(QLatin1Char('x'), 1, 1).toInt();
+                if (w > 0 && h > 0 && (w != profile.width() || h != profile.height())) {
+                    consumerProfile = std::make_unique<Mlt::Profile>(mlt_profile_clone(profile.get_profile()));
+                    consumerProfile->set_width(w);
+                    consumerProfile->set_height(h);
+                    consumerProfile->set_explicit(1);
+                }
+            }
+        }
         Mlt::Producer prod(profile, nullptr, playlist.toUtf8().constData());
         if (!prod.is_valid()) {
             fprintf(stderr, "INVALID playlist: %s \n", playlist.toUtf8().constData());
@@ -161,9 +179,14 @@ int main(int argc, char **argv)
                 fprintf(stderr, "DONE:%d \n", frame.toInt());
                 continue;
             }
+            // KoraCut (chantier 10, 2 octobre 2026) : le morceau s'écrit sous un nom provisoire et ne prend son nom
+            // qu'une fois fini. Avant, un rendu arrêté net (application fermée de force, processus tué) laissait un
+            // fichier coupé que le rendu suivant sautait comme « déjà fait » et que la lecture relisait.
+            const QString partName = QStringLiteral("%1-part.%2").arg(frame, extension);
+            baseFolder.remove(partName);
             QScopedPointer<Mlt::Producer> playlst(prod.cut(frame.toInt(), frame.toInt() + chunkSize));
-            QScopedPointer<Mlt::Consumer> cons(
-                new Mlt::Consumer(profile, QStringLiteral("avformat:%1").arg(baseFolder.absoluteFilePath(fileName)).toUtf8().constData()));
+            QScopedPointer<Mlt::Consumer> cons(new Mlt::Consumer(consumerProfile ? *consumerProfile : profile,
+                                                                 QStringLiteral("avformat:%1").arg(baseFolder.absoluteFilePath(partName)).toUtf8().constData()));
             for (const QString &param : std::as_const(consumerParams)) {
                 if (param.contains(QLatin1Char('='))) {
                     cons->set(param.section(QLatin1Char('='), 0, 0).toUtf8().constData(), param.section(QLatin1Char('='), 1).toUtf8().constData());
@@ -179,6 +202,12 @@ int main(int argc, char **argv)
             cons->run();
             cons->stop();
             cons->purge();
+            cons.reset();
+            if (!baseFolder.rename(partName, fileName)) {
+                fprintf(stderr, "ERROR: cannot rename %s\n", partName.toUtf8().constData());
+                baseFolder.remove(partName);
+                return 1;
+            }
             fprintf(stderr, "DONE:%d \n", frame.toInt());
         }
         // Mlt::Factory::close();

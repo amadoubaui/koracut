@@ -9,6 +9,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "koracutagenttools.h"
 #include "koracutagenttools_p.h"
+#include "koracutperformance.h"
 #include "koracutrender.h"
 
 #include "core.h"
@@ -104,6 +105,20 @@ QJsonObject etatApercu(const Timeline &timeline, const Args &)
     return KoraCutRender::stateJson();
 }
 
+// 2 octobre 2026 : l'étalonnage en pause dans l'aperçu (le bouton du moniteur Programme, ⌘⇧D). Ne change
+// ni le projet ni l'export : rien à annuler.
+QJsonObject pauseEtalonnage(const Timeline &, const Args &args)
+{
+    if (args.contains(QStringLiteral("pause"))) {
+        if (!args.value(QStringLiteral("pause")).isBool()) {
+            return error(QStringLiteral("entree_invalide"), QStringLiteral("pause vaut true ou false."), QStringLiteral("Sans pause, l'outil lit l'état."));
+        }
+        KoraCutPerformance::setGradePaused(args.value(QStringLiteral("pause")).toBool());
+    }
+    return QJsonObject{{QStringLiteral("pause"), KoraCutPerformance::gradePaused()},
+                       {QStringLiteral("export"), QStringLiteral("toujours étalonné")}};
+}
+
 } // namespace
 
 QMap<QString, Tool> apercuTools()
@@ -111,6 +126,7 @@ QMap<QString, Tool> apercuTools()
     return {
         {QStringLiteral("rendre_apercu"), rendreApercu},
         {QStringLiteral("etat_apercu"), etatApercu},
+        {QStringLiteral("pause_etalonnage"), pauseEtalonnage},
     };
 }
 

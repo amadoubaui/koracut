@@ -168,6 +168,8 @@
         <file alias="actions/12/keyframe-remove.svg">koracut/actions/12/keyframe-remove.svg</file>
         <file alias="actions/12/keyframe.svg">koracut/actions/12/keyframe.svg</file>
         <file alias="actions/12/koracut-bin-empty.svg">koracut/actions/12/koracut-bin-empty.svg</file>
+        <file alias="actions/12/koracut-etalonnage-actif.svg">koracut/actions/12/koracut-etalonnage-actif.svg</file>
+        <file alias="actions/12/koracut-etalonnage-pause.svg">koracut/actions/12/koracut-etalonnage-pause.svg</file>
         <file alias="actions/12/koracut-outil-bruit.svg">koracut/actions/12/koracut-outil-bruit.svg</file>
         <file alias="actions/12/koracut-outil-normaliser.svg">koracut/actions/12/koracut-outil-normaliser.svg</file>
         <file alias="actions/12/koracut-outil-stabiliser.svg">koracut/actions/12/koracut-outil-stabiliser.svg</file>
@@ -475,6 +477,8 @@
         <file alias="actions/16/keyframe-remove.svg">koracut/actions/16/keyframe-remove.svg</file>
         <file alias="actions/16/keyframe.svg">koracut/actions/16/keyframe.svg</file>
         <file alias="actions/16/koracut-bin-empty.svg">koracut/actions/16/koracut-bin-empty.svg</file>
+        <file alias="actions/16/koracut-etalonnage-actif.svg">koracut/actions/16/koracut-etalonnage-actif.svg</file>
+        <file alias="actions/16/koracut-etalonnage-pause.svg">koracut/actions/16/koracut-etalonnage-pause.svg</file>
         <file alias="actions/16/koracut-outil-bruit.svg">koracut/actions/16/koracut-outil-bruit.svg</file>
         <file alias="actions/16/koracut-outil-normaliser.svg">koracut/actions/16/koracut-outil-normaliser.svg</file>
         <file alias="actions/16/koracut-outil-stabiliser.svg">koracut/actions/16/koracut-outil-stabiliser.svg</file>
@@ -782,6 +786,8 @@
         <file alias="actions/22/keyframe-remove.svg">koracut/actions/22/keyframe-remove.svg</file>
         <file alias="actions/22/keyframe.svg">koracut/actions/22/keyframe.svg</file>
         <file alias="actions/22/koracut-bin-empty.svg">koracut/actions/22/koracut-bin-empty.svg</file>
+        <file alias="actions/22/koracut-etalonnage-actif.svg">koracut/actions/22/koracut-etalonnage-actif.svg</file>
+        <file alias="actions/22/koracut-etalonnage-pause.svg">koracut/actions/22/koracut-etalonnage-pause.svg</file>
         <file alias="actions/22/koracut-outil-bruit.svg">koracut/actions/22/koracut-outil-bruit.svg</file>
         <file alias="actions/22/koracut-outil-normaliser.svg">koracut/actions/22/koracut-outil-normaliser.svg</file>
         <file alias="actions/22/koracut-outil-stabiliser.svg">koracut/actions/22/koracut-outil-stabiliser.svg</file>
@@ -1089,6 +1095,8 @@
         <file alias="actions/24/keyframe-remove.svg">koracut/actions/24/keyframe-remove.svg</file>
         <file alias="actions/24/keyframe.svg">koracut/actions/24/keyframe.svg</file>
         <file alias="actions/24/koracut-bin-empty.svg">koracut/actions/24/koracut-bin-empty.svg</file>
+        <file alias="actions/24/koracut-etalonnage-actif.svg">koracut/actions/24/koracut-etalonnage-actif.svg</file>
+        <file alias="actions/24/koracut-etalonnage-pause.svg">koracut/actions/24/koracut-etalonnage-pause.svg</file>
         <file alias="actions/24/koracut-outil-bruit.svg">koracut/actions/24/koracut-outil-bruit.svg</file>
         <file alias="actions/24/koracut-outil-normaliser.svg">koracut/actions/24/koracut-outil-normaliser.svg</file>
         <file alias="actions/24/koracut-outil-stabiliser.svg">koracut/actions/24/koracut-outil-stabiliser.svg</file>
@@ -1396,6 +1404,8 @@
         <file alias="actions/32/keyframe-remove.svg">koracut/actions/32/keyframe-remove.svg</file>
         <file alias="actions/32/keyframe.svg">koracut/actions/32/keyframe.svg</file>
         <file alias="actions/32/koracut-bin-empty.svg">koracut/actions/32/koracut-bin-empty.svg</file>
+        <file alias="actions/32/koracut-etalonnage-actif.svg">koracut/actions/32/koracut-etalonnage-actif.svg</file>
+        <file alias="actions/32/koracut-etalonnage-pause.svg">koracut/actions/32/koracut-etalonnage-pause.svg</file>
         <file alias="actions/32/koracut-outil-bruit.svg">koracut/actions/32/koracut-outil-bruit.svg</file>
         <file alias="actions/32/koracut-outil-normaliser.svg">koracut/actions/32/koracut-outil-normaliser.svg</file>
         <file alias="actions/32/koracut-outil-stabiliser.svg">koracut/actions/32/koracut-outil-stabiliser.svg</file>

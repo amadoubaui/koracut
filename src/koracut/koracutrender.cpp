@@ -10,6 +10,8 @@
 #include "bin/projectitemmodel.h"
 #include "kdenlivesettings.h"
 #include "koracut/koracuthwdecode.h"
+#include "koracut/color/koracutgradecontroller.h"
+#include "monitor/scopes/sharedframe.h"
 #include "utils/thumbnailcache.hpp"
 #include "mainwindow.h"
 #include "monitor/monitor.h"
@@ -34,6 +36,7 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QMenu>
+#include <QProcess>
 #include <QSet>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -42,6 +45,7 @@
 #include <QStorageInfo>
 #include <QtConcurrent/QtConcurrentRun>
 
+#include <csignal>
 #include <memory>
 #if defined(Q_OS_UNIX)
 #include <sys/resource.h>
@@ -263,12 +267,46 @@ void healAfterHardwareRefusal(const QString &path, bool legacy)
     timer->start();
 }
 
+namespace {
+// 2 octobre 2026 (document 6, journal) : un rendu d'aperçu suspendu (SIGSTOP pendant la lecture) dont
+// l'application a disparu sans le reprendre (plantage, arrêt forcé) reste arrêté pour toujours, rattaché au
+// système. Deux tournaient encore sur ce Mac, l'un depuis plus d'un jour. Au lancement, on retire ceux-là
+// seulement : un koracut_render en mode preview-chunks, suspendu, dont le parent est le système (PID 1).
+void removeOrphanRenders()
+{
+#if defined(Q_OS_UNIX)
+    auto *ps = new QProcess(pCore.get());
+    QObject::connect(ps, &QProcess::finished, ps, [ps]() {
+        const QStringList lines = QString::fromLocal8Bit(ps->readAllStandardOutput()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        for (const QString &line : lines) {
+            const QStringList f = line.simplified().split(QLatin1Char(' '));
+            if (f.size() < 5 || f.at(1) != QLatin1String("1") || !f.at(2).startsWith(QLatin1Char('T'))) {
+                continue;
+            }
+            if (!f.at(3).endsWith(QLatin1String("koracut_render")) || f.at(4) != QLatin1String("preview-chunks")) {
+                continue;
+            }
+            const pid_t pid = pid_t(f.at(0).toLongLong());
+            if (pid > 1) {
+                ::kill(pid, SIGKILL);
+                qInfo().noquote() << "KORACUT-PERF rendu d'aperçu orphelin retiré" << pid;
+            }
+        }
+        ps->deleteLater();
+    });
+    QObject::connect(ps, &QProcess::errorOccurred, ps, &QObject::deleteLater);
+    ps->start(QStringLiteral("ps"), {QStringLiteral("-axo"), QStringLiteral("pid=,ppid=,stat=,command=")});
+#endif
+}
+} // namespace
+
 void applyFirstLaunchDefaults()
 {
     // Document 6, journal du 1er octobre 2026 : un clip refusé par la puce fait refaire ses caches.
     static bool watching = false;
     if (!watching) {
         watching = true;
+        removeOrphanRenders();
         QObject::connect(KoraCutHwDecode::instance(), &KoraCutHwDecode::clipRefused, pCore.get(),
                          [](const QString &path, bool legacy) { healAfterHardwareRefusal(path, legacy); });
     }
@@ -460,7 +498,20 @@ void measurePlayback(int from, int seconds, const std::function<void(const QJson
             const int covered = state->first < 0 ? 0 : state->last - state->first + 1;
             const int shown = int(state->positions.size());
             const int expected = int(qRound(fps * double(ms) / 1000.));
-            QJsonObject result{{QStringLiteral("ok"), true},
+            // Où manquent les images : « position:nombre » pour chaque trou (les coupes se voient ici).
+            QStringList holes;
+            if (state->first >= 0) {
+                int run = 0;
+                for (int p = state->first; p <= state->last + 1; ++p) {
+                    if (p <= state->last && !state->positions.contains(p)) {
+                        ++run;
+                    } else if (run > 0) {
+                        holes << QStringLiteral("%1:%2").arg(p - run).arg(run);
+                        run = 0;
+                    }
+                }
+            }
+            QJsonObject result{{QStringLiteral("trous"), holes.join(QLatin1Char(','))},{QStringLiteral("ok"), true},
                                {QStringLiteral("duree_ms"), ms},
                                {QStringLiteral("images_attendues"), expected},
                                {QStringLiteral("images_affichees"), shown},
@@ -477,6 +528,204 @@ void measurePlayback(int from, int seconds, const std::function<void(const QJson
             done(result);
         });
     });
+}
+
+namespace {
+// Attend une image affichée qui vérifie @p accept, au plus @p timeoutMs ; rend le temps écoulé en ms (-1 : rien).
+double waitForFrame(const std::function<void()> &gesture, const std::function<bool(int)> &accept, int timeoutMs = 4000)
+{
+    MonitorManager *manager = pCore->monitorManager();
+    QEventLoop loop;
+    QElapsedTimer clock;
+    double elapsed = -1.;
+    auto connection = QObject::connect(manager, &MonitorManager::frameDisplayed, &loop, [&](const SharedFrame &frame) {
+        if (elapsed < 0. && accept(frame.get_position())) {
+            elapsed = double(clock.nsecsElapsed()) / 1e6;
+            loop.quit();
+        }
+    });
+    QTimer::singleShot(timeoutMs, &loop, &QEventLoop::quit);
+    clock.start();
+    gesture();
+    if (elapsed < 0.) {
+        loop.exec();
+    }
+    QObject::disconnect(connection);
+    return elapsed;
+}
+
+QJsonObject summary(QList<double> values)
+{
+    QJsonArray all;
+    int failed = 0;
+    QList<double> ok;
+    for (double v : values) {
+        all.append(qRound(v * 10.) / 10.);
+        if (v < 0.) {
+            ++failed;
+        } else {
+            ok << v;
+        }
+    }
+    std::sort(ok.begin(), ok.end());
+    QJsonObject o{{QStringLiteral("ms"), all}};
+    if (!ok.isEmpty()) {
+        o.insert(QStringLiteral("mediane_ms"), qRound(ok.at(ok.size() / 2) * 10.) / 10.);
+        o.insert(QStringLiteral("max_ms"), qRound(ok.last() * 10.) / 10.);
+    }
+    if (failed > 0) {
+        o.insert(QStringLiteral("sans_image"), failed);
+    }
+    return o;
+}
+} // namespace
+
+void measureGestures(const std::function<void(const QJsonObject &)> &done)
+{
+    Monitor *monitor = pCore && pCore->monitorManager() ? pCore->monitorManager()->projectMonitor() : nullptr;
+    TimelineWidget *widget = pCore && pCore->window() ? pCore->window()->getCurrentTimeline() : nullptr;
+    if (!monitor || !widget || !widget->model()) {
+        done(QJsonObject{{QStringLiteral("ok"), false}});
+        return;
+    }
+    pCore->monitorManager()->activateMonitor(Kdenlive::ProjectMonitor);
+    auto timeline = widget->model();
+    const int duration = timeline->duration();
+    auto at = [duration](double f) { return std::clamp(int(f * duration), 0, std::max(0, duration - 2)); };
+    QJsonObject result{{QStringLiteral("ok"), true}};
+
+    // 1. Sauts de la tête de lecture, à l'arrêt : du clic à l'image affichée.
+    QList<double> seeks;
+    for (double f : {0.21, 0.66, 0.05, 0.9, 0.43, 0.12, 0.77, 0.3, 0.55, 0.97}) {
+        const int pos = at(f);
+        seeks << waitForFrame([monitor, pos]() { monitor->requestSeek(pos); }, [pos](int p) { return p == pos; });
+    }
+    result.insert(QStringLiteral("saut"), summary(seeks));
+
+    // 2. Départ de la lecture : de « Lire » à la première image qui avance.
+    QList<double> starts;
+    for (double f : {0.0, 0.3, 0.6}) {
+        const int pos = at(f);
+        waitForFrame([monitor, pos]() { monitor->requestSeek(pos); }, [pos](int p) { return p == pos; });
+        starts << waitForFrame([monitor]() { monitor->switchPlay(true); }, [pos](int p) { return p > pos; });
+        monitor->switchPlay(false);
+        QEventLoop pause;
+        QTimer::singleShot(400, &pause, &QEventLoop::quit);
+        pause.exec();
+    }
+    result.insert(QStringLiteral("lecture_depart"), summary(starts));
+
+    // Le plan de la piste vidéo la plus basse sous la tête, et un plan d'une piste plus haute : on cherche
+    // un endroit où deux pistes vidéo se superposent (sinon, le premier plan venu).
+    int here = at(0.25);
+    int base = -1, upper = -1;
+    for (int step = 0; step < 40 && upper < 0; ++step) {
+        const int pos = at(0.02 + 0.024 * step);
+        int b = -1, u = -1;
+        for (int tid : timeline->getTracksIds(false)) {
+            const int cid = timeline->getClipByPosition(tid, pos);
+            if (cid >= 0 && b < 0) {
+                b = cid;
+            } else if (cid >= 0 && u < 0) {
+                u = cid;
+            }
+        }
+        if (b >= 0 && (base < 0 || u >= 0)) {
+            base = b;
+            upper = u;
+            here = pos;
+        }
+    }
+    waitForFrame([monitor, here]() { monitor->requestSeek(here); }, [here](int p) { return p == here; });
+    const int shown = here;
+    auto refresh = [shown](int p) { return p == shown; };
+    // Entre deux gestes, une personne laisse passer un instant : 400 ms de calme avant chacun.
+    auto idle = []() {
+        QEventLoop calm;
+        QTimer::singleShot(400, &calm, &QEventLoop::quit);
+        calm.exec();
+    };
+
+    // 3. Rogner le début du plan d'une image, puis le remettre.
+    if (base >= 0) {
+        QList<double> trims, calls;
+        for (int i = 0; i < 4; ++i) {
+            const int size = timeline->getItemPlaytime(base);
+            idle();
+            QElapsedTimer call;
+            trims << waitForFrame(
+                [&]() {
+                    call.start();
+                    // Par le début : l'image sous la tête change, le moniteur doit la refaire.
+                    timeline->requestItemResize(base, i % 2 == 0 ? size - 1 : size + 1, false, true);
+                    calls << double(call.nsecsElapsed()) / 1e6;
+                },
+                refresh);
+        }
+        QJsonObject t = summary(trims);
+        t.insert(QStringLiteral("appel"), summary(calls));
+        result.insert(QStringLiteral("rogner"), t);
+    }
+
+    // 4. Déplacer un plan d'une piste haute d'une image, puis le remettre.
+    if (upper >= 0) {
+        QList<double> moves, calls;
+        int refused = 0;
+        for (int i = 0; i < 4; ++i) {
+            const int tid = timeline->getClipTrackId(upper);
+            const int pos = timeline->getItemPosition(upper);
+            idle();
+            QElapsedTimer call;
+            moves << waitForFrame(
+                [&]() {
+                    call.start();
+                    if (!timeline->requestClipMove(upper, tid, i % 2 == 0 ? pos + 1 : pos - 1, true, true, true)) {
+                        ++refused;
+                    }
+                    calls << double(call.nsecsElapsed()) / 1e6;
+                },
+                refresh);
+        }
+        QJsonObject m = summary(moves);
+        m.insert(QStringLiteral("appel"), summary(calls));
+        if (refused > 0) {
+            m.insert(QStringLiteral("refuses"), refused);
+        }
+        result.insert(QStringLiteral("deplacer"), m);
+    }
+
+    // 5. Régler l'étalonnage du plan (gain du premier correcteur), comme un curseur qu'on bouge.
+    if (base >= 0 && KoraCutGradeController::self()) {
+        QJsonObject graph = KoraCutGradeController::self()->graphFor(base);
+        QJsonArray nodes = graph.value(QStringLiteral("noeuds")).toArray();
+        int index = -1;
+        for (int k = 0; k < nodes.size() && index < 0; ++k) {
+            if (nodes.at(k).toObject().value(QStringLiteral("type")).toString(QStringLiteral("correcteur")) == QLatin1String("correcteur")) {
+                index = k;
+            }
+        }
+        if (index >= 0) {
+            QList<double> edits;
+            for (int i = 0; i < 6; ++i) {
+                QJsonObject n = nodes.at(index).toObject();
+                QJsonObject prim = n.value(QStringLiteral("primaires")).toObject();
+                QJsonArray gain = prim.value(QStringLiteral("gain")).toArray();
+                if (gain.size() < 4) {
+                    gain = QJsonArray{1., 1., 1., 1.};
+                }
+                gain[0] = gain.at(0).toDouble() * (i % 2 == 0 ? 1.02 : 1. / 1.02);
+                prim.insert(QStringLiteral("gain"), gain);
+                n.insert(QStringLiteral("primaires"), prim);
+                nodes[index] = n;
+                graph.insert(QStringLiteral("noeuds"), nodes);
+                const QJsonObject g = graph;
+                idle();
+                edits << waitForFrame([base, g]() { KoraCutGradeController::self()->setGraphFor(base, g, QStringLiteral("mesure")); }, refresh);
+            }
+            result.insert(QStringLiteral("regler_etalonnage"), summary(edits));
+        }
+    }
+    done(result);
 }
 
 bool waitForRender(int timeoutMs)

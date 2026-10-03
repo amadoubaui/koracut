@@ -940,6 +940,8 @@ QJsonObject exporterImage(const Timeline &timeline, const Args &args)
     QImage image;
     if (!xml.isEmpty()) {
         const KoraCutPerformance::DecoderCacheRoom room(xml);
+        // L'image d'export garde l'étalonnage, même en pause dans l'aperçu.
+        const KoraCutPerformance::GradeBypass graded;
         Mlt::Producer producer(pCore->getProjectProfile(), "xml-string", xml.toUtf8().constData());
         if (producer.is_valid()) {
             image = KThumb::getFrame(producer, position, width, height);

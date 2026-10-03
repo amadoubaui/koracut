@@ -3,7 +3,7 @@
     SPDX-License-Identifier: GPL-3.0-or-later
 */
 // Chantier 10 (document 6) : le classement des machines, le critère de proxy, l'aperçu adaptatif,
-// le budget du cache et la liste des effets lourds.
+// le budget du cache, la liste des effets lourds et l'étalonnage en pause dans l'aperçu (2 octobre 2026).
 
 #include "catch.hpp"
 
@@ -11,6 +11,9 @@
 #include "utils/machineprofile.h"
 
 #include <framework/mlt.h>
+#include <mlt++/Mlt.h>
+
+#include <memory>
 
 using Level = MachineProfile::Level;
 
@@ -60,7 +63,7 @@ TEST_CASE("Profil : identifiants et réglages recommandés", "[KoraCut]")
     CHECK_FALSE(modest.videoThumbnails);
     CHECK(modest.producerCacheMax >= 4);
     const auto comfy = MachineProfile::recommend(Level::Comfortable, machine(12, 32, true));
-    CHECK(comfy.adaptivePreviewFloorHeight == 0);
+    CHECK(comfy.adaptivePreviewFloorHeight == 540); // 2 octobre 2026 : un projet chargé fait sauter des images même ici
     CHECK_FALSE(comfy.generateProxy);
     CHECK(comfy.producerCacheMax == 0);
 }
@@ -300,4 +303,80 @@ TEST_CASE("Cache des décodeurs : une copie de la scène n'évince pas ceux du m
     }
 
     mlt_service_cache_set_size(nullptr, cache, before);
+}
+
+TEST_CASE("Étalonnage en pause : la règle du bouton et du module Étalonnage", "[KoraCut]")
+{
+    using KoraCutPerformance::GradePauseState;
+    GradePauseState s;
+    // Le clic de la personne.
+    CHECK(KoraCutPerformance::gradePauseSet(s, true));
+    CHECK(s.paused);
+    CHECK_FALSE(KoraCutPerformance::gradePauseSet(s, true));
+    // Entrer dans l'Étalonnage le remet, en sortir le repause.
+    CHECK(KoraCutPerformance::gradePauseOnModule(s, true));
+    CHECK_FALSE(s.paused);
+    CHECK(s.resumedByColor);
+    CHECK_FALSE(KoraCutPerformance::gradePauseOnModule(s, true)); // rester dans le module ne change rien
+    CHECK(KoraCutPerformance::gradePauseOnModule(s, false));
+    CHECK(s.paused);
+    CHECK_FALSE(s.resumedByColor);
+    // Un choix fait dans le module l'emporte : remis à la main, il ne se repause pas en sortant.
+    CHECK(KoraCutPerformance::gradePauseOnModule(s, true));
+    CHECK_FALSE(KoraCutPerformance::gradePauseSet(s, false));
+    CHECK_FALSE(s.resumedByColor);
+    CHECK_FALSE(KoraCutPerformance::gradePauseOnModule(s, false));
+    CHECK_FALSE(s.paused);
+    // Sans pause, changer de module ne fait rien.
+    GradePauseState neuf;
+    CHECK_FALSE(KoraCutPerformance::gradePauseOnModule(neuf, true));
+    CHECK_FALSE(KoraCutPerformance::gradePauseOnModule(neuf, false));
+}
+
+TEST_CASE("Étalonnage en pause : le filtre koracut_grade laisse l'image telle quelle, sauf pour les calculs d'image", "[KoraCut]")
+{
+    Mlt::Profile profile;
+    {
+        Mlt::Filter probe(profile, "koracut_grade");
+        if (!probe.is_valid()) {
+            WARN("module MLT koracut_grade introuvable (pas encore installé) : essai sauté");
+            return;
+        }
+    }
+    // Un gain de 2 sur un gris : la valeur double quand l'étalonnage agit.
+    auto read = [&profile]() {
+        Mlt::Producer producer(profile, "color", "0x404040ff");
+        REQUIRE(producer.is_valid());
+        Mlt::Filter f(profile, "koracut_grade");
+        f.set("graphe", R"({"format":1,"sortie":1,"noeuds":[{"id":1,"type":"correcteur","entree":{"rvb":0},"primaires":{"gain":[2,2,2,2]}}]})");
+        producer.attach(f);
+        std::unique_ptr<Mlt::Frame> frame(producer.get_frame());
+        mlt_image_format fmt = mlt_image_rgba;
+        int w = 64, h = 36;
+        const uint8_t *img = frame->get_image(fmt, w, h);
+        REQUIRE(img);
+        return int(img[0]);
+    };
+    const int graded = read();
+    KoraCutPerformance::setGradePaused(true);
+    CHECK(KoraCutPerformance::gradePaused());
+    const int paused = read();
+    int bypassed = 0;
+    {
+        const KoraCutPerformance::GradeBypass keep;
+        bypassed = read();
+    }
+    const int pausedAgain = read();
+    KoraCutPerformance::setGradePaused(false);
+    const int back = read();
+    INFO("étalonné " << graded << ", en pause " << paused << ", calcul d'image " << bypassed << ", remis " << back);
+    CHECK(paused < graded - 30);           // sans le gain : à peu près la moitié
+    CHECK(std::abs(bypassed - graded) <= 1); // voir_image et mesurer_image gardent l'étalonnage
+    CHECK(std::abs(pausedAgain - paused) <= 1);
+    CHECK(std::abs(back - graded) <= 1);
+    // La pause est une propriété de ce processus : rien n'est écrit dans le filtre, donc rien dans le projet.
+    mlt_properties globals = mlt_global_properties();
+    REQUIRE(globals);
+    CHECK(mlt_properties_get_int(globals, "koracut_etalonnage_pause") == 0);
+    CHECK(mlt_properties_get_int(globals, "koracut_etalonnage_force") == 0);
 }

@@ -9,9 +9,12 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <thread>
+#include <utility>
+#include <vector>
 
 namespace kcgrade {
 
@@ -493,8 +496,35 @@ Vec3 GradePrivate::evalColor(const Vec3 &src) const
 
 namespace {
 
+// Un vecteur de flottants qui ne remet pas sa mémoire à zéro à la création : chaque plan de travail est
+// entièrement écrit avant d'être lu, la mise à zéro de plusieurs Mo par image ne servait à rien (chantier 10).
+template<typename T>
+struct NoInit : std::allocator<T> {
+    template<typename U>
+    struct rebind {
+        using other = NoInit<U>;
+    };
+    NoInit() = default;
+    template<typename U>
+    NoInit(const NoInit<U> &) noexcept
+    {
+    }
+    template<typename U>
+    void construct(U *p) noexcept
+    {
+        ::new (static_cast<void *>(p)) U;
+    }
+    template<typename U, typename... A>
+    void construct(U *p, A &&...a)
+    {
+        ::new (static_cast<void *>(p)) U(std::forward<A>(a)...);
+    }
+};
+
+using Plane = std::vector<float, NoInit<float>>;
+
 // Flou gaussien approché par trois passes de boîte (séparable), sur un plan de flottants.
-void boxBlurPlane(std::vector<float> &p, int w, int h, int stride, int channels, double sigmaX, double sigmaY, const Runner &run)
+void boxBlurPlane(Plane &p, int w, int h, int stride, int channels, double sigmaX, double sigmaY, const Runner &run)
 {
     auto boxes = [](double sigma) {
         // Largeurs des trois boîtes pour un sigma donné (Kovesi).
@@ -512,8 +542,8 @@ void boxBlurPlane(std::vector<float> &p, int w, int h, int stride, int channels,
         }
         return r;
     };
-    std::vector<float> tmp(p.size());
-    auto passH = [&](std::vector<float> &src, std::vector<float> &dst, int r) {
+    Plane tmp(p.size());
+    auto passH = [&](Plane &src, Plane &dst, int r) {
         run(h, [&](int y) {
             for (int c = 0; c < channels; ++c) {
                 const float *s = &src[size_t(y) * stride + c];
@@ -530,18 +560,33 @@ void boxBlurPlane(std::vector<float> &p, int w, int h, int stride, int channels,
             }
         });
     };
-    auto passV = [&](std::vector<float> &src, std::vector<float> &dst, int r) {
-        run(w, [&](int x) {
-            for (int c = 0; c < channels; ++c) {
-                double acc = 0.;
-                auto at = [&](int y) { return src[size_t(std::clamp(y, 0, h - 1)) * stride + size_t(x) * channels + c]; };
-                for (int y = -r; y <= r; ++y) {
-                    acc += at(y);
+    // Passe verticale : ligne par ligne sur un bloc de colonnes, une somme glissante par colonne. Avant, chaque
+    // colonne descendait l'image entière (un saut de ligne à chaque lecture, la mémoire cache ne servait pas).
+    // Les additions se font dans le même ordre qu'avant pour chaque colonne : même résultat au bit près.
+    auto passV = [&](Plane &src, Plane &dst, int r) {
+        const int width = w * channels; // flottants utiles par ligne
+        const int block = 64;
+        const int blocks = (width + block - 1) / block;
+        const double inv = 1. / (2 * r + 1);
+        run(blocks, [&](int bi) {
+            const int x0 = bi * block, x1 = std::min(width, x0 + block);
+            double acc[block];
+            for (int x = x0; x < x1; ++x) {
+                acc[x - x0] = 0.;
+            }
+            for (int y = -r; y <= r; ++y) {
+                const float *row = &src[size_t(std::clamp(y, 0, h - 1)) * stride];
+                for (int x = x0; x < x1; ++x) {
+                    acc[x - x0] += row[x];
                 }
-                const double inv = 1. / (2 * r + 1);
-                for (int y = 0; y < h; ++y) {
-                    dst[size_t(y) * stride + size_t(x) * channels + c] = float(acc * inv);
-                    acc += at(y + r + 1) - at(y - r);
+            }
+            for (int y = 0; y < h; ++y) {
+                float *out = &dst[size_t(y) * stride];
+                const float *add = &src[size_t(std::min(y + r + 1, h - 1)) * stride];
+                const float *sub = &src[size_t(std::max(y - r, 0)) * stride];
+                for (int x = x0; x < x1; ++x) {
+                    out[x] = float(acc[x - x0] * inv);
+                    acc[x - x0] += add[x] - sub[x];
                 }
             }
         });
@@ -563,8 +608,6 @@ void boxBlurPlane(std::vector<float> &p, int w, int h, int stride, int channels,
         }
     }
 }
-
-using Plane = std::vector<float>;
 
 } // namespace
 
@@ -927,7 +970,7 @@ void Grade::processRgba8(uint8_t *data, int width, int height, int stride, const
         });
         return;
     }
-    std::vector<float> buf(size_t(width) * height * 3);
+    Plane buf(size_t(width) * height * 3);
     run(height, [&](int y) {
         const uint8_t *p = data + size_t(y) * stride;
         float *f = &buf[size_t(y) * width * 3];
@@ -954,7 +997,7 @@ void Grade::processRgba16(uint16_t *data, int width, int height, int stride, con
     if (d->identity) {
         return;
     }
-    std::vector<float> buf(size_t(width) * height * 3);
+    Plane buf(size_t(width) * height * 3);
     const int s16 = stride / 2;
     run(height, [&](int y) {
         const uint16_t *p = data + size_t(y) * s16;

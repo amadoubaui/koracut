@@ -1993,6 +1993,19 @@ void MainWindow::koraCutDevScreenshot()
                     // efface les rendus ; « apercu:etat » écrit l'état du rendu. Document 6, journal du 24 septembre 2026.
                     // « diagnostic:tester » lance l'essai du panneau Diagnostic (ligne KORACUT-DIAGNOSTIC à la fin) ;
                     // « diagnostic:etat » écrit ce que le panneau mesure. Chantier 10.
+                    // « etalonnage:pause=oui|non » met l'étalonnage en pause dans l'aperçu (bouton du moniteur, ⌘⇧D) ;
+                    // « etalonnage:etat » écrit KORACUT-ETALONNAGE (2 octobre 2026, document 6).
+                    if (name.startsWith(QLatin1String("etalonnage:"))) {
+                        const QString what = name.section(QLatin1Char(':'), 1);
+                        if (what.startsWith(QLatin1String("pause="))) {
+                            KoraCutPerformance::setGradePaused(what.section(QLatin1Char('='), 1) == QLatin1String("oui"));
+                        }
+                        QAction *a = actionCollection()->action(QStringLiteral("koracut_grade_pause"));
+                        qWarning().noquote() << "KORACUT-ETALONNAGE pause=" + QString(KoraCutPerformance::gradePaused() ? QStringLiteral("oui") : QStringLiteral("non"))
+                                             << "action=" + QString(a && a->isChecked() ? QStringLiteral("cochee") : QStringLiteral("decochee"))
+                                             << "raccourci=" + (a ? a->shortcut().toString() : QString());
+                        return;
+                    }
                     if (name.startsWith(QLatin1String("diagnostic:")) && m_perfPanel) {
                         const auto printJson = [](const QJsonObject &o) {
                             qWarning().noquote() << "KORACUT-DIAGNOSTIC" << QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
@@ -2046,6 +2059,11 @@ void MainWindow::koraCutDevScreenshot()
                             getCurrentTimeline()->controller()->clearRenders();
                         } else if (what == QLatin1String("etat")) {
                             print(KoraCutRender::stateJson());
+                        } else if (what == QLatin1String("gestes")) {
+                            // « apercu:gestes » : temps de réponse aux gestes (2 octobre 2026, document 6).
+                            KoraCutRender::measureGestures([](const QJsonObject &o) {
+                                qWarning().noquote() << "KORACUT-GESTES" << QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
+                            });
                         }
                         return;
                     }
@@ -4772,6 +4790,12 @@ void MainWindow::setupActions()
     agentsPanel->setToolTip(i18nc("@info:tooltip", "Talk to the agents: they edit for you, one Undo takes back a whole turn"));
     connect(agentsPanel, &QAction::triggered, this, &MainWindow::slotShowAgentsPanel);
     addActionWithShortcuts(QStringLiteral("koracut_agents_panel"), agentsPanel, {QKeySequence(Qt::CTRL | Qt::Key_J)}, koraCutActions);
+
+    // L'étalonnage en pause dans l'aperçu (2 octobre 2026, document 6) : ⌘⇧D, libre dans les 915 actions
+    // (KORACUT_DUMP_ACTIONS=all) ; Maj+D est « Couper l'étalonnage » du plan, dans le module Étalonnage.
+    addActionWithShortcuts(QStringLiteral("koracut_grade_pause"), KoraCutPerformance::gradePauseAction(), {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D)},
+                           koraCutActions);
+    KoraCutPerformance::initGradePause();
 
     // Le panneau Diagnostic (chantier 10) : pas de raccourci, il est dans Réglages.
     auto *diagnosticPanel = new QAction(QIcon::fromTheme(QStringLiteral("speedometer")), i18nc("@action", "Diagnostic Panel"), this);

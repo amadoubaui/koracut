@@ -1362,6 +1362,8 @@ QJsonObject voirImage(const Timeline &timeline, const Args &args)
         }
         const QString xml = timeline->sceneList(QString());
         const KoraCutPerformance::DecoderCacheRoom room(xml);
+        // L'image regardée est celle de l'export : l'étalonnage revient même s'il est en pause dans l'aperçu.
+        const KoraCutPerformance::GradeBypass graded;
         Mlt::Producer producer(pCore->getProjectProfile(), "xml-string", xml.toUtf8().constData());
         if (producer.is_valid()) {
             image = KThumb::getFrame(producer, position, width, std::max(1, width * projectHeight / projectWidth));

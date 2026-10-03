@@ -8,6 +8,7 @@
 #include "koracut/koracuthwdecode.h"
 #include "bin/projectitemmodel.h"
 #include "core.h"
+#include "utils/machineprofile.h"
 #include "dialogs/wizard.h"
 #include "doc/docundostack.hpp"
 #include "doc/kdenlivedoc.h"
@@ -387,8 +388,22 @@ bool PreviewManager::loadParams()
             i--;
         }
     }*/
+    int resizeHeight = 0;
     if (doc->getDocumentProperty(QStringLiteral("resizepreview")).toInt() != 0) {
-        int resizeWidth = doc->getDocumentProperty(QStringLiteral("previewheight")).toInt();
+        resizeHeight = doc->getDocumentProperty(QStringLiteral("previewheight")).toInt();
+    } else if (doc->getDocumentProperty(QStringLiteral("resizepreview")).isEmpty()) {
+        // KoraCut (chantier 10, 2 octobre 2026) : sans choix dans le projet, le rendu d'aperçu ne dépasse pas
+        // la hauteur que le moniteur affiche (1080 sur une machine confortable, 720 moyenne, 540 modeste).
+        // Un projet vertical 1080×1920 se rendait en 1080×1920 pour être montré en 608×1080 : 67 s pour
+        // 47 s de séquence, contre 48 s à 608×1080 (koracut_render calcule maintenant à cette taille).
+        const int cap = MachineProfile::recommend(MachineProfile::effectiveLevel(), MachineProfile::Hardware()).previewRenderHeight;
+        const int projectHeight = pCore->getCurrentFrameDisplaySize().height();
+        if (cap > 0 && projectHeight > cap) {
+            resizeHeight = cap;
+        }
+    }
+    if (resizeHeight > 0) {
+        int resizeWidth = resizeHeight;
         // KoraCut : largeur et hauteur paires, sinon libx264 refuse l'image.
         resizeWidth -= resizeWidth % 2;
         int width = int(resizeWidth * pCore->getCurrentDar());
@@ -403,7 +418,11 @@ bool PreviewManager::loadParams()
         }
     }
     if (!hasThreads) {
-        const int threads = KoraCutRender::isModestMachine() ? 1 : std::clamp(QThread::idealThreadCount() / 4, 1, 2);
+        int threads = KoraCutRender::isModestMachine() ? 1 : std::clamp(QThread::idealThreadCount() / 4, 1, 2);
+        // Essai (chantier 10) : KORACUT_APERCU_FILS=N impose le nombre de fils du rendu d'aperçu.
+        if (qEnvironmentVariableIsSet("KORACUT_APERCU_FILS")) {
+            threads = std::clamp(qEnvironmentVariableIntValue("KORACUT_APERCU_FILS"), 1, 16);
+        }
         m_consumerParams << QStringLiteral("real_time=-%1").arg(threads);
     }
     m_consumerParams << QStringLiteral("an=1");

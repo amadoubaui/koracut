@@ -1206,3 +1206,15 @@ QLabel#koracutSequenceCount {
 KMessageWidget QLabel {
     color: {texte};
 }
+
+/* Mentions de la barre du moniteur Programme (chantier 10, document 6) : « Étalonnage en pause » (2 octobre
+   2026) et « Aperçu simplifié ». Discrètes : texte secondaire, une pastille au contour fin, rien de criard. */
+QLabel#koracutEtalonnagePause, QLabel#koracutApercuSimplifie {
+    color: {texte_secondaire};
+    background: transparent;
+    border: 1px solid {bordure};
+    border-radius: 6px;
+    padding: 1px 6px;
+    margin: 0 4px;
+    font-size: 11px;
+}

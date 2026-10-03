@@ -55328,3 +55328,27 @@ msgstr[1] "%1 retirées"
 msgctxt "@info line in the terminal after Claude Code exits; keep the button name as translated"
 msgid "Claude Code has stopped. To start it again connected to KoraCut, click “Edit with Claude Code”."
 msgstr "Claude Code s'est arrêté. Pour le relancer branché sur KoraCut, clique sur « Monter avec Claude Code »."
+
+msgctxt "@action"
+msgid "Pause Grading in Preview"
+msgstr "Mettre l'étalonnage en pause"
+
+msgctxt "@info:tooltip"
+msgid "Grading is paused in the preview: playback is lighter. The export always keeps the grading. Click to bring it back."
+msgstr "L'étalonnage est en pause dans l'aperçu : la lecture est plus légère. L'export garde toujours l'étalonnage. Clique pour le remettre."
+
+msgctxt "@info:tooltip"
+msgid "Pause grading in the preview for lighter playback while you edit. The export always keeps the grading."
+msgstr "Met l'étalonnage en pause dans l'aperçu, pour une lecture plus légère pendant le montage. L'export garde toujours l'étalonnage."
+
+msgctxt "@info:whatsthis"
+msgid "Turns off all grading in the monitors so that playback stays smooth while you edit. Click again to bring it back. The export and the background render always keep the grading, and the Color module brings it back while you work in it."
+msgstr "Coupe tout l'étalonnage dans les moniteurs pour que la lecture reste fluide pendant le montage. Un nouveau clic le remet. L'export et le rendu d'aperçu gardent toujours l'étalonnage, et le module Étalonnage le remet tant que tu y travailles."
+
+msgctxt "@info:status"
+msgid "Grading is back so you can see what you do. It pauses again when you leave the Color module."
+msgstr "L'étalonnage est revenu pour que tu voies ce que tu fais. Il se remet en pause quand tu quittes l'Étalonnage."
+
+msgctxt "@info:status monitor badge, grading is turned off in the preview"
+msgid "Grading paused"
+msgstr "Étalonnage en pause"

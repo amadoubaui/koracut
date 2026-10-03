@@ -327,6 +327,8 @@ private:
     int m_koraCutFramesThisSecond{0};
     /** Badge « Aperçu simplifié » de la barre du moniteur, visible pendant la lecture quand des effets lourds sont en pause. */
     QLabel *m_koraCutSimplified{nullptr};
+    /** KoraCut : mention « Étalonnage en pause » dans la barre du moniteur Programme. */
+    QLabel *m_koraCutGradePaused{nullptr};
     void koraCutPlaybackChanged(bool play);
     void koraCutApplyScaling(int scaling);
     double m_displayedFps;

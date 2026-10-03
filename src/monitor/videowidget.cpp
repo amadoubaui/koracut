@@ -447,11 +447,21 @@ void VideoWidget::requestSeek(int position, bool noAudioScrub)
 
 void VideoWidget::requestRefresh(bool slowRefresh)
 {
+    // KoraCut (chantier 10, 2 octobre 2026) : Kdenlive attendait 200 ms de calme après chaque déplacement ou
+    // rognage avant de refaire l'image (« slowRefresh ») ; un geste seul se voyait donc avec 200 ms de retard.
+    // Désormais un geste isolé est montré tout de suite, et une rafale (un glisser) est limitée à une image
+    // toutes les 200 ms au plus : la demande qui arrive pendant l'attente est couverte par celle-ci.
+    int delay = 10;
+    if (slowRefresh && m_lastRefresh.isValid() && m_lastRefresh.elapsed() < 200) {
+        delay = int(200 - m_lastRefresh.elapsed());
+    }
     if (m_refreshTimer.isActive()) {
-        m_refreshTimer.start(slowRefresh ? 200 : 10);
+        if (!slowRefresh) {
+            m_refreshTimer.start(10);
+        }
     } else if (m_producer && qFuzzyIsNull(m_producer->get_speed())) {
         m_consumer->set("scrub_audio", 0);
-        m_refreshTimer.start(slowRefresh ? 200 : 10);
+        m_refreshTimer.start(std::max(10, delay));
     }
 }
 
@@ -463,6 +473,7 @@ QString VideoWidget::frameToTime(int frames) const
 void VideoWidget::refresh()
 {
     m_refreshTimer.stop();
+    m_lastRefresh.start();
     QMutexLocker locker(&m_mltMutex);
     if (m_consumer) {
         restartConsumer();
@@ -916,6 +927,10 @@ int VideoWidget::reconfigure()
         int dropFrames = 1;
         if (!KdenliveSettings::monitor_dropframes()) {
             dropFrames = -dropFrames;
+        }
+        // Essai (chantier 10) : KORACUT_REAL_TIME=N rend N images en parallèle au lieu d'une.
+        if (qEnvironmentVariableIsSet("KORACUT_REAL_TIME")) {
+            dropFrames = (dropFrames > 0 ? 1 : -1) * std::max(1, qEnvironmentVariableIntValue("KORACUT_REAL_TIME"));
         }
         m_consumer->set("real_time", dropFrames);
         m_consumer->set("channels", pCore->audioChannels());
