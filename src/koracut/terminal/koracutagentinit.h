@@ -29,10 +29,12 @@ struct Context
     QJsonArray medias;     ///< le résultat de medias.lister
     QString reglage;       ///< le réglage de l'instance (koracut-ctl --reglage)
     QString porteFile;     ///< porte-<réglage>.json
-    QString nodePath;      ///< node pour lancer le serveur MCP, vide : « node »
-    QString mcpScript;     ///< Agents in-app/mcp/dist/main.js ou sa copie installée, vide : pas de MCP
+    QString mcpCommand;    ///< la commande du serveur MCP `koracut` (koracut-ctl, livré avec l'application), vide : pas de MCP
+    QStringList mcpArgs;   ///< ses arguments (« mcp »)
     QString mcpWrapper;    ///< un petit script sans espace dans son chemin qui lance le serveur (Goose), vide sinon
     QStringList skills;    ///< « nom|description|chemin du SKILL.md »
+    QString hyperframes;   ///< le lanceur du HyperFrames de KoraCut (KoraCutMotionHost::launcher), vide s'il n'est pas installé
+    bool hasMcp() const { return !mcpCommand.isEmpty(); }
 };
 
 QString beginMarker();
@@ -57,8 +59,9 @@ QStringList mcpLaunchArguments(const KoraCutAgentsCli::Agent &agent, const Conte
  *  Rend les fichiers écrits ; @p errors reçoit ce qui n'a pas pu l'être. */
 QStringList writeForAgent(const QString &projectDir, const KoraCutAgentsCli::Agent &agent, const Context &ctx, QStringList *errors = nullptr);
 
-/** @brief Le serveur MCP livré avec KoraCut (ou celui du dossier de développement), vide s'il manque. */
-QString findMcpServer();
+/** @brief Le serveur MCP de KoraCut : `koracut-ctl mcp`, l'exécutable livré dans @p ctlDir (ni Node ni dossier de
+ *  développement) ; KORACUT_MCP_SERVER désigne un autre serveur (un script lancé par Node) pour les essais. */
+bool findMcp(const QString &ctlDir, QString &command, QStringList &args);
 /** @brief Les compétences KoraCut trouvées sur cette machine (~/.claude/skills/koracut-*, Sources/koracut-skills). */
 QStringList findSkills();
 
@@ -72,5 +75,7 @@ QStringList firstSkills();
 
 /** @brief Le premier message envoyé à l'agent, dans la langue de l'interface. */
 QString firstMessage();
+/** @brief La règle « tu montes dans KoraCut », la même partout (consignes, premier message, gardes). */
+QString rule();
 
 } // namespace KoraCutAgentInit

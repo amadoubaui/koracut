@@ -38,6 +38,10 @@ QString npmPath();
 QString cliScript();
 /** La version installée, lue dans package.json, vide si non installé. */
 QString installedVersion();
+/** @brief La commande `hyperframes` de KoraCut (3 octobre 2026) : un petit lanceur `<données>/hyperframes/bin/hyperframes`
+ *  vers l'unique installation, pour le terminal et pour tout agent en ligne de commande. Il est (ré)écrit ici ;
+ *  vide si HyperFrames ou Node manque. Un seul HyperFrames pour tous les projets : jamais de `npx`, jamais de copie. */
+QString launcher();
 State state();
 /** L'environnement des processus : PATH avec node et ffmpeg, pas de vérification de mise à jour. */
 QProcessEnvironment environment();

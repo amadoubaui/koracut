@@ -203,9 +203,25 @@ Rectangle {
         }
     }
 
+    // KoraCut : le plan glisse vers sa nouvelle place quand le modèle le déplace (trou fermé, annulation, geste
+    // d'un agent). Le Behavior n'est armé que pour cette écriture-là : zoom, glisser et rognage restent directs.
+    property bool koraSlide: false
+    Behavior on x {
+        enabled: clipRoot.koraSlide
+        NumberAnimation { duration: root.koraAnimDuration; easing.type: Easing.OutCubic }
+    }
     onModelStartChanged: {
-        x = modelStart * timeScale
-        xIntegerOffset = Math.ceil(x) - x
+        var target = modelStart * timeScale
+        koraSlide = root.koraAnimate && clipRoot.visible && clipRoot.fakeTid < 0 && !clipRoot.isGrabbed && !clipRoot.isUserInteracting && Math.abs(target - x) > 1
+        x = target
+        koraSlide = false
+        xIntegerOffset = Math.ceil(target) - target
+    }
+    Component.onDestruction: {
+        // Un plan supprimé s'efface au lieu de disparaître d'un coup.
+        if (clipRoot.visible && clipRoot.fakeTid < 0 && clipRoot.width > 3) {
+            root.koraGhost(clipRoot, koraBody.color)
+        }
     }
 
     onFakePositionChanged: {
@@ -240,8 +256,9 @@ Rectangle {
     }
 
     onTimeScaleChanged: {
-        x = modelStart * clipRoot.timeScale;
-        xIntegerOffset = Math.ceil(x) - x
+        var scaled = modelStart * clipRoot.timeScale
+        x = scaled;
+        xIntegerOffset = Math.ceil(scaled) - scaled
         width = clipDuration * clipRoot.timeScale;
         if (clipRoot.visible) {
             if (!clipRoot.hideClipViews) {
@@ -329,6 +346,10 @@ Rectangle {
     Component.onCompleted: {
         if (clipRoot.isAudio && clipRoot.grouped) {
             koracutNameTimer.restart()
+        }
+        // Un plan qui arrive (coupe, collage, annulation) s'allume un instant.
+        if (clipRoot.visible && root.koraSpend()) {
+            koraArrival.start()
         }
     }
 
@@ -461,6 +482,17 @@ Rectangle {
             anchors.fill: parent
             anchors.rightMargin: clipRoot.koraGap
             radius: clipRoot.koraRadius
+        }
+        // KoraCut : le voile d'arrivée d'un plan. Invisible et sans coût au repos.
+        Rectangle {
+            id: koraFlash
+            anchors.fill: koraBody
+            radius: clipRoot.koraRadius
+            color: "white"
+            opacity: 0
+            visible: opacity > 0
+            z: 20
+            NumberAnimation { id: koraArrival; target: koraFlash; property: "opacity"; from: 0.38; to: 0; duration: Math.round(root.koraAnimDuration * 1.5); easing.type: Easing.OutCubic }
         }
 
         Component {

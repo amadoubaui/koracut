@@ -275,7 +275,8 @@ QDomDocument ClipCreator::getXmlFromUrl(const QString &path)
 {
     QDomDocument xml;
     QUrl fileUrl = QUrl::fromLocalFile(path);
-    if (fileUrl.matches(pCore->currentDoc()->url(), QUrl::RemoveScheme | QUrl::NormalizePathSegments)) {
+    // KoraCut : pas de document pendant un chargement (deux rapports du 30 septembre 2026).
+    if (pCore->currentDoc() && fileUrl.matches(pCore->currentDoc()->url(), QUrl::RemoveScheme | QUrl::NormalizePathSegments)) {
         // Cannot embed a project in itself
         KMessageBox::error(QApplication::activeWindow(), i18n("You cannot add a project inside itself."), i18n("Cannot create clip"));
         return xml;

@@ -41,6 +41,7 @@ Les deux parlent à la même porte ; ci-dessous les commandes sont écrites pour
 | `historique` | annuler | `historique lister`, `historique annuler`, `historique refaire`, `historique tour faire=debut|fin|abandon titre=…` |
 | `theme` | l'apparence de KoraCut, tout de suite | `theme lister`, `theme appliquer nom=clair` (ou `sombre`, `systeme`, `matrix`, `spider-man`, `precedent`), `theme creer nom='Kora nuit' couleurs='{"fond": "#0E0B1F", "accent": "#FF5A1F"}'` (contraste vérifié et corrigé, lis `corrections`), `theme modifier couleurs='{"accent": "#FF5A1F"}'`, `theme supprimer nom=…` (à confirmation) |
 | `reglages` | les réglages sûrs de l'application | `reglages lister section=timeline`, `reglages lire cle=autosave_time`, `reglages ecrire cle=snaptopoints valeur=false` (rend `avant` pour revenir) ; compétence `koracut-reglages-et-themes` |
+| `terminal` | le terminal de KoraCut, pour confier le montage à un agent qui y tourne | `terminal ouvrir` (lance Claude Code dans le projet), `terminal etat historique=60` (écran, `agent_travaille`, `question_ouverte`), `terminal ecrire --params '{"texte": "Retour : …"}'` (à confirmation), `terminal touche touche=echap` |
 | `evenements` | recevoir sans demander | `evenements abonner types='["tete", "selection", "journal", "projet", "timeline", "taches", "fenetre"]' --suivre` |
 
 `koracut-ctl --aide` donne chaque méthode avec ses paramètres, tels que KoraCut les annonce.
@@ -173,6 +174,8 @@ koracut-ctl medias analyser media_id=3 quoi=plans                               
 **Vérifier** : `ui capture chemin=/tmp/apres.png quoi=timeline` puis regarde l'image. C'est pour contrôler, pas pour piloter.
 
 ## Ce qu'il ne faut jamais faire
+
+- **Retélécharger HyperFrames.** Il est déjà dans KoraCut, une seule fois pour tous les projets : la commande `hyperframes` dans le terminal de KoraCut, ou le chemin que rend `koracut-ctl app version` (`hyperframes.commande`). Jamais `npx hyperframes`, `npm install`, `npm init` ni `hyperframes init` : pas de `node_modules`, pas de `package.json`, pas de code source étranger dans le dossier du projet. Une composition, c'est `motion/<nom>/index.html` et ses fichiers. Le rendu passe par les outils `motion_*`.
 
 - Supprimer, écraser ou déplacer un fichier hors du dossier du projet : la porte le refuse (`hors_projet`), et le disque de la personne n'est pas le tien. `fichiers corbeille` est le seul retrait possible, à confirmation.
 - Agir sans avoir lu l'état, ou réutiliser un `clip_id` après une coupe ou un Annuler.

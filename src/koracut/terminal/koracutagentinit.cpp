@@ -88,9 +88,7 @@ QJsonObject stdioServer(const KoraCutAgentInit::Context &ctx, const QJsonObject 
     if (!ctx.reglage.isEmpty()) {
         env.insert(QStringLiteral("KORACUT_REGLAGE"), ctx.reglage);
     }
-    QJsonObject server{{QStringLiteral("command"), ctx.nodePath.isEmpty() ? QStringLiteral("node") : ctx.nodePath},
-                       {QStringLiteral("args"), QJsonArray{ctx.mcpScript}},
-                       {QStringLiteral("env"), env}};
+    QJsonObject server{{QStringLiteral("command"), ctx.mcpCommand}, {QStringLiteral("args"), QJsonArray::fromStringList(ctx.mcpArgs)}, {QStringLiteral("env"), env}};
     if (mcp.contains(QStringLiteral("type"))) {
         server.insert(QStringLiteral("type"), mcp.value(QStringLiteral("type")));
     }
@@ -176,6 +174,23 @@ QString tomlString(const QString &s)
     return QLatin1Char('"') + out + QLatin1Char('"');
 }
 
+QString tomlArray(const QStringList &list)
+{
+    QStringList quoted;
+    for (const QString &s : list) {
+        quoted << tomlString(s);
+    }
+    return QLatin1Char('[') + quoted.join(QStringLiteral(", ")) + QLatin1Char(']');
+}
+
+// Le dossier de développement, seulement quand KORACUT_SOURCE_ROOT est posé (koracut-run.sh, les tests) :
+// aucun chemin de la machine qui a compilé n'est écrit dans l'application livrée (5 octobre 2026).
+QString sourceRoot()
+{
+    const QString root = qEnvironmentVariable("KORACUT_SOURCE_ROOT");
+    return !root.isEmpty() && QFileInfo(root).isDir() ? root : QString();
+}
+
 } // namespace
 
 QString KoraCutAgentInit::beginMarker()
@@ -190,10 +205,21 @@ QString KoraCutAgentInit::endMarker()
 
 QString KoraCutAgentInit::firstMessage()
 {
-    return i18nc("@info first message sent to a command line agent launched in the KoraCut terminal; keep koracut-ctl as is",
-                 "Read the KoraCut instructions of this folder, look at the project open in KoraCut (koracut-ctl projet info, medias lister, "
-                 "timeline etat), then tell me in a few lines what you understand of the video to edit and propose the first step. "
-                 "Do not change anything yet.");
+    return i18nc("@info first message sent to a command line agent launched in the KoraCut terminal; keep koracut and koracut-ctl as is",
+                 "You edit INSIDE KoraCut, the editing application open on this computer: every action goes through the koracut tools (MCP) or "
+                 "the koracut-ctl command, never through ffmpeg, melt, a script or another program, and you never write a video file yourself. "
+                 "Read the KoraCut instructions of this folder, look at the open project (projet info, medias lister, timeline etat), then tell me "
+                 "in a few lines what you understand of the video to edit and propose the first step. Do not change anything yet.");
+}
+
+// La règle sans échappatoire (demande d'Amadou Ba du 4 octobre 2026) : la même phrase dans les consignes
+// de chaque agent, dans le premier message, dans le serveur MCP et dans les gardes du terminal.
+QString KoraCutAgentInit::rule()
+{
+    return QStringLiteral("Tu montes DANS KoraCut. Chaque geste passe par les outils `koracut` (MCP) ou par `koracut-ctl`. Tu n'utilises JAMAIS ffmpeg, "
+                          "melt, un script Python ou un autre logiciel pour fabriquer la vidéo, tu n'écris JAMAIS une vidéo toi-même dans un dossier. "
+                          "Le résultat est la timeline du projet ouvert ; l'export se fait par `export lancer`, quand la personne le demande. "
+                          "Si un outil manque ou échoue, tu t'arrêtes et tu le dis.");
 }
 
 QStringList KoraCutAgentInit::firstSkills()
@@ -228,6 +254,16 @@ QString KoraCutAgentInit::instructionsBlock(const Context &ctx, const QString &a
     }
     out << " regarde l'écran pendant que tu montes. Tout ce que tu fais passe par la porte de commande de KoraCut, se voit à l'écran et se défait "
            "d'un Annuler. Réponds dans sa langue, le français par défaut, en la tutoyant, en phrases simples et courtes.\n\n";
+
+    out << "## La règle qui passe avant tout\n\n";
+    out << "**" << rule() << "**\n\n";
+    out << "- La vidéo n'existe que dans KoraCut : chutier, timeline, pistes, effets, titres, son. Un fichier `.mp4` ou `.mov` que tu fabriquerais à côté "
+           "n'est pas le travail demandé, même s'il « marche ».\n";
+    out << "- Dans ce terminal, `ffmpeg` et `melt` refusent de s'exécuter : c'est voulu. Ne cherche pas un autre chemin (chemin complet, Python, "
+           "ImageMagick, un autre monteur) : si la porte ne sait pas faire quelque chose, dis ce qui manque et attends.\n";
+    out << "- Si `koracut-ctl` répond `porte_fermee` alors que KoraCut est ouverte, tu tournes sans doute dans un bac à sable qui coupe l'accès à "
+           "l'application : utilise les outils MCP `koracut`, ou demande à la personne d'autoriser `koracut-ctl`. Ne monte pas autrement.\n";
+    out << "- Tu n'écris pas dans le fichier `.koracut`.\n\n";
 
     out << "## Le projet ouvert\n\n";
     out << "- Nom : " << (name.isEmpty() ? QStringLiteral("sans nom") : name) << "\n";
@@ -325,7 +361,7 @@ QString KoraCutAgentInit::instructionsBlock(const Context &ctx, const QString &a
 
     out << "\n## Comment agir\n\n";
     out << "La porte de commande est déjà connue de ce terminal (`KORACUT_PORTE`). Deux façons, qui font la même chose :\n\n";
-    if (!ctx.mcpScript.isEmpty()) {
+    if (ctx.hasMcp()) {
         out << "- Les outils MCP `koracut` (`koracut_projet_info`, `koracut_timeline_etat`, `koracut_timeline_outil`, `koracut_medias_importer`…), branchés pour toi.\n";
     }
     out << "- La ligne de commande `" << ctlCmd << " <famille> <methode> clef=valeur` ; `koracut-ctl --aide` liste tout.\n\n";
@@ -335,7 +371,7 @@ QString KoraCutAgentInit::instructionsBlock(const Context &ctx, const QString &a
     out << ctlCmd << " medias importer chemins='[\"Rushs/01 - Intro.mp4\"]' dossier=Rushs\n";
     out << ctlCmd << " timeline outil nom=ajouter_clip args='{\"media_id\": \"3\", \"piste_id\": 2, \"position\": 0}'\n";
     out << "```\n\n";
-    out << "N'écris pas dans le fichier `.koracut` et ne lance pas ffmpeg à la place de l'application : passe par la porte.\n";
+    out << "Lire un fichier (durée, format, son) : `" << ctlCmd << " medias info id=<id>` et `medias analyser`. `ffprobe` reste permis pour lire, rien d'autre.\n";
 
     out << "\n## Au démarrage\n\n";
     out << "1. Lis l'état : `projet info`, `medias lister`, `timeline etat niveau=resume`.\n";
@@ -357,7 +393,17 @@ QString KoraCutAgentInit::instructionsBlock(const Context &ctx, const QString &a
            "ou en timecode `HH:MM:SS:II`, `out` est exclu.\n";
     out << "7. Ne supprime jamais un fichier. `fichiers corbeille` existe, à confirmation. Renommer et déplacer restent dans le dossier du projet.\n";
     out << "8. `confirmation_requise` : la personne doit répondre dans KoraCut, ne relance pas en boucle. `occupe` : réessaie une seconde plus tard.\n";
-    out << "9. N'exporte que quand la personne le demande (`export lancer`).\n";
+    out << "9. N'exporte que quand la personne le demande, et seulement par `export lancer` : le fichier sort de KoraCut, dans le dossier `Exports` du projet.\n";
+    // Demande d'Amadou Ba du 3 octobre 2026 : un seul HyperFrames, celui de l'application, jamais retéléchargé.
+    out << "10. **HyperFrames est déjà dans KoraCut, une seule fois pour tous les projets.** ";
+    if (ctx.hyperframes.isEmpty()) {
+        out << "S'il n'est pas encore installé, c'est KoraCut qui l'installe (panneau Motion, ou le premier `motion_rendre`), une fois pour toutes. ";
+    } else {
+        out << "Sa commande est `hyperframes` dans le terminal de KoraCut ; ailleurs, `" << ctx.hyperframes << "`. ";
+    }
+    out << "N'écris jamais `npx hyperframes`, `npm install`, `npm init` ni `hyperframes init` : aucun `node_modules`, aucun `package.json`, aucune "
+           "copie de HyperFrames ni d'un autre code source dans le dossier du projet. Une composition, c'est `motion/<nom>/index.html` et ses "
+           "fichiers (images, sons, polices), rien d'autre. Le rendu passe par les outils `motion_*` ; la commande sert à vérifier (`hyperframes lint`).\n";
 
     out << "\n## Les compétences\n\n";
     QStringList known;
@@ -444,7 +490,7 @@ bool KoraCutAgentInit::writeMarkdownBlock(const QString &file, const QString &bl
 
 QString KoraCutAgentInit::writeMcpConfig(const QString &projectDir, const KoraCutAgentsCli::Agent &agent, const Context &ctx, QString *error)
 {
-    if (ctx.mcpScript.isEmpty() || agent.mcp.isEmpty()) {
+    if (!ctx.hasMcp() || agent.mcp.isEmpty()) {
         return QString();
     }
     const QString format = agent.mcp.value(QStringLiteral("format")).toString();
@@ -482,7 +528,7 @@ QString KoraCutAgentInit::writeMcpConfig(const QString &projectDir, const KoraCu
         out << "# KORACUT:DEBUT (écrit par KoraCut, refait à chaque lancement)\n";
         out << "[mcp_servers.koracut]\n";
         out << "command = " << tomlString(server.value(QStringLiteral("command")).toString()) << "\n";
-        out << "args = [" << tomlString(ctx.mcpScript) << "]\n";
+        out << "args = " << tomlArray(ctx.mcpArgs) << "\n";
         const QJsonObject env = server.value(QStringLiteral("env")).toObject();
         if (!env.isEmpty()) {
             QStringList pairs;
@@ -496,8 +542,10 @@ QString KoraCutAgentInit::writeMcpConfig(const QString &projectDir, const KoraCu
         ok = writeHashBlock(path, block, QStringLiteral("[mcp_servers.koracut]"), error);
     } else if (format == QLatin1String("crushrc")) {
         // .crushrc est en syntaxe Bash : une commande « mcp add ».
-        QString line = QStringLiteral("mcp add koracut --command %1 --args %2")
-                           .arg(KoraCutAgentsCli::shellQuote(server.value(QStringLiteral("command")).toString()), KoraCutAgentsCli::shellQuote(ctx.mcpScript));
+        QString line = QStringLiteral("mcp add koracut --command %1").arg(KoraCutAgentsCli::shellQuote(server.value(QStringLiteral("command")).toString()));
+        for (const QString &a : ctx.mcpArgs) {
+            line += QStringLiteral(" --args ") + KoraCutAgentsCli::shellQuote(a);
+        }
         const QJsonObject env = server.value(QStringLiteral("env")).toObject();
         for (auto it = env.begin(); it != env.end(); ++it) {
             line += QStringLiteral(" --env %1 %2").arg(it.key(), KoraCutAgentsCli::shellQuote(it.value().toString()));
@@ -540,7 +588,7 @@ QString KoraCutAgentInit::writeMcpConfig(const QString &projectDir, const KoraCu
 QStringList KoraCutAgentInit::mcpLaunchArguments(const KoraCutAgentsCli::Agent &agent, const Context &ctx)
 {
     QStringList out;
-    if (ctx.mcpScript.isEmpty()) {
+    if (!ctx.hasMcp()) {
         return out;
     }
     const QJsonArray line = agent.mcp.value(QStringLiteral("ligne")).toArray();
@@ -557,10 +605,21 @@ QStringList KoraCutAgentInit::mcpLaunchArguments(const KoraCutAgentsCli::Agent &
         arg.replace(QStringLiteral("{json}"), json);
         arg.replace(QStringLiteral("{json_serveurs}"), jsonServers);
         arg.replace(QStringLiteral("{command}"), server.value(QStringLiteral("command")).toString());
-        arg.replace(QStringLiteral("{args_toml}"), QLatin1Char('[') + tomlString(ctx.mcpScript) + QLatin1Char(']'));
-        arg.replace(QStringLiteral("{args}"), ctx.mcpScript);
-        arg.replace(QStringLiteral("{wrapper}"), ctx.mcpWrapper.isEmpty() ? server.value(QStringLiteral("command")).toString() + QLatin1Char(' ') + ctx.mcpScript : ctx.mcpWrapper);
+        arg.replace(QStringLiteral("{args_toml}"), tomlArray(ctx.mcpArgs));
+        arg.replace(QStringLiteral("{args}"), ctx.mcpArgs.join(QLatin1Char(' ')));
+        arg.replace(QStringLiteral("{wrapper}"), ctx.mcpWrapper.isEmpty() ? server.value(QStringLiteral("command")).toString() + QLatin1Char(' ') + ctx.mcpArgs.join(QLatin1Char(' ')) : ctx.mcpWrapper);
+        // La règle de KoraCut, pour les agents qui prennent une consigne système en ligne de commande.
+        arg.replace(QStringLiteral("{regle}"), rule());
         arg.replace(QStringLiteral("{porte}"), ctx.porteFile);
+        // Les deux dossiers que l'agent lit hors du projet (3 octobre 2026) : ses compétences et le cache de
+        // KoraCut (images de contrôle du Motion). Sans eux, Claude Code s'arrête sur une demande d'accord à chaque lecture.
+        if (arg == QLatin1String("{competences}")) {
+            arg = QDir::home().absoluteFilePath(QStringLiteral(".claude/skills"));
+            QDir().mkpath(arg);
+        } else if (arg == QLatin1String("{cache}")) {
+            arg = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+            QDir().mkpath(arg);
+        }
         const QString dir = ctx.project.value(QStringLiteral("dossier")).toString();
         arg.replace(QStringLiteral("{fichier}"), QDir(dir).absoluteFilePath(agent.mcp.value(QStringLiteral("fichier")).toString()));
         out << arg;
@@ -606,28 +665,30 @@ QStringList KoraCutAgentInit::writeForAgent(const QString &projectDir, const Kor
     return written;
 }
 
-QString KoraCutAgentInit::findMcpServer()
+bool KoraCutAgentInit::findMcp(const QString &ctlDir, QString &command, QStringList &args)
 {
+    command.clear();
+    args.clear();
+    // KORACUT_MCP_SERVER : un autre serveur pour les essais (l'ancien serveur TypeScript, lancé par Node).
     const QString env = qEnvironmentVariable("KORACUT_MCP_SERVER");
     if (!env.isEmpty() && QFileInfo::exists(env)) {
-        return env;
+        const QString node = KoraCutAgentsCli::findNode();
+        command = node.isEmpty() ? QStringLiteral("node") : node;
+        args << env;
+        return true;
     }
-    const QString shipped = QStandardPaths::locate(QStandardPaths::AppDataLocation, QStringLiteral("agents/mcp/main.js"));
-    if (!shipped.isEmpty()) {
-        return QFileInfo(shipped).canonicalFilePath();
-    }
-    const QString appDir = QCoreApplication::applicationDirPath();
-    QStringList candidates = {appDir + QStringLiteral("/../Resources/mcp/main.js"), appDir + QStringLiteral("/../share/koracut/mcp/main.js"),
-                              appDir + QStringLiteral("/mcp/main.js")};
-#ifdef KORACUT_SOURCE_ROOT
-    candidates << QStringLiteral(KORACUT_SOURCE_ROOT) + QStringLiteral("/Agents in-app/mcp/dist/main.js");
+    // Le serveur livré : « koracut-ctl mcp », un exécutable à côté de l'application. Ni Node ni dossier de développement.
+#ifdef Q_OS_WIN
+    const QString ctl = ctlDir + QStringLiteral("/koracut-ctl.exe");
+#else
+    const QString ctl = ctlDir + QStringLiteral("/koracut-ctl");
 #endif
-    for (const QString &c : std::as_const(candidates)) {
-        if (QFileInfo::exists(c)) {
-            return QFileInfo(c).canonicalFilePath();
-        }
+    if (ctlDir.isEmpty() || !QFileInfo(ctl).isExecutable()) {
+        return false;
     }
-    return QString();
+    command = QDir::toNativeSeparators(QFileInfo(ctl).absoluteFilePath());
+    args << QStringLiteral("mcp");
+    return true;
 }
 
 QString KoraCutAgentInit::findData(const QString &relative)
@@ -637,14 +698,12 @@ QString KoraCutAgentInit::findData(const QString &relative)
     if (found.isEmpty()) {
         found = QStandardPaths::locate(QStandardPaths::AppDataLocation, path, QStandardPaths::LocateDirectory);
     }
-#ifdef KORACUT_SOURCE_ROOT
-    if (found.isEmpty()) {
-        const QString dev = QStringLiteral(KORACUT_SOURCE_ROOT) + QStringLiteral("/Sources/kdenlive/data/") + path;
+    if (found.isEmpty() && !sourceRoot().isEmpty()) {
+        const QString dev = sourceRoot() + QStringLiteral("/Sources/kdenlive/data/") + path;
         if (QFileInfo::exists(dev)) {
             found = dev;
         }
     }
-#endif
     return found;
 }
 
@@ -659,12 +718,12 @@ QString KoraCutAgentInit::bundledSkillsRoot()
     if (!shipped.isEmpty()) {
         return shipped;
     }
-#ifdef KORACUT_SOURCE_ROOT
-    const QString dev = QStringLiteral(KORACUT_SOURCE_ROOT) + QStringLiteral("/Sources/koracut-skills");
-    if (QFileInfo(dev).isDir()) {
-        return dev;
+    if (!sourceRoot().isEmpty()) {
+        const QString dev = sourceRoot() + QStringLiteral("/Sources/koracut-skills");
+        if (QFileInfo(dev).isDir()) {
+            return dev;
+        }
     }
-#endif
     return QString();
 }
 

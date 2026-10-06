@@ -338,7 +338,8 @@ void TaskManager::startTask(int ownerId, AbstractTask *task)
     }
     // Set jobs count
     Q_EMIT jobCount(count);
-    if (task->m_type == AbstractTask::TRANSCODEJOB || task->m_type == AbstractTask::PROXYJOB || task->m_type == AbstractTask::MOTIONJOB) {
+    if (task->m_type == AbstractTask::TRANSCODEJOB || task->m_type == AbstractTask::PROXYJOB || task->m_type == AbstractTask::MOTIONJOB ||
+        task->m_type == AbstractTask::LIGHTCOPYJOB) {
         // We only want a limited concurrent jobs for those as for example GPU usually only accept 2 concurrent encoding jobs
         m_transcodePool.start(task, task->m_priority);
     } else {

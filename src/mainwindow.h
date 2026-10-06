@@ -576,6 +576,10 @@ private Q_SLOTS:
     void slotEditWithClaudeCode();
     /** @brief Montre le panneau Terminal sans rien y lancer. */
     void koraCutRevealTerminalDock();
+    /** @brief Pose le terminal par rapport à la timeline : droite (défaut, moitié-moitié), bas, haut, gauche, ou en onglet avec les Agents ; la place est gardée. */
+    void koraCutPlaceTerminal(const QString &place);
+    void koraCutDockTerminal(const QString &place);
+    QString koraCutTerminalPlace() const;
     /** @brief KoraCut : ouvre le panneau Motion (document 19). */
     void slotShowMotionPanel();
     void slotStopRenderProject();

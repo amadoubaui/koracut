@@ -50,16 +50,12 @@ Splash::Splash(const QString version, const QStringList urls, const QStringList 
     }
 
     if (showWelcome) {
-        bool isPalFps = ProjectManager::getDefaultProjectFormat().endsWith(QLatin1String("_25"));
         m_engine->setInitialProperties({{"version", version},
                                         {"fileNames", fileNames},
                                         {"fileDates", fileDates},
                                         {"urls", urls},
                                         {"profileIds", profileIds},
                                         {"profileNames", profileNames},
-                                        {"palFps", isPalFps},
-                                        {"firstRun", firstRun},
-                                        {"alwaysDark", KdenliveSettings::koracut_theme_mode() == QLatin1String("dark")},
                                         {"crashRecovery", m_hasCrashRecovery},
                                         {"wasUpgraded", m_wasUpgraded}});
     } else {
@@ -76,7 +72,6 @@ Splash::Splash(const QString version, const QStringList urls, const QStringList 
         connect(m_rootObject, SIGNAL(openLink(QString)), this, SIGNAL(openLink(QString)));
         connect(m_rootObject, SIGNAL(openTemplate(QString)), this, SIGNAL(openTemplate(QString)));
         connect(m_rootObject, SIGNAL(showWelcome(bool)), this, SLOT(updateWelcomeDisplay(bool)));
-        connect(m_rootObject, SIGNAL(switchPalette(bool)), this, SLOT(switchPalette(bool)));
         connect(m_rootObject, SIGNAL(clearHistory()), this, SLOT(clearHistory()));
         connect(m_rootObject, SIGNAL(clearProfiles()), this, SLOT(clearProfiles()));
         connect(m_rootObject, SIGNAL(forgetFile(QString)), this, SLOT(forgetFile(QString)));
@@ -88,8 +83,6 @@ Splash::Splash(const QString version, const QStringList urls, const QStringList 
         connect(m_rootObject, SIGNAL(openOtherFile()), this, SIGNAL(releaseLock()));
         connect(m_rootObject, SIGNAL(openFile(QString)), this, SIGNAL(releaseLock()));
         connect(m_rootObject, SIGNAL(openTemplate(QString)), this, SIGNAL(releaseLock()));
-        connect(m_rootObject, SIGNAL(firstStart(QString, QString, bool, int, int)), this, SIGNAL(releaseLock()));
-        connect(m_rootObject, SIGNAL(firstStart(QString, QString, bool, int, int)), this, SIGNAL(firstStart(QString, QString, bool, int, int)));
     } else {
         if (m_hasCrashRecovery || m_wasUpgraded) {
             connect(m_rootObject, SIGNAL(resetConfig()), this, SIGNAL(resetConfig()));
@@ -108,8 +101,9 @@ Splash::Splash(const QString version, const QStringList urls, const QStringList 
         }
     }
     // KoraCut, outil de développement : KORACUT_SHOT_SPLASH=/chemin.png enregistre l'écran de
-    // démarrage (ou l'accueil de premier lancement) 2,5 s après son ouverture, pour le relire quand
-    // l'écran du Mac est verrouillé. 23 septembre 2026.
+    // démarrage (ou l'accueil des projets récents) 2,5 s après son ouverture, pour le relire quand
+    // l'écran du Mac est verrouillé. 23 septembre 2026. L'accueil de premier lancement, lui, est
+    // capturé par `KoraCutFirstRun` dans <chemin>-accueil.png.
     const QString splashShot = qEnvironmentVariable("KORACUT_SHOT_SPLASH");
     if (!splashShot.isEmpty()) {
         QTimer::singleShot(2500, this, [this, splashShot]() {
@@ -162,34 +156,6 @@ void Splash::fadeOut()
 void Splash::setReady()
 {
     QMetaObject::invokeMethod(m_rootObject, "enableActions");
-}
-
-void Splash::switchPalette(bool dark)
-{
-    // KoraCut : au premier lancement, Kdenlive impose BreezeDark ici, avant MainWindow::init. On active donc
-    // les schémas KoraCut à cet endroit (sombre par défaut, clair si l'utilisateur bascule l'interrupteur de
-    // l'assistant). Si les fichiers .colors sont introuvables, on retombe sur le comportement Kdenlive.
-    // Débrayable avec KORACUT_NO_THEME.
-    // KoraCut, 22 septembre 2026 : quand le mode de thème vaut « system », c'est le système
-    // qui décide, pas l'interrupteur de l'assistant. Sinon l'écran de démarrage imposerait
-    // le sombre à quelqu'un dont le Mac est en clair, le temps du démarrage.
-    // KoraCut, 23 septembre 2026 : l'interrupteur de l'assistant choisit le mode, « dark » allumé,
-    // « system » éteint. Un thème choisi à la main (clair, très sombre…) n'est touché que si
-    // l'utilisateur bascule l'interrupteur, ce qui est un choix explicite.
-    if (!qEnvironmentVariableIsSet("KORACUT_NO_THEME")) {
-        KdenliveSettings::setKoracut_theme_mode(dark ? QStringLiteral("dark") : QStringLiteral("system"));
-        UiUtils::applyThemeMode();
-        return;
-    }
-    auto manager = KColorSchemeManager::instance();
-    const QString koraCutId = dark ? QStringLiteral("KoraCutDark") : QStringLiteral("KoraCutLight");
-    if (!qEnvironmentVariableIsSet("KORACUT_NO_THEME") && manager->indexForSchemeId(koraCutId).isValid()) {
-        manager->activateSchemeId(koraCutId);
-    } else {
-        qWarning() << "KoraCut: color scheme" << koraCutId << "not found or disabled, falling back to Breeze";
-        manager->activateSchemeId(dark ? QStringLiteral("BreezeDark") : QString());
-    }
-    UiUtils::applyKoraCutStyleSheet();
 }
 
 void Splash::showProgressMessage(const QString &message, int)

@@ -18,6 +18,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "jobs/cachetask.h"
 #include "jobs/cliploadtask.h"
 #include "jobs/proxytask.h"
+#include "koracut/koracutlightcopies.h"
 #include "kdenlivesettings.h"
 #include "lib/audio/audioStreamInfo.h"
 #include "mainwindow.h"
@@ -209,7 +210,7 @@ std::shared_ptr<ProjectClip> ProjectClip::construct(const QString &id, const QDo
 
 ProjectClip::~ProjectClip()
 {
-    if (pCore->closing || pCore->currentDoc()->closing) {
+    if (pCore->closing || !pCore->currentDoc() || pCore->currentDoc()->closing) {
         for (auto &p : m_audioProducers) {
             m_effectStack->removeService(p.second);
         }
@@ -2342,6 +2343,10 @@ void ProjectClip::registerTimelineClip(std::weak_ptr<TimelineModel> timeline, in
     }
     setRefCount(currentCount, totalCount);
     Q_EMIT registeredClipChanged();
+    // KoraCut (document 6, 4 octobre 2026) : une source lourde posée dans une timeline reçoit une copie légère.
+    if (m_clipType == ClipType::AV || m_clipType == ClipType::Video || m_clipType == ClipType::Unknown) {
+        KoraCutLightCopies::noteTimelineClip(m_binId);
+    }
 }
 
 void ProjectClip::checkClipBounds()
@@ -2509,6 +2514,10 @@ bool ProjectClip::selfSoftDelete(Fun &undo, Fun &redo)
         const QUuid uuid = i.key();
         QList<int> instances = i.value();
         if (!instances.isEmpty()) {
+            if (!pCore->currentDoc()) {
+                // KoraCut : fermeture en cours, plus de document (voir Core::finishShutdown).
+                break;
+            }
             auto timeline = pCore->currentDoc()->getTimeline(uuid, pCore->projectItemModel()->closing);
             if (!timeline) {
                 if (pCore->projectItemModel()->closing) {

@@ -22,6 +22,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "dialogs/settings/kdenlivesettingsdialog.h"
 #include "dialogs/subtitleedit.h"
 #include "dialogs/wizard.h"
+#include "koracut/koracutfirstrun.h"
 #include "doc/docundostack.hpp"
 #include "doc/kdenlivedoc.h"
 #include "effects/effectbasket.h"
@@ -80,11 +81,13 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "koracut/koracutautocutdialog.h"
 #include "koracut/koracutrender.h"
 #include "koracut/koracutperformance.h"
+#include "koracut/koracutlightcopies.h"
 #include "koracut/koracutperfpanel.h"
 #include "bin/model/markerlistmodel.hpp"
 #include "koracut/koracuttranscriber.h"
 #include "koracut/koracutduckingdialog.h"
 #include "koracut/koracutextensionsdialog.h"
+#include "koracut/koracutsupportdialog.h"
 #include "koracut/koracutstyle.h"
 #include "koracut/koracutworkspace.h"
 #include "koracut/porte/koracutconsolepanel.h"
@@ -1103,11 +1106,19 @@ void MainWindow::init()
         }
     });
 
-    // KoraCut, document 18 (25 septembre 2026) : le terminal intégré, sous la timeline comme dans VS Code.
-    // Aucun processus ne tourne tant qu'aucun onglet n'est ouvert.
+    // KoraCut, document 18 : le terminal intégré. Depuis le 4 octobre 2026, à droite de la timeline par défaut
+    // (moitié-moitié), et la personne le met où elle veut (koraCutPlaceTerminal). Aucun processus ne tourne
+    // tant qu'aucun onglet n'est ouvert.
     m_terminalPanel = new KoraCutTerminalPanel(m_porte, this);
     m_terminalDock = addDock(i18nc("@title:window nom court d'un panneau", "Terminal"), QStringLiteral("terminal"), m_terminalPanel,
-                             KDDockWidgets::Location_OnBottom, m_timelineDock, QSize(0, 260));
+                             KDDockWidgets::Location_OnRight, m_timelineDock);
+    connect(m_terminalPanel, &KoraCutTerminalPanel::placeRequested, this, &MainWindow::koraCutPlaceTerminal);
+    // Une disposition enregistrée avec le terminal ouvert sous la timeline (versions d'avant) : replacé une fois, au calme.
+    QTimer::singleShot(4000, this, [this]() {
+        if (m_terminalDock && m_terminalDock->isOpen() && KSharedConfig::openConfig()->group(QStringLiteral("KoraCut")).readEntry("terminalPlaceGeneration", 0) < 1) {
+            koraCutRevealTerminalDock();
+        }
+    });
     connect(m_consolePanel, &KoraCutConsolePanel::integratedTerminalRequested, this, &MainWindow::slotShowTerminalPanel);
     connect(m_consolePanel, &KoraCutConsolePanel::systemTerminalRequested, this, [this]() { m_terminalPanel->openInSystemTerminal(); });
     connect(m_terminalPanel, &KoraCutTerminalPanel::saveProjectRequested, this, [this]() {
@@ -1119,6 +1130,9 @@ void MainWindow::init()
     });
 #if KORACUT_AGENTS
     connect(m_agentPanel, &KoraCutAgentPanel::claudeCodeRequested, this, &MainWindow::slotEditWithClaudeCode);
+    // La page de choix du terminal présente les deux voies : la première mène aux Connexions IA.
+    m_terminalPanel->setChatWayAvailable(true);
+    connect(m_terminalPanel, &KoraCutTerminalPanel::connectModelRequested, this, []() { KoraCutAiConnectionsPage::openInPreferences(); });
 #endif
 
     // KoraCut, document 21 : le panneau Script, l'éditeur du script du projet (onglet du bloc de droite).
@@ -1837,12 +1851,16 @@ void MainWindow::koraCutDevScreenshot()
         }
         // KORACUT_SHOT_DIALOGS=ducking : la fenêtre de baisse automatique de la musique.
         if (qEnvironmentVariable("KORACUT_SHOT_DIALOGS") == QLatin1String("ducking") || qEnvironmentVariable("KORACUT_SHOT_DIALOGS") == QLatin1String("extensions") ||
-            qEnvironmentVariable("KORACUT_SHOT_DIALOGS") == QLatin1String("autocut")) {
+            qEnvironmentVariable("KORACUT_SHOT_DIALOGS") == QLatin1String("autocut") || qEnvironmentVariable("KORACUT_SHOT_DIALOGS") == QLatin1String("soutien")) {
             const bool extensions = qEnvironmentVariable("KORACUT_SHOT_DIALOGS") == QLatin1String("extensions");
             QDialog *dialog = extensions ? static_cast<QDialog *>(new KoraCutExtensionsDialog(this)) : static_cast<QDialog *>(new KoraCutDuckingDialog(this));
             if (qEnvironmentVariable("KORACUT_SHOT_DIALOGS") == QLatin1String("autocut")) {
                 delete dialog;
                 dialog = new KoraCutAutoCutDialog(this);
+            }
+            if (qEnvironmentVariable("KORACUT_SHOT_DIALOGS") == QLatin1String("soutien")) {
+                delete dialog;
+                dialog = new KoraCutSupportDialog(this);
             }
             dialog->show();
             // KORACUT_SHOT_CLICK=<libellé> : clique ce bouton de la fenêtre ; KORACUT_SHOT_WAIT (ms) :
@@ -2019,6 +2037,16 @@ void MainWindow::koraCutDevScreenshot()
                         }
                         return;
                     }
+                    // « copies:etat » : les copies légères (document 6, journal du 4 octobre 2026), ligne KORACUT-COPIES.
+                    // « copies:oui » et « copies:non » : comme l'interrupteur des Préférences.
+                    if (name.startsWith(QLatin1String("copies:"))) {
+                        const QString what = name.section(QLatin1Char(':'), 1, 1);
+                        if (what == QLatin1String("oui") || what == QLatin1String("non")) {
+                            KoraCutLightCopies::setEnabled(what == QLatin1String("oui"));
+                        }
+                        qWarning().noquote() << "KORACUT-COPIES" << QString::fromUtf8(QJsonDocument(KoraCutLightCopies::stateJson()).toJson(QJsonDocument::Compact));
+                        return;
+                    }
                     if (name.startsWith(QLatin1String("apercu:"))) {
                         const QString what = name.section(QLatin1Char(':'), 1, 1);
                         auto print = [](const QJsonObject &o) {
@@ -2061,9 +2089,13 @@ void MainWindow::koraCutDevScreenshot()
                             print(KoraCutRender::stateJson());
                         } else if (what == QLatin1String("gestes")) {
                             // « apercu:gestes » : temps de réponse aux gestes (2 octobre 2026, document 6).
-                            KoraCutRender::measureGestures([](const QJsonObject &o) {
-                                qWarning().noquote() << "KORACUT-GESTES" << QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
-                            });
+                            // « apercu:gestes:glisser:N » : seulement le glisser de la tête de lecture, N fois.
+                            const bool dragOnly = name.section(QLatin1Char(':'), 2, 2) == QLatin1String("glisser");
+                            KoraCutRender::measureGestures(
+                                [](const QJsonObject &o) {
+                                    qWarning().noquote() << "KORACUT-GESTES" << QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
+                                },
+                                dragOnly ? std::max(1, name.section(QLatin1Char(':'), 3, 3).toInt()) : 0);
                         }
                         return;
                     }
@@ -2301,6 +2333,12 @@ void MainWindow::koraCutDevScreenshot()
                         qWarning() << "KoraCut: demande aux agents" << name.mid(6);
                         return;
                     }
+                    if (name.startsWith(QLatin1String("agent-saisie:"))) {
+                        // Comme la personne : le texte dans le champ du panneau, puis Entrée (sans connexion, le choix s'affiche).
+                        slotShowAgentsPanel();
+                        m_agentPanel->debugType(name.mid(13));
+                        return;
+                    }
                     if (name.startsWith(QLatin1String("agent-accord:"))) {
                         m_agentPanel->answerPendingConfirmation(name.mid(13) == QLatin1String("oui"));
                         return;
@@ -2355,13 +2393,17 @@ void MainWindow::koraCutDevScreenshot()
                     // « terminal:touche=entree|echap », « terminal:fermer », « terminal:systeme[=id] », « terminal:etat » ;
                     // chaque réponse est une ligne KORACUT-TERMINAL (onglets, agents installés, texte de l'écran).
                     if (name.startsWith(QLatin1String("terminal:")) && m_terminalPanel) {
-                        if (!m_terminalDock->isOpen()) {
-                            if (m_terminalDock->dockWidget()->hasPreviousDockedLocation()) {
-                                m_terminalDock->open();
-                            } else {
-                                mainDockWindow->addDockWidget(m_terminalDock, KDDockWidgets::Location_OnBottom, m_timelineDock, QSize(0, 260));
-                            }
+                        // « terminal:placer=droite|bas|haut|gauche|agents » : la place du panneau, comme le menu de sa barre.
+                        if (name.startsWith(QLatin1String("terminal:placer="))) {
+                            koraCutPlaceTerminal(name.mid(16));
+                            qWarning().noquote() << "KORACUT-TERMINAL place" << koraCutTerminalPlace();
+                            return;
                         }
+                        if (name == QLatin1String("terminal:place")) {
+                            qWarning().noquote() << "KORACUT-TERMINAL place" << koraCutTerminalPlace();
+                            return;
+                        }
+                        koraCutRevealTerminalDock();
                         qWarning().noquote() << "KORACUT-TERMINAL" << m_terminalPanel->debugCommand(name.mid(9));
                         return;
                     }
@@ -2880,6 +2922,8 @@ void MainWindow::finishUiSetup()
     koraCutDevScreenshot();
     koraCutRelay();
     koraCutStartPorte();
+    // Premier lancement : deux questions simples, une fois la fenêtre ouverte (4 octobre 2026).
+    KoraCutFirstRun::schedule(this);
     QObject::disconnect(pCore.get(), &Core::GUISetupDone, this, nullptr);
     // This should connect only after splash is done
     connect(pCore.get(), &Core::loadingMessageNewStage, this, [&](const QString &message, int max = -1) {
@@ -2959,6 +3003,8 @@ void MainWindow::loadContainerActions()
     // Le signalement de bogue ouvre notre page.
     if (QAction *bugAction = actionCollection()->action(KStandardAction::name(KStandardAction::ReportBug))) {
         disconnect(bugAction, &QAction::triggered, nullptr, nullptr);
+        // 4 octobre 2026 : le mot de tous les jours, pas « bogue ».
+        bugAction->setText(i18nc("@action", "Report a Defect…"));
         connect(bugAction, &QAction::triggered, this,
                 [] { QDesktopServices::openUrl(QUrl(QStringLiteral("https://koracut.org/bogues"))); });
     }
@@ -3083,7 +3129,10 @@ MainWindow::~MainWindow()
     delete m_loadingDialog;
     pCore->finishShutdown();
     qDeleteAll(m_transitions);
-    Mlt::Factory::close();
+    // KoraCut (4 octobre 2026) : Mlt::Factory::close() retiré d'ici. Il décharge les modules de MLT alors que des
+    // objets MLT vivent encore (les playlists du chutier, un fil de vignettes qui décode) : six rapports de plantage
+    // à la fermeture, le destructeur d'un Tractor sautant dans un module déjà déchargé. Le système rend tout à la
+    // fin du processus (Recherche/Stabilite - releve des plantages).
 }
 
 // virtual
@@ -3141,6 +3190,13 @@ bool MainWindow::queryClose()
 {
     if (qApp->property("koracut_terminer").toBool()) {
         // Arrêt par signal : les rendus en cours continuent seuls (koracut_render est un autre processus).
+        // Le document est fermé ici, sans question, tant que tout vit encore (4 octobre 2026) : sinon le chutier
+        // vide ses clips dans ~MainWindow, après la destruction du gestionnaire de projet, et l'application
+        // finit en erreur de segmentation (la copie de récupération est déjà écrite à ce moment-là).
+        if (pCore->projectManager()) {
+            pCore->projectManager()->closeCurrentDocument(false, true);
+        }
+        m_windowClosing = true;
         return true;
     }
     if (KoraCutExportQueue::self().count(QStringLiteral("en_cours")) > 0 && !qEnvironmentVariableIsSet("KORACUT_SHOT") &&
@@ -3847,7 +3903,8 @@ void MainWindow::setupActions()
         helpMenu->clear();
         const QStringList names = {QStringLiteral("help_contents"), QStringLiteral("koracut_command_palette"),
                                    QStringLiteral("options_configure_keybinding"), QStringLiteral("help_whats_this"), QString(),
-                                   QStringLiteral("help_report_bug"), QStringLiteral("help_about_app")};
+                                   QStringLiteral("help_report_bug"), QStringLiteral("koracut_feedback"), QString(),
+                                   QStringLiteral("koracut_support"), QStringLiteral("help_about_app")};
         for (const QString &name : names) {
             if (name.isEmpty()) {
                 helpMenu->addSeparator();
@@ -4815,9 +4872,12 @@ void MainWindow::setupActions()
     auto *terminalPanel = new QAction(QIcon::fromTheme(QStringLiteral("utilities-terminal")), i18nc("@action", "Terminal"), this);
     terminalPanel->setToolTip(i18nc("@info:tooltip", "A terminal inside KoraCut, in the project folder, where a command line agent edits with you"));
     connect(terminalPanel, &QAction::triggered, this, &MainWindow::slotToggleTerminalPanel);
-    // « Monter avec Claude Code » (document 18, 1er octobre 2026) : un clic, tout est prêt. Sans raccourci.
-    auto *claudeCode = new QAction(QIcon::fromTheme(QStringLiteral("utilities-terminal")), i18nc("@action", "Edit with Claude Code"), this);
-    claudeCode->setToolTip(i18nc("@info:tooltip", "Prepares the project and launches Claude Code in the KoraCut terminal, connected to KoraCut, with your own Claude account"));
+    // « Monter avec un agent » (document 18 ; « avec Claude Code » jusqu'au 4 octobre 2026, le nom interne de
+    // l'action est resté) : l'agent de la personne dans le terminal, ou la page de choix. Sans raccourci.
+    auto *claudeCode = new QAction(QIcon::fromTheme(QStringLiteral("utilities-terminal")), i18nc("@action", "Edit with an Agent"), this);
+    claudeCode->setToolTip(i18nc("@info:tooltip",
+                                 "Prepares the project and launches your agent (Claude Code, Codex, Gemini, OpenCode and others) in the KoraCut terminal, "
+                                 "connected to KoraCut, with your own account"));
     connect(claudeCode, &QAction::triggered, this, &MainWindow::slotEditWithClaudeCode);
     addAction(QStringLiteral("koracut_claude_code"), claudeCode, QKeySequence(), koraCutActions);
 #ifdef Q_OS_MACOS
@@ -4858,6 +4918,20 @@ void MainWindow::setupActions()
         dialog->show();
     });
     addActionWithShortcuts(QStringLiteral("koracut_extensions"), extensions, {}, koraCutActions);
+
+    // Soutenir KoraCut (4 octobre 2026) : une fenêtre qui ne s'ouvre que par cette action. Aucun rappel,
+    // rien au démarrage ni après un export. Pas modale : la porte de commande reste libre.
+    auto *support = new QAction(QIcon::fromTheme(QStringLiteral("donate")), i18nc("@action", "Support KoraCut…"), this);
+    support->setToolTip(i18nc("@info:tooltip", "Why and how to support the project"));
+    connect(support, &QAction::triggered, this, [this]() { KoraCutSupportDialog::open(this); });
+    addActionWithShortcuts(QStringLiteral("koracut_support"), support, {}, koraCutActions);
+
+    // Donner son avis : la page de contact du site, déjà réglée sur « avis ».
+    auto *feedback = new QAction(QIcon::fromTheme(QStringLiteral("dialog-messages")), i18nc("@action", "Give Your Feedback"), this);
+    feedback->setToolTip(i18nc("@info:tooltip", "Open the feedback page of koracut.org in the browser"));
+    connect(feedback, &QAction::triggered, this,
+            [] { QDesktopServices::openUrl(QUrl(QStringLiteral("https://koracut.org/contact/?genre=avis"))); });
+    addActionWithShortcuts(QStringLiteral("koracut_feedback"), feedback, {}, koraCutActions);
 }
 
 static void koraCutConvertShortcutSchemes(const QList<KNSCore::Entry> &changedEntries);
@@ -5545,17 +5619,81 @@ void MainWindow::slotEditWithClaudeCode()
     koraCutRevealTerminalDock();
     // Au tour de boucle suivant : déclenchée par la porte (actions.declencher), l'action doit d'abord
     // rendre la main, sinon la porte répond « occupé » quand le panneau lit le projet.
-    QTimer::singleShot(0, m_terminalPanel, [this]() { m_terminalPanel->editWithClaudeCode(); });
+    QTimer::singleShot(0, m_terminalPanel, [this]() { m_terminalPanel->editWithAgent(); });
+}
+
+QString MainWindow::koraCutTerminalPlace() const
+{
+    const QString place = KSharedConfig::openConfig()->group(QStringLiteral("KoraCut")).readEntry("terminalPlace", QStringLiteral("droite"));
+    static const QStringList known{QStringLiteral("droite"), QStringLiteral("bas"), QStringLiteral("haut"), QStringLiteral("gauche"), QStringLiteral("agents")};
+    return known.contains(place) ? place : QStringLiteral("droite");
+}
+
+void MainWindow::koraCutDockTerminal(const QString &place)
+{
+    // Toujours par rapport à la timeline : à côté (moitié-moitié), dessous, dessus ; ou en onglet avec le panneau Agents.
+    if (m_terminalDock->isOpen()) {
+        m_terminalDock->close();
+    }
+#if KORACUT_AGENTS
+    if (place == QLatin1String("agents") && m_agentDock) {
+        if (!m_agentDock->isOpen()) {
+            m_agentDock->open();
+        }
+        m_agentDock->addDockWidgetAsTab(m_terminalDock);
+        return;
+    }
+#endif
+    const QSize timeline = m_timelineDock->size();
+    KDDockWidgets::Location location = KDDockWidgets::Location_OnRight;
+    QSize size(qMax(360, timeline.width() / 2), 0);
+    if (place == QLatin1String("gauche")) {
+        location = KDDockWidgets::Location_OnLeft;
+    } else if (place == QLatin1String("bas")) {
+        location = KDDockWidgets::Location_OnBottom;
+        size = QSize(0, qBound(140, timeline.height() / 2, 320));
+    } else if (place == QLatin1String("haut")) {
+        location = KDDockWidgets::Location_OnTop;
+        size = QSize(0, qBound(140, timeline.height() / 2, 320));
+    }
+    mainDockWindow->addDockWidget(m_terminalDock, location, m_timelineDock, size);
+}
+
+void MainWindow::koraCutPlaceTerminal(const QString &place)
+{
+    if (!m_terminalDock) {
+        return;
+    }
+    KConfigGroup group = KSharedConfig::openConfig()->group(QStringLiteral("KoraCut"));
+    group.writeEntry("terminalPlace", place);
+    group.writeEntry("terminalPlaceGeneration", 1);
+    group.sync();
+    koraCutDockTerminal(koraCutTerminalPlace());
+    if (!KdenliveSettings::showtitlebars()) {
+        QTimer::singleShot(0, this, []() { Q_EMIT pCore->hideBars(true); });
+    }
+    m_terminalDock->setAsCurrentTab();
 }
 
 void MainWindow::koraCutRevealTerminalDock()
 {
+    // Un terminal resté ouvert sous la timeline par une version d'avant : la nouvelle place par défaut s'applique une fois.
+    if (m_terminalDock->isOpen() && KSharedConfig::openConfig()->group(QStringLiteral("KoraCut")).readEntry("terminalPlaceGeneration", 0) < 1) {
+        koraCutPlaceTerminal(koraCutTerminalPlace());
+        return;
+    }
     if (!m_terminalDock->isOpen()) {
-        // Jamais posé (un plan de travail qui ne le connaît pas) : sous la timeline, comme dans VS Code.
-        if (m_terminalDock->dockWidget()->hasPreviousDockedLocation()) {
+        // La place que KDDockWidgets a gardée (la personne l'a glissé quelque part, ou choisi dans le menu) ; sinon,
+        // et la première fois depuis que la place par défaut a changé (4 octobre 2026), la place réglée :
+        // à droite de la timeline, moitié-moitié.
+        KConfigGroup group = KSharedConfig::openConfig()->group(QStringLiteral("KoraCut"));
+        const bool placedOnce = group.readEntry("terminalPlaceGeneration", 0) >= 1;
+        if (placedOnce && m_terminalDock->dockWidget()->hasPreviousDockedLocation()) {
             m_terminalDock->open();
         } else {
-            mainDockWindow->addDockWidget(m_terminalDock, KDDockWidgets::Location_OnBottom, m_timelineDock, QSize(0, 260));
+            koraCutDockTerminal(koraCutTerminalPlace());
+            group.writeEntry("terminalPlaceGeneration", 1);
+            group.sync();
         }
         // 25 septembre 2026 : un panneau posé fait réapparaître les barres de titre (« Montage »,
         // « Terminal ») pendant cinq secondes, le délai de Kdenlive. On les retire tout de suite.

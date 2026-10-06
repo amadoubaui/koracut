@@ -10,6 +10,7 @@
 #include "bin/projectitemmodel.h"
 #include "kdenlivesettings.h"
 #include "koracut/koracuthwdecode.h"
+#include "koracut/koracutlightcopies.h"
 #include "koracut/color/koracutgradecontroller.h"
 #include "monitor/scopes/sharedframe.h"
 #include "utils/thumbnailcache.hpp"
@@ -307,6 +308,7 @@ void applyFirstLaunchDefaults()
     if (!watching) {
         watching = true;
         removeOrphanRenders();
+        KoraCutLightCopies::removeOrphans();
         QObject::connect(KoraCutHwDecode::instance(), &KoraCutHwDecode::clipRefused, pCore.get(),
                          [](const QString &path, bool legacy) { healAfterHardwareRefusal(path, legacy); });
     }
@@ -578,9 +580,114 @@ QJsonObject summary(QList<double> values)
     }
     return o;
 }
+
+// Glisser la tête de lecture : voir measureGestures, point 6.
+QJsonObject measureDrag(Monitor *monitor, int duration)
+{
+    // Glisser la tête de lecture (4 octobre 2026) : trois secondes d'événements à 60 par seconde, aller puis
+    // retour, comme une main sur la règle. « appel » : ce que chaque événement prend au fil d'interface ;
+    // « intervalle » : l'écart réel entre deux événements (16 ms si rien ne bloque : c'est la fluidité du curseur) ;
+    // « images » : ce que le moniteur a montré pendant le geste, et son retard sur la main.
+    QJsonObject drag;
+    if (MonitorProxy *proxy = monitor->getControllerProxy()) {
+        const int span = std::clamp(duration / 3, 30, 300);
+        const int from = std::clamp(int(0.3 * duration), 0, std::max(0, duration - 2));
+        const int steps = 180;
+        QList<double> calls, gaps, lags;
+        QSet<int> distinct;
+        int shownFrames = 0;
+        // Les images montrées pendant l'aller (la main avance) ; le reste l'est pendant le retour (elle recule).
+        int forwardFrames = 0;
+        int step = 0;
+        int requested = from;
+        QElapsedTimer tick, whole, released;
+        double sharpMs = -1.;
+        int sharpWidth = 0, lightWidth = 0;
+        auto connection = QObject::connect(pCore->monitorManager(), &MonitorManager::frameDisplayed, pCore->monitorManager(), [&](const SharedFrame &frame) {
+            if (released.isValid()) {
+                // Après le relâcher : la dernière image reçue est la nette (pleine taille, étalonnée).
+                sharpMs = double(released.nsecsElapsed()) / 1e6;
+                sharpWidth = frame.get_image_width();
+                return;
+            }
+            ++shownFrames;
+            if (step * 2 <= steps) {
+                ++forwardFrames;
+            }
+            distinct.insert(frame.get_position());
+            lags << std::abs(frame.get_position() - requested);
+            lightWidth = lightWidth == 0 ? frame.get_image_width() : std::min(lightWidth, frame.get_image_width());
+        });
+        QEventLoop loop;
+        QTimer timer;
+        timer.setTimerType(Qt::PreciseTimer);
+        timer.setInterval(16);
+        QObject::connect(&timer, &QTimer::timeout, &loop, [&]() {
+            if (tick.isValid()) {
+                gaps << double(tick.nsecsElapsed()) / 1e6;
+            }
+            tick.start();
+            const double phase = double(step) / double(steps);
+            requested = from + int((phase < 0.5 ? phase * 2. : (1. - phase) * 2.) * span);
+            QElapsedTimer call;
+            call.start();
+            proxy->setPosition(requested);
+            calls << double(call.nsecsElapsed()) / 1e6;
+            if (++step >= steps) {
+                timer.stop();
+                loop.quit();
+            }
+        });
+        whole.start();
+        timer.start();
+        loop.exec();
+        const double dragMs = double(whole.nsecsElapsed()) / 1e6;
+        const int last = requested;
+        // Au relâcher : le temps jusqu'à l'image exacte.
+        released.start();
+        const double settle = waitForFrame([]() {}, [last](int p) { return p == last; }, 3000);
+        // Puis l'image nette : l'aperçu allégé du glisser est remplacé peu après la dernière demande.
+        {
+            QEventLoop calm;
+            QTimer::singleShot(900, &calm, &QEventLoop::quit);
+            calm.exec();
+        }
+        QObject::disconnect(connection);
+        std::sort(gaps.begin(), gaps.end());
+        int late = 0;
+        for (double g : std::as_const(gaps)) {
+            if (g > 34.) {
+                ++late;
+            }
+        }
+        double lagSum = 0.;
+        for (double l : std::as_const(lags)) {
+            lagSum += l;
+        }
+        drag = QJsonObject{{QStringLiteral("evenements"), steps},
+                         {QStringLiteral("duree_ms"), qRound(dragMs)},
+                         {QStringLiteral("appel"), summary(calls).value(QStringLiteral("mediane_ms"))},
+                         {QStringLiteral("appel_max_ms"), summary(calls).value(QStringLiteral("max_ms"))},
+                         {QStringLiteral("intervalle_median_ms"), gaps.isEmpty() ? 0. : qRound(gaps.at(gaps.size() / 2) * 10.) / 10.},
+                         {QStringLiteral("intervalle_p95_ms"), gaps.isEmpty() ? 0. : qRound(gaps.at(int(gaps.size() * 0.95)) * 10.) / 10.},
+                         {QStringLiteral("intervalle_max_ms"), gaps.isEmpty() ? 0. : qRound(gaps.last() * 10.) / 10.},
+                         {QStringLiteral("evenements_en_retard"), late},
+                         {QStringLiteral("images"), shownFrames},
+                         {QStringLiteral("images_distinctes"), int(distinct.size())},
+                         {QStringLiteral("images_par_seconde_aller"), dragMs > 0. ? qRound(10. * forwardFrames * 2000. / dragMs) / 10. : 0.},
+                         {QStringLiteral("images_par_seconde_retour"), dragMs > 0. ? qRound(10. * (shownFrames - forwardFrames) * 2000. / dragMs) / 10. : 0.},
+                         {QStringLiteral("images_par_seconde"), dragMs > 0. ? qRound(10. * shownFrames * 1000. / dragMs) / 10. : 0.},
+                         {QStringLiteral("retard_moyen_images"), lags.isEmpty() ? -1. : qRound(10. * lagSum / lags.size()) / 10.},
+                         {QStringLiteral("image_exacte_au_relacher_ms"), qRound(settle * 10.) / 10.},
+                         {QStringLiteral("image_nette_au_relacher_ms"), qRound(sharpMs * 10.) / 10.},
+                         {QStringLiteral("largeur_pendant"), lightWidth},
+                         {QStringLiteral("largeur_apres"), sharpWidth}};
+    }
+    return drag;
+}
 } // namespace
 
-void measureGestures(const std::function<void(const QJsonObject &)> &done)
+void measureGestures(const std::function<void(const QJsonObject &)> &done, int dragOnly)
 {
     Monitor *monitor = pCore && pCore->monitorManager() ? pCore->monitorManager()->projectMonitor() : nullptr;
     TimelineWidget *widget = pCore && pCore->window() ? pCore->window()->getCurrentTimeline() : nullptr;
@@ -593,6 +700,16 @@ void measureGestures(const std::function<void(const QJsonObject &)> &done)
     const int duration = timeline->duration();
     auto at = [duration](double f) { return std::clamp(int(f * duration), 0, std::max(0, duration - 2)); };
     QJsonObject result{{QStringLiteral("ok"), true}};
+    if (dragOnly > 0) {
+        // « apercu:gestes:glisser:N » : le glisser seul, N fois, une ligne par passe (banc du 4 octobre 2026).
+        for (int i = 0; i < dragOnly; ++i) {
+            QEventLoop calm;
+            QTimer::singleShot(600, &calm, &QEventLoop::quit);
+            calm.exec();
+            done(QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("glisser"), measureDrag(monitor, duration)}});
+        }
+        return;
+    }
 
     // 1. Sauts de la tête de lecture, à l'arrêt : du clic à l'image affichée.
     QList<double> seeks;
@@ -725,6 +842,10 @@ void measureGestures(const std::function<void(const QJsonObject &)> &done)
             result.insert(QStringLiteral("regler_etalonnage"), summary(edits));
         }
     }
+
+    // 6. Glisser la tête de lecture (4 octobre 2026) : voir measureDrag.
+    idle();
+    result.insert(QStringLiteral("glisser"), measureDrag(monitor, duration));
     done(result);
 }
 

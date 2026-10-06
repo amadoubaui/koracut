@@ -234,6 +234,31 @@ int main(int argc, char *argv[])
             qputenv("LANG", QLocale().name().toUtf8());
         }
     }
+    // KoraCut : lancée depuis le Finder, l'application n'a ni LANG ni LANGUAGE. Avec une région
+    // que la libc ne connaît pas (fr_SN, fr_CI, fr_ML…), les traductions n'étaient pas chargées et
+    // l'interface sortait en anglais. On donne à gettext les langues du système, dans l'ordre :
+    // « fr-SN » devient « fr_SN:fr ». Un LANGUAGE déjà posé (koracut-run.sh, terminal) est gardé.
+    if (qEnvironmentVariableIsEmpty("LANGUAGE")) {
+        QStringList languages;
+        const QStringList uiLanguages = QLocale::system().uiLanguages();
+        for (const QString &uiLanguage : uiLanguages) {
+            const QString full = QString(uiLanguage).replace(QLatin1Char('-'), QLatin1Char('_'));
+            const QString shortName = full.section(QLatin1Char('_'), 0, 0);
+            if (shortName == QLatin1String("en")) {
+                // L'anglais est la langue du code : rien à chercher plus loin dans la liste.
+                languages << QStringLiteral("en_US");
+                break;
+            }
+            for (const QString &candidate : {full, shortName}) {
+                if (!candidate.isEmpty() && candidate != QLatin1String("C") && !languages.contains(candidate)) {
+                    languages << candidate;
+                }
+            }
+        }
+        if (!languages.isEmpty()) {
+            qputenv("LANGUAGE", languages.join(QLatin1Char(':')).toUtf8());
+        }
+    }
 #endif
 
     // Force QDomDocument to use a deterministic XML attribute order
@@ -733,10 +758,12 @@ int main(int argc, char *argv[])
             if (Core::self() && Core::self()->window()) {
                 QMetaObject::invokeMethod(Core::self()->window(), "koraCutTerminate", Qt::QueuedConnection);
             } else {
-                // Écran d'accueil ou démarrage : rien à enregistrer.
+                // Écran d'accueil ou démarrage : rien à enregistrer. On sort tout de suite, comme le
+                // relais plus haut : QCoreApplication::quit() ne faisait que rendre la main à la boucle
+                // de l'écran d'accueil, et le démarrage continuait (vu le 4 octobre 2026).
                 QFile::remove(Core::lockFilePath());
                 notifier->setEnabled(false);
-                QCoreApplication::quit();
+                std::_Exit(0);
             }
         });
     }

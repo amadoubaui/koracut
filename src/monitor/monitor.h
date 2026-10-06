@@ -318,6 +318,11 @@ private:
     /** KoraCut : aperçu adaptatif (moniteur Programme) et mesures par image. */
     MachineProfile::AdaptiveScaling m_koraCutAdaptive;
     bool m_koraCutPlaying{false};
+    /** Glisser de la tête de lecture (4 octobre 2026) : aperçu allégé le temps du geste. */
+    bool m_koraCutScrubLight{false};
+    int m_koraCutScrubRestore{-1};
+    void koraCutScrubChanged(bool active);
+    void koraCutEndScrubLight(bool refresh);
     double m_koraCutLastFps{0.};
     int m_koraCutLastDropped{0};
     qint64 m_koraCutLastFrameNs{0};
@@ -499,6 +504,8 @@ public Q_SLOTS:
     void slotSwitchRecTimecode(bool enable);
     /** @brief Request seeking */
     void requestSeek(int pos);
+    /** KoraCut : voir VideoWidget::flushPendingSeek. */
+    void flushPendingSeek();
     /** @brief Request seeking only if monitor is visible*/
     void requestSeekIfVisible(int pos);
     /** @brief Check current position to show relevant infos in qml view (markers, zone in/out, etc). */

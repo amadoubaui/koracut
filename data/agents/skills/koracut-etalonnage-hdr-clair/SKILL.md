@@ -31,6 +31,16 @@ description: "À lire quand la personne veut une image claire, colorée, attiran
 
 C'est le goût d'Amadou Ba (1er octobre 2026) : « cinématique » veut dire pour lui clair, vif et équilibré. Un look sombre et dense (`koracut-etalonnage-look-cinema`) ne se pose que si la personne demande une image sombre.
 
+## Avertissement du 2 octobre 2026 : clair ne veut pas dire surexposé
+
+Amadou Ba a refusé trois vidéos étalonnées avec cette recette poussée trop loin (luminosité moyenne à 150 sur 255, ombres à +45, noirs relevés) : « trop clair, les vêtements ne ressortent pas ». Ce qu'il demande : **les couleurs et les détails ressortent, rien n'est brûlé**.
+
+- Viser une luminosité moyenne de **105 à 128** selon le décor (105 pour une boutique aux murs blancs avec des vêtements à montrer, 125 à 128 pour un intérieur à vendre), jamais 150.
+- Hautes lumières à **-58 à -78**, ombres à **+10 à +16** seulement, détail des tons moyens à **+26 à +30**, saturation 60.
+- Courbe de séquence en S avec des **noirs à zéro** : ne jamais relever le pied de courbe.
+- Contrôler sur l'export : un blanc (mur, chemise) doit garder sa matière.
+- Dans le doute entre deux réglages, prendre le moins clair.
+
 ## Ce que veut dire « HDR » ici
 
 Une photo HDR fusionne trois poses (sombre, moyenne, claire) : on voit dans les ombres et dans les blancs en même temps. En vidéo, on s'en approche avec quatre gestes : relever les ombres, retenir les hautes lumières, redonner du contraste local, raviver les couleurs.

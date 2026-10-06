@@ -70,6 +70,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include <QTextDocumentFragment>
 #include <QTimer>
 #include "koracut/koracutperformance.h"
+#include "koracut/koracutlightcopies.h"
 #include "monitor/monitor.h"
 #include "monitor/monitormanager.h"
 #include <QtConcurrent/QtConcurrentRun>
@@ -2268,6 +2269,16 @@ void KdenliveSettingsDialog::buildKoraCutPages()
         heavy->setChecked(KoraCutPerformance::simplifiedHeavyEffects());
         machine->addToggle(heavy, i18nc("@info preferences", "Blur, noise reduction, stabilization… are paused during playback. The render and the export always use them."),
                            QStringLiteral("effets_lourds"));
+        auto *copies = new QCheckBox(i18nc("@option:check preferences", "Light copies of heavy videos, for smooth scrubbing"));
+        copies->setObjectName(QStringLiteral("copiesLegeres"));
+        copies->setChecked(KoraCutLightCopies::enabled());
+        machine->addToggle(copies,
+                           i18nc("@info preferences, %1 a size in GB",
+                                 "Phone and camera videos (HEVC, 10 bit, 4K) used in a timeline get a small copy, made in the background and paused while you "
+                                 "work. At most %1 GB on the disk. The export always uses the original files.",
+                                 QString::number(KoraCutLightCopies::budget().capBytes / 1073741824., 'f', 0)),
+                           QStringLiteral("copies_legeres"));
+        connect(copies, &QCheckBox::toggled, this, [](bool on) { KoraCutLightCopies::setEnabled(on); });
         auto *decoder = new QLabel;
         decoder->setWordWrap(true);
         const auto showDecoder = [decoder]() {

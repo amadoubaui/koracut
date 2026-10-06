@@ -6,6 +6,7 @@
 
 #include "previewmanager.h"
 #include "koracut/koracuthwdecode.h"
+#include "koracut/koracutlightcopies.h"
 #include "bin/projectitemmodel.h"
 #include "core.h"
 #include "utils/machineprofile.h"
@@ -320,15 +321,18 @@ void PreviewManager::reconnectTrack()
 void PreviewManager::disconnectTrack()
 {
     if (m_previewTrackIndex > -1) {
+        // KoraCut : qstrcmp et garde sur la piste. Un indice périmé (séquence qui n'est pas devant) rendait une
+        // piste sans « kdenlive:playlistid », et strcmp sur nul faisait tomber l'application.
         Mlt::Producer *prod = m_tractor->track(m_previewTrackIndex);
-        if (strcmp(prod->get("kdenlive:playlistid"), "timeline_preview") == 0 || strcmp(prod->get("kdenlive:playlistid"), "timeline_overlay") == 0) {
+        if (prod && prod->is_valid() &&
+            (qstrcmp(prod->get("kdenlive:playlistid"), "timeline_preview") == 0 || qstrcmp(prod->get("kdenlive:playlistid"), "timeline_overlay") == 0)) {
             m_tractor->remove_track(m_previewTrackIndex);
         }
         delete prod;
         if (m_tractor->count() == m_previewTrackIndex + 1) {
             // overlay track still here, remove
             Mlt::Producer *trkprod = m_tractor->track(m_previewTrackIndex);
-            if (strcmp(trkprod->get("kdenlive:playlistid"), "timeline_overlay") == 0) {
+            if (trkprod && trkprod->is_valid() && qstrcmp(trkprod->get("kdenlive:playlistid"), "timeline_overlay") == 0) {
                 m_tractor->remove_track(m_previewTrackIndex);
             }
             delete trkprod;
@@ -752,7 +756,10 @@ void PreviewManager::startPreviewRender()
         // clear log
         m_errorLog.clear();
         const QString sceneList = m_cacheDir.absoluteFilePath(QStringLiteral("preview.mlt"));
-        if (!KdenliveSettings::proxypreview() && pCore->currentDoc()->useProxy()) {
+        // KoraCut (document 6, 4 octobre 2026) : les copies légères servent au glisser et à la lecture directe.
+        // Le rendu d'aperçu, lui, se calcule en fond : il prend les originaux, sauf sur une machine modeste.
+        const bool koraCutOriginals = MachineProfile::effectiveLevel() != MachineProfile::Level::Modest && KoraCutLightCopies::projectUsesCopies();
+        if ((!KdenliveSettings::proxypreview() && pCore->currentDoc()->useProxy()) || koraCutOriginals) {
             const QString playlist =
                 pCore->projectItemModel()->sceneList(m_cacheDir.absolutePath(), QString(), pCore->currentDoc()->getTimeline(m_uuid)->tractor(), -1).first;
             QDomDocument doc;

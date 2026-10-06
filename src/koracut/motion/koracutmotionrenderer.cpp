@@ -114,6 +114,41 @@ QString installedVersion()
     return QJsonDocument::fromJson(pkg.readAll()).object().value(QStringLiteral("version")).toString();
 }
 
+QString launcher()
+{
+    const QString cli = cliScript();
+    const QString node = nodePath();
+    if (cli.isEmpty() || node.isEmpty()) {
+        return QString();
+    }
+    const QString dir = dataDir() + QStringLiteral("/bin");
+    QDir().mkpath(dir);
+#ifdef Q_OS_WIN
+    const QString path = dir + QStringLiteral("/hyperframes.cmd");
+    const QString body = QStringLiteral("@echo off\r\nset HYPERFRAMES_NO_UPDATE_CHECK=1\r\nset HYPERFRAMES_TELEMETRY=0\r\n\"%1\" \"%2\" %*\r\n")
+                             .arg(QDir::toNativeSeparators(node), QDir::toNativeSeparators(cli));
+#else
+    const QString path = dir + QStringLiteral("/hyperframes");
+    const auto quote = [](QString s) -> QString { return QLatin1Char('\'') + s.replace(QLatin1Char('\''), QStringLiteral("'\\''")) + QLatin1Char('\''); };
+    const QString body = QStringLiteral("#!/bin/sh\n# Écrit par KoraCut : le HyperFrames de l'application, le même pour tous les projets et tous les agents.\n"
+                                        "export HYPERFRAMES_NO_UPDATE_CHECK=1\nexport HYPERFRAMES_TELEMETRY=0\nexec %1 %2 \"$@\"\n")
+                             .arg(quote(node), quote(cli));
+#endif
+    QFile current(path);
+    if (current.open(QIODevice::ReadOnly) && current.readAll() == body.toUtf8()) {
+        return path;
+    }
+    current.close();
+    QFile out(path);
+    if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return QString();
+    }
+    out.write(body.toUtf8());
+    out.close();
+    out.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner | QFileDevice::ReadGroup | QFileDevice::ExeGroup | QFileDevice::ReadOther | QFileDevice::ExeOther);
+    return path;
+}
+
 State state()
 {
     if (nodePath().isEmpty()) {

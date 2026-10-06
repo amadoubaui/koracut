@@ -327,7 +327,7 @@ void ProjectManager::newProjectWizard()
     newFileFromPlan(dialog.plan());
 }
 
-void ProjectManager::newFileFromPlan(const KoraCutProjectPlan &plan)
+QString ProjectManager::koraCutProfileFor(const KoraCutProjectPlan &plan)
 {
     // Le profil : un existant qui correspond, sinon un profil KoraCut écrit dans les profils de
     // l'utilisateur (1080 × 1920 à 25 i/s, par exemple, n'existe pas d'office).
@@ -338,6 +338,12 @@ void ProjectManager::newFileFromPlan(const KoraCutProjectPlan &plan)
         wanted.m_description = QStringLiteral("KoraCut %1×%2 %3 i/s").arg(plan.frame.width()).arg(plan.frame.height()).arg(QString::number(plan.rate(), 'g', 5));
         profileName = ProfileRepository::get()->saveProfile(&wanted);
     }
+    return profileName;
+}
+
+void ProjectManager::newFileFromPlan(const KoraCutProjectPlan &plan)
+{
+    QString profileName = koraCutProfileFor(plan);
     if (profileName.isEmpty()) {
         profileName = KdenliveSettings::default_profile();
     }

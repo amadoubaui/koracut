@@ -5,11 +5,14 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "koracutagentpanel.h"
 #include "koracutfonts.h"
+#include "koracut/ai/koracutaibridge.h"
 #include "koracut/ai/koracutaiconnections.h"
+#include "koracutagentclient.h"
 #include "koracut/ai/koracutaiconnectionspage.h"
 #include "koracut/koracutmetrics.h"
 
 #include <KLocalizedString>
+#include <functional>
 
 #include <QFontDatabase>
 #include <QHBoxLayout>
@@ -152,16 +155,16 @@ KoraCutAgentPanel::KoraCutAgentPanel(KoraCutAgentSession *session, QWidget *pare
     header->addWidget(m_connectModel);
     root->addLayout(header);
 
-    // L'autre façon de monter avec une IA (document 18, 1er octobre 2026) : Claude Code dans le terminal de
-    // KoraCut, avec le compte Claude de la personne. Une rangée à elle, pour ne pas élargir le panneau.
+    // L'autre façon de monter avec une IA (document 18) : un agent en ligne de commande dans le terminal de
+    // KoraCut, avec le compte de la personne. « Un agent », pas seulement Claude Code (4 octobre 2026).
     auto *claudeRow = new QHBoxLayout();
     claudeRow->setContentsMargins(0, 0, 0, 0);
-    auto *claude = new QPushButton(i18nc("@action:button one click: prepare the project and launch Claude Code in the terminal", "Edit with Claude Code"), this);
+    auto *claude = new QPushButton(i18nc("@action:button opens the terminal with the command line agent of your choice", "Edit with an Agent"), this);
     claude->setObjectName(QStringLiteral("koracutAgentButton"));
     claude->setCursor(Qt::PointingHandCursor);
     claude->setToolTip(i18nc("@info:tooltip",
-                             "Opens the terminal and launches Claude Code on this project, connected to KoraCut, with your own Claude account. "
-                             "If Claude Code is missing, KoraCut offers to install it."));
+                             "Opens the terminal with your own agent (Claude Code, Codex, Gemini, OpenCode and others) on this project, connected to KoraCut. "
+                             "If your agent is missing, KoraCut offers to install it."));
     connect(claude, &QPushButton::clicked, this, &KoraCutAgentPanel::claudeCodeRequested);
     claudeRow->addWidget(claude);
     claudeRow->addStretch(1);
@@ -448,9 +451,72 @@ void KoraCutAgentPanel::submit()
         break;
     }
     case InputMode::Request:
+        if (m_linkState != KoraCutAgents::LinkState::Connected) {
+            // Rien n'est connecté : la demande reste dans le champ, et le panneau dit quoi faire (4 octobre 2026).
+            m_input->setPlainText(text);
+            showConnectChoice();
+            break;
+        }
         m_session->sendRequest(text);
         break;
     }
+}
+
+void KoraCutAgentPanel::debugType(const QString &text)
+{
+    m_input->setPlainText(text);
+    submit();
+}
+
+void KoraCutAgentPanel::showConnectChoice()
+{
+    if (m_connectCard) {
+        m_connectCard->deleteLater();
+        m_connectCard = nullptr;
+    }
+    const bool starting = KoraCutAiConnections::instance()->hasModelConnection() && m_linkState == KoraCutAgents::LinkState::Connecting;
+    if (starting) {
+        addNote(i18nc("@info", "The agents are starting. Send your request again in a few seconds."));
+        return;
+    }
+    // Le chat a besoin du service d'agents : s'il n'est pas sur cet ordinateur, on le dit au lieu de promettre.
+    const bool serviceHere = !KoraCutAgentClient::configuredUrl().isEmpty() || !KoraCutAiBridge::serviceDirectory().isEmpty();
+    QString body = i18nc("@info", "No AI is connected yet, so nobody can answer here. Two ways to edit with an AI:");
+    QWidget *card = addCard(i18nc("@title", "Connect an AI to edit with you"), body);
+    card->setProperty("koracut_choix_connexion", true);
+    auto *layout = qobject_cast<QVBoxLayout *>(card->layout());
+    auto addWay = [this, card, layout](const QString &title, const QString &text, const QString &button, bool primary, const std::function<void()> &run) {
+        auto *wayTitle = new QLabel(title, card);
+        wayTitle->setObjectName(QStringLiteral("koracutAgentCardTitle"));
+        wayTitle->setWordWrap(true);
+        layout->addWidget(wayTitle);
+        auto *wayText = new QLabel(text, card);
+        wayText->setObjectName(QStringLiteral("koracutAgentCardBody"));
+        wayText->setWordWrap(true);
+        layout->addWidget(wayText);
+        auto *row = new QHBoxLayout();
+        row->setContentsMargins(0, 0, 0, 0);
+        auto *b = new QPushButton(button, card);
+        b->setObjectName(primary ? QStringLiteral("koracutAgentPrimaryButton") : QStringLiteral("koracutAgentButton"));
+        b->setCursor(Qt::PointingHandCursor);
+        connect(b, &QPushButton::clicked, this, run);
+        row->addWidget(b);
+        row->addStretch(1);
+        layout->addLayout(row);
+    };
+    addWay(i18nc("@title first way to edit with an AI", "1. In the KoraCut chat, with your key"),
+           serviceHere ? i18nc("@info", "Add the API key of your provider (Anthropic, OpenAI, Gemini, a local model and others). Then write here.")
+                       : i18nc("@info",
+                               "Add the API key of your provider. On this computer the chat cannot answer yet: the agents service is not part of this "
+                               "version. For now, use the second way."),
+           i18nc("@action:button open the AI connections page", "Connect a model"), serviceHere, []() { KoraCutAiConnectionsPage::openInPreferences(); });
+    addWay(i18nc("@title second way to edit with an AI", "2. With your agent in the terminal"),
+           i18nc("@info", "Claude Code, Codex, Gemini, OpenCode and others, with your own account. The agent works in the KoraCut terminal and edits in this "
+                          "timeline, in front of you. You write your requests there."),
+           i18nc("@action:button opens the terminal with the command line agent of your choice", "Edit with an Agent"), !serviceHere,
+           [this]() { Q_EMIT claudeCodeRequested(); });
+    m_connectCard = card;
+    scrollToBottom();
 }
 
 void KoraCutAgentPanel::setInputMode(InputMode mode, const QString &id)
@@ -468,14 +534,19 @@ void KoraCutAgentPanel::setInputMode(InputMode mode, const QString &id)
         m_input->setPlaceholderText(m_linkState == KoraCutAgents::LinkState::Connected
                                         ? i18nc("@info:placeholder", "Tell the agents what to do. Enter sends, Shift+Enter adds a line.")
                                         : (!KoraCutAiConnections::instance()->hasModelConnection()
-                                               ? i18nc("@info:placeholder", "No model connected yet. Click “Connect a model” above.")
+                                               ? i18nc("@info:placeholder", "Write your request. No AI is connected yet: KoraCut will show you how to connect one.")
                                                : i18nc("@info:placeholder", "The agents are starting…")));
         break;
     }
     m_input->adjustHeight();
-    const bool usable = m_linkState == KoraCutAgents::LinkState::Connected;
+    // Le champ reste ouvert même sans connexion : écrire sans rien avoir connecté montre le choix (showConnectChoice).
+    const bool usable = m_linkState == KoraCutAgents::LinkState::Connected || m_mode == InputMode::Request;
     m_input->setEnabled(usable);
     m_send->setEnabled(usable);
+    if (m_linkState == KoraCutAgents::LinkState::Connected && m_connectCard) {
+        m_connectCard->deleteLater();
+        m_connectCard = nullptr;
+    }
 }
 
 void KoraCutAgentPanel::refreshHeader()

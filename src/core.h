@@ -87,6 +87,10 @@ public:
 
     QReadWriteLock xmlMutex;
     bool closing{false};
+    /** @brief KoraCut : vrai quand c'est le tout premier lancement et que l'accueil de premier lancement
+     *  (`KoraCutFirstRun`) doit s'ouvrir une fois la fenêtre principale prête. */
+    bool koraCutFirstLaunchWelcome() const { return m_firstLaunchWelcome; }
+    void koraCutFirstLaunchWelcomeDone() { m_firstLaunchWelcome = false; }
     QString lastActiveBin;
     bool debugMode{false};
 
@@ -258,6 +262,9 @@ public:
     bool hasTimelinePreview() const;
     /** @brief Returns monitor position  */
     int getMonitorPosition(Kdenlive::MonitorId id = Kdenlive::ProjectMonitor) const;
+    /** KoraCut (chantier 10, 4 octobre 2026) : pose sur le producteur du moniteur Programme la position qu'un
+     *  glisser de la tête de lecture retient encore. À appeler avant de lire la position du tracteur. */
+    void flushMonitorSeek();
     /** @brief Handles audio and video capture **/
     void startMediaCapture(const QUuid &uuid, int tid, bool, bool);
     void stopMediaCapture(int tid, bool, bool);
@@ -425,6 +432,7 @@ private:
     bool m_guiConstructed{false};
     bool m_abortInitAndRestart{false};
     Splash *m_splash{nullptr};
+    bool m_firstLaunchWelcome{false};
     QEventLoop m_loop;
     /** @brief Check that the profile is valid (width is a multiple of 8 and height a multiple of 2 */
     void checkProfileValidity();
@@ -433,7 +441,7 @@ private:
     QTimer m_hideTimer;
     void resetThumbProfile();
     /** @brief Build the Splash Screen.
-     *  @param firstRun if true, we display the First start Quick Config dialog
+     *  @param firstRun if true, the theme is set up for a first launch
      *  @param showWelcome if true, display the welcome screen. If false, a simple splash screen
      *  @param showCrashRecovery if true, always display the crash recovery option
      *  @param wasUpgraded if true, show a short upgrade message */
@@ -491,7 +499,6 @@ private Q_SLOTS:
                                   BinMessage::BinCategory messageCategory = BinMessage::BinCategory::NoMessage);
     void displayBinLogMessagePrivate(const QString &text, int type, const QString logInfo);
     void cleanRestart(bool cleanAndRestart);
-    void startFromGuessedProfile(QString descriptiveString, QString fps, bool interlaced, int vTracks, int aTracks);
 
 Q_SIGNALS:
     void coreIsReady();

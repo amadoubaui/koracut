@@ -5,7 +5,9 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "koracutvideotypes.h"
 
+#include <KConfigGroup>
 #include <KLocalizedString>
+#include <KSharedConfig>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -114,6 +116,23 @@ QString formatLabel(const QString &format)
         return i18nc("@item video format", "Portrait 4:5");
     }
     return i18nc("@item video format", "Horizontal 16:9");
+}
+
+QString preferredFormat()
+{
+    const QString format = KSharedConfig::openConfig()->group(QStringLiteral("KoraCut")).readEntry("formatPrefere", QString());
+    return format == QLatin1String("vertical") || format == QLatin1String("horizontal") ? format : QString();
+}
+
+void setPreferredFormat(const QString &format)
+{
+    KConfigGroup group = KSharedConfig::openConfig()->group(QStringLiteral("KoraCut"));
+    if (format == QLatin1String("vertical") || format == QLatin1String("horizontal")) {
+        group.writeEntry("formatPrefere", format);
+    } else {
+        group.deleteEntry("formatPrefere");
+    }
+    group.sync();
 }
 
 QString searchable(const QString &text)

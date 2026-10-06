@@ -6991,6 +6991,9 @@ void TimelineModel::checkRefresh(int start, int end)
     if (m_blockRefresh) {
         return;
     }
+    // KoraCut (chantier 10, 4 octobre 2026) : pendant un glisser, le tracteur peut avoir une demande de retard
+    // sur la tête de lecture ; elle est posée avant de comparer.
+    pCore->flushMonitorSeek();
     int currentPos = tractor()->position();
     if (currentPos >= start && currentPos < end) {
         Q_EMIT requestMonitorRefresh();

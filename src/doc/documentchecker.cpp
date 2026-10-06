@@ -9,6 +9,7 @@
 #include "dcresolvedialog.h"
 #include "effects/effectsrepository.hpp"
 #include "kdenlivesettings.h"
+#include "koracut/koracutlightcopies.h"
 #include "titler/titlewidget.h"
 #include "transitions/transitionsrepository.hpp"
 #include "xml/xml.hpp"
@@ -1079,6 +1080,23 @@ QString DocumentChecker::getMissingProducers(QDomElement &e, const QDomNodeList 
             }
             m_items.push_back(item);
         } else if (!proxyFound) {
+            if (KoraCutLightCopy::isCopyFile(proxy)) {
+                // KoraCut (document 6, 4 octobre 2026) : une copie légère partie avec le plafond de disque ou un
+                // nettoyage du cache n'est pas un problème à montrer. Le clip revient à son original, sans
+                // fenêtre, et la copie sera refaite en fond. Propriété retirée, et pas « - » : « - » veut dire
+                // que la personne a refusé le proxy de ce clip.
+                const QDomNodeList lists[] = {m_doc.elementsByTagName(QStringLiteral("producer")), m_doc.elementsByTagName(QStringLiteral("chain"))};
+                for (const QDomNodeList &list : lists) {
+                    removeProxy(list, clipId, false);
+                    for (int i = 0; i < list.count(); ++i) {
+                        QDomElement node = list.item(i).toElement();
+                        if (getKdenliveClipId(node) == clipId && Xml::getXmlProperty(node, QStringLiteral("kdenlive:proxy")) == QLatin1String("-")) {
+                            Xml::removeXmlProperty(node, QStringLiteral("kdenlive:proxy"));
+                        }
+                    }
+                }
+                return original;
+            }
             item.originalFilePath = proxy;
             item.type = MissingType::Proxy;
             m_items.push_back(item);

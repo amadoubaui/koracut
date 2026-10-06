@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!DOCTYPE kpartgui SYSTEM "kpartgui.dtd">
-<kpartgui name="koracut" version="272" translationDomain="koracut">
+<kpartgui name="koracut" version="273" translationDomain="koracut">
   <MenuBar>
     <Menu name="file">
       <Action name="file_new"/>
@@ -384,6 +384,10 @@
       <Action name="styles_menu"/>
     </Menu>
     <Menu name="help">
+      <!-- KoraCut, 4 octobre 2026 : donner son avis et soutenir le projet, à la demande seulement. -->
+      <Action name="koracut_feedback"/>
+      <Action name="koracut_support"/>
+      <Separator/>
       <Action name="copy_debuginfo"/>
     </Menu>
   </MenuBar>

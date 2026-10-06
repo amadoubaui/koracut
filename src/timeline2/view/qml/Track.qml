@@ -74,7 +74,6 @@ Item {
         }
         var new_duration = 0;
         if (K.Core.activeTool === K.ToolType.RippleTool) {
-            console.log("Trimming request for " + newDuration + " right: " + right)
             new_duration = trackRoot.timeline.requestItemRippleResize(clip.clipId, newDuration, right, false, trackRoot.snapping, shiftTrim)
             trackRoot.timeline.requestStartTrimmingMode(clip.clipId, false, right);
             trackRoot.timeline.ripplePosChanged(new_duration, right);
@@ -109,6 +108,8 @@ Item {
     }
 
     function trimedClip(clip, shiftTrim, controlTrim, right) {
+        // KoraCut : le relâcher fait deux écritures (retour à l'origine, puis la valeur finale) : pas d'animation entre les deux.
+        root.koraHold()
         //bubbleHelp.hide()
         trackRoot.timeline.showToolTip();
         if (shiftTrim || (root.groupTrimData == undefined/*TODO > */ || K.Core.activeTool === K.ToolType.RippleTool /* < TODO*/) || controlTrim) {
@@ -238,8 +239,6 @@ Item {
                     onTrimInProgressChanged: { root.trimInProgress = trimInProgress }
                 }
                 onLoaded: {
-                    console.log('loaded clip: ', itemOnTrack.model.start, ', ID: ', itemOnTrack.model.item, ', index: ', trackRoot.DelegateModel.itemsIndex,', TYPE:', itemOnTrack.model.clipType)
-                    console.log('loaded clip with Astream: ', itemOnTrack.model.audioStream)
                 }
             }
             Loader {
@@ -316,7 +315,6 @@ Item {
                     onTrimInProgressChanged: { root.trimInProgress = trimInProgress }
                 }
                 onLoaded: {
-                    console.log('loaded composition: ', itemOnTrack.model.start, ', ID: ', itemOnTrack.model.item, ', index: ', trackRoot.DelegateModel.itemsIndex)
                 }
             }
         }

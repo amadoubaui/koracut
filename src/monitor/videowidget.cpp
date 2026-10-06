@@ -122,6 +122,14 @@ VideoWidget::VideoWidget(int id, QObject *parent)
     m_blackClip->set("kdenlive:id", "black");
     m_blackClip->set("out", 3);
     connect(&m_refreshTimer, &QTimer::timeout, this, &VideoWidget::refresh);
+    // KoraCut (chantier 10, 4 octobre 2026) : le glisser de la tête de lecture, voir requestSeek.
+    m_seekGateOff = qEnvironmentVariable("KORACUT_GLISSER").contains(QLatin1String("sans-fusion"));
+    m_seekGuard.setSingleShot(true);
+    m_seekGuard.setInterval(400);
+    connect(&m_seekGuard, &QTimer::timeout, this, [this]() { runSeekStep(m_seekGate.guardExpired()); });
+    m_scrubCalm.setSingleShot(true);
+    m_scrubCalm.setInterval(160);
+    connect(&m_scrubCalm, &QTimer::timeout, this, [this]() { setScrubbing(false); });
     m_producer = m_blackClip;
     rootContext()->setContextProperty("markersModel", nullptr);
     connect(pCore.get(), &Core::switchTimelineRecord, this, &VideoWidget::switchRecordState);
@@ -175,6 +183,8 @@ void VideoWidget::initialize()
     m_frameRenderer = new FrameRenderer();
     connect(m_frameRenderer, &FrameRenderer::frameDisplayed, this, &VideoWidget::onFrameDisplayed, Qt::QueuedConnection);
     connect(m_frameRenderer, &FrameRenderer::frameDisplayed, this, &VideoWidget::frameDisplayed, Qt::QueuedConnection);
+    // KoraCut : l'image affichée libère la demande suivante d'un glisser (voir requestSeek).
+    connect(m_frameRenderer, &FrameRenderer::frameDisplayed, this, &VideoWidget::onSeekFrameShown, Qt::QueuedConnection);
     connect(m_frameRenderer, SIGNAL(imageReady()), SIGNAL(imageReady()));
     m_initSem.release();
     m_isInitialized = true;
@@ -428,6 +438,32 @@ bool VideoWidget::isReady() const
 
 void VideoWidget::requestSeek(int position, bool noAudioScrub)
 {
+    // KoraCut (chantier 10, 4 octobre 2026) : à l'arrêt, une seule demande d'image en vol, la plus récente gagne.
+    // Chaque « refresh » fait purger le consommateur MLT (consumer_sdl2_audio, boucle de pause), et l'image que
+    // le fil de lecture anticipée est en train de calculer est jetée à la fin de son calcul. Un seek par événement
+    // de souris, c'était donc une image sur deux calculée pour rien. On retient la dernière position tant que
+    // l'image demandée n'est pas affichée ; la tête de lecture, elle, a déjà bougé (MonitorProxy::positionChanged).
+    if (m_consumer && !m_seekGateOff && qFuzzyIsNull(m_producer->get_speed())) {
+        if (!m_seekGate.request(position, noAudioScrub)) {
+            // Des demandes arrivent plus vite que les images : c'est un glisser.
+            setScrubbing(true);
+            return;
+        }
+        if (m_scrubbing) {
+            m_scrubCalm.start();
+        }
+        applySeek(position, noAudioScrub);
+        m_seekGate.sent(m_producer->position());
+        m_seekGuard.start();
+        return;
+    }
+    m_seekGate.reset();
+    m_seekGuard.stop();
+    applySeek(position, noAudioScrub);
+}
+
+void VideoWidget::applySeek(int position, bool noAudioScrub)
+{
     m_producer->seek(position);
     if (!m_consumer) {
         return;
@@ -443,6 +479,59 @@ void VideoWidget::requestSeek(int position, bool noAudioScrub)
     } else {
         m_consumer->set("scrub_audio", 0);
     }
+}
+
+void VideoWidget::runSeekStep(const KoraCutSeekGate::Step &step)
+{
+    if (!m_consumer || !m_producer) {
+        m_seekGate.reset();
+        return;
+    }
+    switch (step.kind) {
+    case KoraCutSeekGate::Step::Seek:
+        applySeek(step.position, step.noAudioScrub);
+        m_seekGate.sent(m_producer->position());
+        m_seekGuard.start();
+        break;
+    case KoraCutSeekGate::Step::Refresh:
+        // La position a été posée par flushPendingSeek : il reste à demander son image.
+        restartConsumer();
+        m_consumer->set("refresh", 1);
+        m_seekGuard.start();
+        break;
+    default:
+        if (!m_seekGate.awaiting()) {
+            m_seekGuard.stop();
+        }
+        break;
+    }
+}
+
+void VideoWidget::onSeekFrameShown(const SharedFrame &frame)
+{
+    if (m_seekGate.awaiting()) {
+        runSeekStep(m_seekGate.frameShown(frame.get_position()));
+    }
+}
+
+void VideoWidget::flushPendingSeek()
+{
+    const int position = m_seekGate.flush();
+    if (position >= 0 && m_producer) {
+        m_producer->seek(position);
+    }
+}
+
+void VideoWidget::setScrubbing(bool active)
+{
+    if (active) {
+        m_scrubCalm.start();
+    }
+    if (active == m_scrubbing) {
+        return;
+    }
+    m_scrubbing = active;
+    Q_EMIT scrubbingChanged(active);
 }
 
 void VideoWidget::requestRefresh(bool slowRefresh)
@@ -475,9 +564,12 @@ void VideoWidget::refresh()
     m_refreshTimer.stop();
     m_lastRefresh.start();
     QMutexLocker locker(&m_mltMutex);
+    // KoraCut : la position qu'un glisser retient encore est posée d'abord, l'image demandée est donc la bonne.
+    flushPendingSeek();
     if (m_consumer) {
         restartConsumer();
         m_consumer->set("refresh", 1);
+        m_seekGate.refreshSent();
     }
 }
 
@@ -778,6 +870,9 @@ int VideoWidget::setProducer(const std::shared_ptr<Mlt::Producer> &producer, boo
         consumerPosition = m_consumer->position();
     }
     pause();
+    // KoraCut : le producteur change, la demande retenue par un glisser n'a plus de sens.
+    m_seekGate.reset();
+    m_seekGuard.stop();
     m_producer.reset();
     if (producer) {
         m_producer = std::move(producer);
@@ -1280,6 +1375,10 @@ bool VideoWidget::switchPlay(bool play, double speed)
     if (m_isZoneMode || m_isLoopMode) {
         resetZoneMode();
     }
+    // KoraCut : la lecture part de la dernière position demandée, même si son image n'a pas encore été faite.
+    flushPendingSeek();
+    m_seekGate.reset();
+    m_seekGuard.stop();
     if (play) {
         if (m_consumer->position() >= m_maxProducerPosition && m_producer->position() >= m_maxProducerPosition && speed > 0) {
             // We are at the end of the clip / timeline
@@ -1342,6 +1441,9 @@ void VideoWidget::setProducerSpeed(double speed)
 
 bool VideoWidget::playZone(int in, int out, bool startFromIn, bool loop, bool zoneMode)
 {
+    flushPendingSeek();
+    m_seekGate.reset();
+    m_seekGuard.stop();
     double current_speed = m_producer->get_speed();
     setProducerSpeed(0);
     m_loopOut = out;
@@ -1449,6 +1551,9 @@ void VideoWidget::startConsumer()
 void VideoWidget::stop()
 {
     m_refreshTimer.stop();
+    flushPendingSeek();
+    m_seekGate.reset();
+    m_seekGuard.stop();
     // why this lock?
     QMutexLocker locker(&m_mltMutex);
     if (m_producer) {

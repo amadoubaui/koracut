@@ -176,6 +176,9 @@ public Q_SLOTS:
     void newProjectWizard();
     /** @brief Crée un projet neuf d'après un plan de l'assistant. */
     void newFileFromPlan(const struct KoraCutProjectPlan &plan);
+    /** @brief Le profil d'un plan : un profil existant qui correspond, sinon un profil KoraCut écrit
+     *  dans les profils de l'utilisateur. Vide si rien n'a pu être trouvé ni écrit. */
+    static QString koraCutProfileFor(const struct KoraCutProjectPlan &plan);
     /** @brief Shows file open dialog. */
     void slotOpenFile();
     void openLastFile();

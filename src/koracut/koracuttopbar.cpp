@@ -88,6 +88,10 @@ public:
         : QWidget(parent)
     {
         setFixedHeight(28);
+        // Largeur tenue (5 octobre 2026) : à 1280 px, la taille de la fenêtre au premier lancement, la pastille
+        // était écrasée jusqu'à disparaître et la personne ne trouvait plus l'entrée des agents. Quand la place
+        // manque, ce sont les noms des modules qui passent en icônes (updateCompactMode), pas elle.
+        setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         setCursor(Qt::PointingHandCursor);
         setToolTip(i18nc("@info:tooltip état des agents IA", "No agents service"));
         m_breath.setInterval(40);

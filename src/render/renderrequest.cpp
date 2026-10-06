@@ -184,7 +184,9 @@ std::vector<RenderRequest::RenderJob> RenderRequest::process()
     KdenliveDoc::setAutoclosePlaylists(doc, currentUuid.toString());
 
     // Do we want proxy rendering
-    if (!m_proxyRendering && project->useProxy()) {
+    // KoraCut (document 6, 4 octobre 2026) : les copies légères existent même quand les proxys du projet sont
+    // coupés. L'export reprend donc toujours les originaux, sauf demande contraire.
+    if (!m_proxyRendering) {
         KdenliveDoc::useOriginals(doc);
         modified = true;
     }

@@ -13,6 +13,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -21,12 +22,15 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QPainterPath>
 #include <QPushButton>
 #include <QResizeEvent>
+#include <QScreen>
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QStyledItemDelegate>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
+
+#include <algorithm>
 
 using namespace KoraCutVideoTypes;
 
@@ -122,6 +126,11 @@ public:
                 }
             }
             m_rows << &t;
+        }
+        // Le sens choisi à l'accueil de premier lancement passe devant, sans cacher le reste.
+        const QString preferred = preferredFormat();
+        if (!preferred.isEmpty()) {
+            std::stable_partition(m_rows.begin(), m_rows.end(), [&preferred](const VideoType *t) { return t->format == preferred; });
         }
         endResetModel();
     }
@@ -237,8 +246,15 @@ KoraCutNewProjectDialog::KoraCutNewProjectDialog(QWidget *parent)
     : QDialog(parent)
 {
     setWindowTitle(i18nc("@title:window", "New Project"));
-    setMinimumSize(860, 600);
-    resize(980, 680);
+    setMinimumSize(860, 560);
+    // Quatre cartes par rangée (1028 px), et jamais plus haut que l'écran : sur un portable 13 pouces
+    // (1280 × 800), la barre de menus et le Dock ne laissent qu'environ 700 px.
+    QSize wanted(1028, 680);
+    if (const QScreen *screen = parent && parent->screen() ? parent->screen() : QGuiApplication::primaryScreen()) {
+        const QSize room = screen->availableGeometry().size() - QSize(40, 70);
+        wanted = wanted.boundedTo(room).expandedTo(minimumSize());
+    }
+    resize(wanted);
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     m_pages = new QStackedWidget(this);
@@ -484,7 +500,8 @@ void KoraCutNewProjectDialog::chooseType(const QString &id)
         m_typeTitle->setText(i18nc("@title", "Free project"));
         m_typeDescription->setText(i18nc("@info", "Your usual settings. You can still change them here."));
         m_name->setText(i18nc("@item default project name", "Untitled"));
-        m_format->setCurrentIndex(0);
+        // Un projet libre prend le sens choisi à l'accueil de premier lancement (horizontal sinon).
+        m_format->setCurrentIndex(qMax(0, m_format->findData(preferredFormat())));
         m_fps->setCurrentIndex(qMax(0, m_fps->findData(25.0)));
         m_videoNames.clear();
         m_audioNames.clear();

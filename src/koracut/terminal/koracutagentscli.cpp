@@ -182,7 +182,11 @@ QStringList KoraCutAgentsCli::searchPaths()
             out << p;
         }
     }
+    // KORACUT_TERMINAL_PATH_STRICT=1 (essais) : seulement le PATH reçu et le dossier personnel, pour jouer sur une
+    // machine de développement le cas d'un ordinateur qui n'a ni Homebrew ni Node.js.
+    const bool strict = qEnvironmentVariableIntValue("KORACUT_TERMINAL_PATH_STRICT") > 0;
     const QStringList extras = {h + QStringLiteral("/.local/bin"),
+                                h + QStringLiteral("/.local/share/koracut/node/bin"),
                                 h + QStringLiteral("/.npm-global/bin"),
                                 h + QStringLiteral("/.bun/bin"),
                                 h + QStringLiteral("/.cargo/bin"),
@@ -201,6 +205,9 @@ QStringList KoraCutAgentsCli::searchPaths()
                                 QStringLiteral("/home/linuxbrew/.linuxbrew/bin"),
                                 QStringLiteral("/snap/bin")};
     for (const QString &p : extras) {
+        if (strict && !p.startsWith(h)) {
+            continue;
+        }
         if (!out.contains(p)) {
             out << p;
         }

@@ -391,6 +391,10 @@ void EffectStackView::changeEnabledState()
 void EffectStackView::loadEffects()
 {
     QMutexLocker lock(&m_mutex);
+    if (!m_model) {
+        // KoraCut : appel différé arrivé après unsetModel() (plantage du 2 octobre 2026, adresse 0).
+        return;
+    }
     m_model->plugBuiltinEffects();
     int max = m_model->rowCount();
     m_effectsLoaded = false;

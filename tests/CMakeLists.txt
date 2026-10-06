@@ -28,12 +28,14 @@ set(KdenliveTest_SOURCES
     koracutarchivetest.cpp
     koracutautocuttest.cpp
     koracutcliptoolstest.cpp
+    koracutfirstruntest.cpp
     koracutcolorstest.cpp
     koracutdetouragetest.cpp
     koracuteffectpreviewstest.cpp
     koracutgradetest.cpp
     koracutgradeuitest.cpp
     koracuthwdecodetest.cpp
+    koracutlightcopiestest.cpp
     koracutduckingtest.cpp
     koracutexporttest.cpp
     koracutloudnesstest.cpp
@@ -45,6 +47,7 @@ set(KdenliveTest_SOURCES
     koracutperformancetest.cpp
     koracutportetest.cpp
     koracutscripttest.cpp
+    koracutseekgatetest.cpp
     koracutterminaltest.cpp
     koracutthemetest.cpp
     koracuttimelinesplittest.cpp

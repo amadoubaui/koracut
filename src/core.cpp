@@ -105,11 +105,16 @@ void Core::prepareShutdown()
 
 void Core::finishShutdown()
 {
+    // KoraCut (4 octobre 2026) : les pointeurs sont remis à zéro. Le chutier est détruit après (~MainWindow) et
+    // vide ses clips en passant par currentDoc() : avec un pointeur resté sur un objet détruit, la fermeture par
+    // signal finissait en erreur de segmentation (pile : Bin::~Bin, ProjectItemModel::clean, selfSoftDelete).
     if (m_monitorManager) {
         delete m_monitorManager;
+        m_monitorManager = nullptr;
     }
     if (m_projectManager) {
         delete m_projectManager;
+        m_projectManager = nullptr;
     }
     mediaUnavailable.reset();
 }
@@ -195,7 +200,13 @@ bool Core::build(LinuxPackageType packageType, bool testMode, bool debugMode, bo
             KdenliveSettings::setLastSeenVersionMinor(currentVersion.at(1).toInt());
             KdenliveSettings::setLastSeenVersionMicro(currentVersion.at(2).toInt());
         }
-        m_self->buildSplash(firstRun, showWelcome && KdenliveSettings::showWelcome() && !KdenliveSettings::openlastproject(), showRecovery, wasUpgraded);
+        // KoraCut, 4 octobre 2026 : au premier lancement, plus de fenêtre de réglages avant l'application
+        // (résolution, entrelacé, nombre de pistes : personne ne sait y répondre en ouvrant un logiciel
+        // pour la première fois). L'écran de démarrage simple s'affiche, la fenêtre principale s'ouvre,
+        // puis l'accueil de premier lancement (`KoraCutFirstRun`) pose deux questions simples.
+        const bool wantWelcome = showWelcome && KdenliveSettings::showWelcome() && !KdenliveSettings::openlastproject();
+        m_self->m_firstLaunchWelcome = firstRun && wantWelcome && !showRecovery;
+        m_self->buildSplash(firstRun, wantWelcome && !firstRun, showRecovery, wasUpgraded);
     }
     if (m_self->closing) {
         return true;
@@ -326,23 +337,6 @@ void Core::buildSplash(bool firstRun, bool showWelcome, bool showCrashRecovery, 
                 }
             }
         });
-        if (m_splash->hasCrashRecovery()) {
-            connect(m_splash, &Splash::firstStart, this, [&](QString descriptiveString, QString fps, bool interlaced, int vTracks, int aTracks) {
-                connect(this, &Core::mainWindowReady, this, [&, descriptiveString, fps, interlaced, vTracks, aTracks]() {
-                    startFromGuessedProfile(descriptiveString, fps, interlaced, vTracks, aTracks);
-                });
-            });
-        } else {
-            connect(m_splash, &Splash::firstStart, this, [&](QString descriptiveString, QString fps, bool interlaced, int vTracks, int aTracks) {
-                if (!guiReady()) {
-                    connect(this, &Core::mainWindowReady, this, [&, descriptiveString, fps, interlaced, vTracks, aTracks]() {
-                        startFromGuessedProfile(descriptiveString, fps, interlaced, vTracks, aTracks);
-                    });
-                } else {
-                    startFromGuessedProfile(descriptiveString, fps, interlaced, vTracks, aTracks);
-                }
-            });
-        }
         m_splash->setReady();
     } else {
         // Simple splash
@@ -515,59 +509,6 @@ void Core::cleanRestart(bool cleanAndRestart)
         QApplication::closeAllWindows();
         qApp->exit(cleanAndRestart ? EXIT_CLEAN_RESTART : 1);
     });
-}
-
-void Core::startFromGuessedProfile(QString descriptiveString, QString fps, bool interlaced, int vTracks, int aTracks)
-{
-    // Find matching profile
-    int fpsNum;
-    int fpsDen = 1;
-    if (fps.contains(QLatin1Char('/'))) {
-        fpsNum = fps.section(QLatin1Char('/'), 0, 0).toInt();
-        fpsDen = fps.section(QLatin1Char('/'), 1, 1).toInt();
-    } else {
-        fpsNum = fps.toInt();
-    }
-    if (fpsNum == 0 || fpsDen == 0) {
-        // safety check
-        fpsNum = 25;
-        fpsDen = 1;
-    }
-    int width = 1920;
-    int height = 1080;
-    int colorSpace = 709;
-    // Sample ratio
-    int sarNum = 1;
-    int sarDen = 1;
-    // Display ratio
-    int darNum = 16;
-    int darDen = 9;
-    const QStringList profileParams = descriptiveString.split(QLatin1Char('x'));
-    if (profileParams.size() == 7) {
-        // Descriptive string passed from qml is:
-        // width x height x colorspace x sarNum x sarDen x darNum x darDen
-        width = profileParams.at(0).toInt();
-        height = profileParams.at(1).toInt();
-        colorSpace = profileParams.at(2).toInt();
-        sarNum = profileParams.at(3).toInt();
-        sarDen = profileParams.at(4).toInt();
-        darNum = profileParams.at(5).toInt();
-        darDen = profileParams.at(6).toInt();
-    }
-    ProfileParam guessProfile(width, height, fpsNum, fpsDen, darNum, darDen, sarNum, sarDen, colorSpace, interlaced);
-    const QString matchingProfile = ProfileRepository::get()->findMatchingProfile(&guessProfile);
-    if (!matchingProfile.isEmpty()) {
-        qDebug() << "=============\n\nFOUND MATCHING PROFILE: " << matchingProfile << "FROM DATA: " << descriptiveString << ", " << fps;
-        KdenliveSettings::setDefault_profile(matchingProfile);
-    } else {
-        qDebug() << "=================\n\nCOULD NOT FIND PROFILE BASED ON STRING: " << descriptiveString << ", FRAME RATE: " << fps
-                 << ", INTERLACED: " << interlaced;
-    }
-
-    KdenliveSettings::setVideotracks(vTracks);
-    KdenliveSettings::setAudiotracks(aTracks);
-    m_mainWindow->show();
-    QMetaObject::invokeMethod(pCore->projectManager(), "slotLoadOnOpen", Qt::QueuedConnection);
 }
 
 void Core::restoreLayout()
@@ -1443,7 +1384,7 @@ bool Core::hasTimelinePreview() const
 
 KdenliveDoc *Core::currentDoc()
 {
-    return m_projectManager->current();
+    return m_projectManager ? m_projectManager->current() : nullptr;
 }
 
 Timecode Core::timecode() const
@@ -1759,6 +1700,13 @@ void Core::resetThumbProfile()
 Mlt::Profile &Core::thumbProfile()
 {
     return m_thumbProfile;
+}
+
+void Core::flushMonitorSeek()
+{
+    if (m_guiConstructed && m_monitorManager && m_monitorManager->projectMonitor()) {
+        m_monitorManager->projectMonitor()->flushPendingSeek();
+    }
 }
 
 int Core::getMonitorPosition(Kdenlive::MonitorId id) const

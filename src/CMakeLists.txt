@@ -310,9 +310,8 @@ if(KORACUT_AGENTS)
   else()
     message(STATUS "KoraCut: QtKeychain not found, API keys in a 0600 file")
   endif()
-  # Le service d'agents local, lancé par l'application en développement (Agents in-app/service-essai).
-  get_filename_component(KORACUT_AGENT_SERVICE_DIR "${KORACUT_AGENT_TOOLS_DIR}/../service-essai" ABSOLUTE)
-  set_source_files_properties(koracut/ai/koracutaibridge.cpp PROPERTIES COMPILE_DEFINITIONS "KORACUT_AGENT_SERVICE_DIR=\"${KORACUT_AGENT_SERVICE_DIR}\"")
+  # Le service d'agents local (Agents in-app/service-essai) est trouvé à l'exécution par KORACUT_SOURCE_ROOT :
+  # aucun chemin de la machine qui compile n'est écrit dans le binaire.
 endif()
 
 target_link_libraries(kdenliveLib PUBLIC

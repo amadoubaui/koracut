@@ -14,6 +14,7 @@
 #include "koracut/terminal/koracutagentscli.h"
 #include "koracut/terminal/koracutpty.h"
 #include "koracut/terminal/koracutskills.h"
+#include "koracut/terminal/koracutterminalpanel.h"
 #include "koracut/terminal/koracutterminalview.h"
 
 #include <QCoreApplication>
@@ -65,8 +66,9 @@ KoraCutAgentInit::Context sampleContext()
                                         {QStringLiteral("duree"), QJsonObject{{QStringLiteral("i"), 1500}, {QStringLiteral("tc"), QStringLiteral("00:01:00:00")}}}}};
     ctx.reglage = QStringLiteral("koracut-essai");
     ctx.porteFile = QStringLiteral("/tmp/porte-koracut-essai.json");
-    ctx.nodePath = QStringLiteral("/usr/local/bin/node");
-    ctx.mcpScript = QStringLiteral("/Applications/KoraCut dev/mcp/main.js");
+    // Le serveur livré : l'exécutable koracut-ctl de l'application, avec « mcp ».
+    ctx.mcpCommand = QStringLiteral("/Applications/KoraCut dev.app/Contents/MacOS/koracut-ctl");
+    ctx.mcpArgs = QStringList{QStringLiteral("mcp")};
     return ctx;
 }
 
@@ -79,6 +81,13 @@ TEST_CASE("Init des agents : le bloc KoraCut ne touche pas au texte de la person
     const QString file = dir.filePath(QStringLiteral("CLAUDE.md"));
     const KoraCutAgentInit::Context ctx = sampleContext();
     const QString block = KoraCutAgentInit::instructionsBlock(ctx, QStringLiteral("Claude Code"));
+    // Un seul HyperFrames, celui de l'application (3 octobre 2026) : la règle est écrite, avec ou sans installation.
+    CHECK(block.contains(QStringLiteral("N'écris jamais `npx hyperframes`")));
+    {
+        KoraCutAgentInit::Context withHf = ctx;
+        withHf.hyperframes = QStringLiteral("/donnees/hyperframes/bin/hyperframes");
+        CHECK(KoraCutAgentInit::instructionsBlock(withHf, QStringLiteral("Codex CLI")).contains(QStringLiteral("`/donnees/hyperframes/bin/hyperframes`")));
+    }
     CHECK(block.contains(QStringLiteral("Tek Tech teaser")));
     CHECK(block.contains(QStringLiteral("1080 × 1920")));
     CHECK(block.contains(QStringLiteral("TEASER TEK TECH.mov")));
@@ -147,8 +156,8 @@ TEST_CASE("Init des agents : la configuration MCP garde les autres serveurs", "[
         const QJsonObject servers = root.value(QStringLiteral("mcpServers")).toObject();
         CHECK(servers.value(QStringLiteral("autre")).toObject().value(QStringLiteral("command")).toString() == QStringLiteral("autre-serveur"));
         const QJsonObject koracut = servers.value(QStringLiteral("koracut")).toObject();
-        CHECK(koracut.value(QStringLiteral("command")).toString() == QStringLiteral("/usr/local/bin/node"));
-        CHECK(koracut.value(QStringLiteral("args")).toArray().first().toString() == ctx.mcpScript);
+        CHECK(koracut.value(QStringLiteral("command")).toString() == ctx.mcpCommand);
+        CHECK(koracut.value(QStringLiteral("args")).toArray() == QJsonArray{QStringLiteral("mcp")});
         CHECK(koracut.value(QStringLiteral("env")).toObject().value(QStringLiteral("KORACUT_PORTE")).toString() == ctx.porteFile);
         CHECK(root.value(QStringLiteral("x")).toInt() == 1);
         CHECK(QFileInfo::exists(dir.filePath(QStringLiteral("CLAUDE.md"))));
@@ -182,13 +191,13 @@ TEST_CASE("Init des agents : la configuration MCP garde les autres serveurs", "[
         const QString toml = readAll(dir.filePath(QStringLiteral(".codex/config.toml")));
         CHECK(toml.startsWith(QStringLiteral("model = \"gpt\"\n")));
         CHECK(toml.count(QStringLiteral("[mcp_servers.koracut]")) == 1);
-        CHECK(toml.contains(QStringLiteral("args = [\"/Applications/KoraCut dev/mcp/main.js\"]")));
+        CHECK(toml.contains(QStringLiteral("args = [\"mcp\"]")));
 
         KoraCutAgentsCli::Agent crush;
         crush.mcp = QJsonObject{{QStringLiteral("format"), QStringLiteral("crushrc")}, {QStringLiteral("fichier"), QStringLiteral(".crushrc")}};
         CHECK_FALSE(KoraCutAgentInit::writeMcpConfig(dir.path(), crush, ctx).isEmpty());
 #ifndef Q_OS_WIN // guillemets du shell POSIX ; sous Windows, ceux de cmd.exe
-        CHECK(readAll(dir.filePath(QStringLiteral(".crushrc"))).contains(QStringLiteral("mcp add koracut --command /usr/local/bin/node --args '/Applications/KoraCut dev/mcp/main.js'")));
+        CHECK(readAll(dir.filePath(QStringLiteral(".crushrc"))).contains(QStringLiteral("mcp add koracut --command '/Applications/KoraCut dev.app/Contents/MacOS/koracut-ctl' --args mcp")));
 #endif
     }
 
@@ -198,7 +207,7 @@ TEST_CASE("Init des agents : la configuration MCP garde les autres serveurs", "[
         codex.mcp = QJsonObject{{QStringLiteral("ligne"), QJsonArray{QStringLiteral("-c"), QStringLiteral("mcp_servers.koracut.args={args_toml}")}}};
         const QStringList args = KoraCutAgentInit::mcpLaunchArguments(codex, ctx);
         REQUIRE(args.size() == 2);
-        CHECK(args.at(1) == QStringLiteral("mcp_servers.koracut.args=[\"/Applications/KoraCut dev/mcp/main.js\"]"));
+        CHECK(args.at(1) == QStringLiteral("mcp_servers.koracut.args=[\"mcp\"]"));
     }
 }
 
@@ -253,7 +262,7 @@ TEST_CASE("Claude Code : le gabarit du CLAUDE.md dit le rôle, l'état, les règ
     CHECK(block.contains(QStringLiteral("`koracut-retours-cibles` (absente de cette machine)")));
     CHECK_FALSE(block.contains(QStringLiteral("`koracut-piloter` (absente")));
     // Court, sans tiret long ni point d'exclamation.
-    CHECK(block.size() < 6500);
+    CHECK(block.size() < 8000);
     CHECK_FALSE(block.contains(QChar(0x2014)));
     CHECK_FALSE(block.contains(QLatin1Char('!')));
     // Un autre agent reçoit les chemins des fiches, qu'il ouvre lui-même.
@@ -333,8 +342,19 @@ TEST_CASE("Claude Code : détection, installation proposée et jamais faite sans
     // KoraCut autorise d'avance ses outils à elle, et seulement ceux-là ; --mcp-config reste en dernier.
     KoraCutAgentInit::Context ctx = sampleContext();
     const QStringList args = KoraCutAgentInit::mcpLaunchArguments(*claude, ctx);
-    REQUIRE(args.size() == 5);
-    CHECK(args.mid(0, 4) == QStringList{QStringLiteral("--allowedTools"), QStringLiteral("mcp__koracut"), QStringLiteral("Bash(koracut-ctl *)"), QStringLiteral("--mcp-config")});
+    REQUIRE(args.size() == 16);
+    CHECK(args.mid(0, 3) == QStringList{QStringLiteral("--allowedTools"), QStringLiteral("mcp__koracut"), QStringLiteral("Bash(koracut-ctl *)")});
+    // 4 octobre 2026 : ffmpeg et melt sont refusés à Claude Code, et la règle est ajoutée à sa consigne système.
+    CHECK(args.mid(3, 4) == QStringList{QStringLiteral("--disallowedTools"), QStringLiteral("Bash(ffmpeg *)"), QStringLiteral("Bash(melt *)"), QStringLiteral("Bash(ffplay *)")});
+    // Tout ce qui n'est pas autorisé d'avance demande l'accord de la personne (pas le mode automatique).
+    CHECK(args.mid(7, 2) == QStringList{QStringLiteral("--permission-mode"), QStringLiteral("default")});
+    CHECK(args.at(9) == QStringLiteral("--append-system-prompt"));
+    CHECK(args.at(10) == KoraCutAgentInit::rule());
+    CHECK(args.at(11) == QStringLiteral("--add-dir"));
+    // Les deux dossiers lus hors du projet (compétences, cache) : sans eux, une demande d'accord à chaque lecture.
+    CHECK(args.at(12).endsWith(QStringLiteral(".claude/skills")));
+    CHECK(QDir::isAbsolutePath(args.at(13)));
+    CHECK(args.at(14) == QStringLiteral("--mcp-config"));
     CHECK(args.last().endsWith(QStringLiteral(".claude/mcp-koracut.json")));
 #ifndef Q_OS_WIN
     // Un faux « claude » dans le PATH : trouvé ; avec KORACUT_CLAUDE_ABSENT=1, traité comme absent.
@@ -492,5 +512,153 @@ TEST_CASE("Terminal : le PTY lance un programme et on lit sa sortie", "[KoraCut]
         CHECK(screen.contains(QStringLiteral("avant")));
         CHECK_FALSE(screen.contains(QStringLiteral("plein ecran")));
     }
+}
+#endif
+
+// Document 18, journal du 4 octobre 2026 : sur un autre ordinateur que celui du développement, l'agent
+// doit avoir les outils de KoraCut (serveur MCP livré, sans Node), des consignes sans échappatoire,
+// et des gardes dans le PATH du terminal.
+TEST_CASE("Agents : le serveur MCP est celui du paquet, jamais un chemin du dossier de développement", "[KoraCut]")
+{
+    QTemporaryDir app;
+    REQUIRE(app.isValid());
+    QString command;
+    QStringList args;
+    // Rien à côté de l'application : pas de serveur, et surtout pas celui d'un autre dossier.
+    qunsetenv("KORACUT_MCP_SERVER");
+    CHECK_FALSE(KoraCutAgentInit::findMcp(app.path(), command, args));
+    CHECK(command.isEmpty());
+    CHECK_FALSE(KoraCutAgentInit::findMcp(QString(), command, args));
+#ifdef Q_OS_WIN
+    const QString ctl = app.filePath(QStringLiteral("koracut-ctl.exe"));
+#else
+    const QString ctl = app.filePath(QStringLiteral("koracut-ctl"));
+#endif
+    writeAll(ctl, QStringLiteral("#!/bin/sh\nexit 0\n"));
+    QFile::setPermissions(ctl, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+    REQUIRE(KoraCutAgentInit::findMcp(app.path(), command, args));
+    CHECK(QFileInfo(command).fileName().startsWith(QStringLiteral("koracut-ctl")));
+    CHECK(QFileInfo(command).absolutePath() == QFileInfo(ctl).absolutePath());
+    CHECK(args == QStringList{QStringLiteral("mcp")});
+
+    // Ce que reçoit chaque agent du catalogue : la commande livrée, sans Node et sans dossier de développement.
+    KoraCutAgentInit::Context ctx = sampleContext();
+    ctx.mcpCommand = command;
+    ctx.mcpArgs = args;
+    QTemporaryDir project;
+    REQUIRE(project.isValid());
+    ctx.project.insert(QStringLiteral("dossier"), project.path());
+    for (const KoraCutAgentsCli::Agent &agent : KoraCutAgentsCli::all()) {
+        CAPTURE(agent.id);
+        const QStringList written = KoraCutAgentInit::writeForAgent(project.path(), agent, ctx);
+        CHECK_FALSE(written.isEmpty());
+        QString all = KoraCutAgentInit::mcpLaunchArguments(agent, ctx).join(QLatin1Char('\n'));
+        for (const QString &file : written) {
+            all += readAll(file);
+        }
+        CHECK_FALSE(all.contains(QStringLiteral("Agents in-app")));
+        CHECK_FALSE(all.contains(QStringLiteral("main.js")));
+        CHECK_FALSE(all.contains(QStringLiteral("\"node\"")));
+        // La règle est dans les consignes de tous les agents.
+        CHECK(all.contains(QStringLiteral("Tu montes DANS KoraCut")));
+        CHECK(all.contains(QStringLiteral("JAMAIS ffmpeg")));
+        if (!agent.mcp.isEmpty() && (!agent.mcp.value(QStringLiteral("fichier")).toString().isEmpty() || !agent.mcp.value(QStringLiteral("ligne")).toArray().isEmpty())) {
+            CHECK(all.contains(QStringLiteral("koracut-ctl")));
+        }
+    }
+    // Sans serveur (koracut-ctl introuvable), les consignes renvoient quand même à koracut-ctl et gardent la règle.
+    KoraCutAgentInit::Context bare = sampleContext();
+    bare.mcpCommand.clear();
+    bare.mcpArgs.clear();
+    const QString block = KoraCutAgentInit::instructionsBlock(bare, QStringLiteral("Aider"));
+    CHECK_FALSE(block.contains(QStringLiteral("outils MCP `koracut` (`koracut_projet_info`")));
+    CHECK(block.contains(QStringLiteral("koracut-ctl --reglage koracut-essai projet info")));
+    CHECK(block.contains(KoraCutAgentInit::rule()));
+    // Le premier message porte la règle lui aussi.
+    CHECK(KoraCutAgentInit::firstMessage().contains(QStringLiteral("ffmpeg")));
+    CHECK(KoraCutAgentInit::firstMessage().contains(QStringLiteral("koracut-ctl")));
+    CHECK_FALSE(KoraCutAgentInit::rule().contains(QChar(0x2014)));
+}
+
+#ifndef Q_OS_WIN
+TEST_CASE("Terminal : les gardes refusent ffmpeg et melt, et laissent lire avec ffprobe", "[KoraCut]")
+{
+    QTemporaryDir dir;
+    REQUIRE(dir.isValid());
+    KoraCutTerminalPanel::writeGuards(dir.path());
+    auto run = [&](const QString &name, const QStringList &args, QString *err) -> int {
+        QProcess p;
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        // Le dossier des gardes en tête, comme dans le terminal de KoraCut.
+        env.insert(QStringLiteral("PATH"), dir.path() + QStringLiteral(":/usr/bin:/bin"));
+        p.setProcessEnvironment(env);
+        p.start(dir.filePath(name), args);
+        REQUIRE(p.waitForFinished(10000));
+        if (err) {
+            *err = QString::fromUtf8(p.readAllStandardError());
+        }
+        return p.exitCode();
+    };
+    for (const QString &name : {QStringLiteral("ffmpeg"), QStringLiteral("melt")}) {
+        CAPTURE(name);
+        QTemporaryDir out;
+        QString err;
+        // Une vraie tentative d'écriture : refusée, et aucun fichier n'apparaît.
+        CHECK(run(name, {QStringLiteral("-f"), QStringLiteral("lavfi"), QStringLiteral("-i"), QStringLiteral("color=c=red:d=1"), out.filePath(QStringLiteral("x.mp4"))}, &err) == 126);
+        CHECK(err.contains(name + QStringLiteral(" est refusé")));
+        CHECK(err.contains(QStringLiteral("koracut-ctl")));
+        CHECK(err.contains(QStringLiteral("DANS KoraCut")));
+        CHECK_FALSE(QFileInfo::exists(out.filePath(QStringLiteral("x.mp4"))));
+    }
+    // ffprobe ne fabrique rien : il passe au vrai s'il existe, et ne répond jamais par le refus.
+    QString err;
+    const int code = run(QStringLiteral("ffprobe"), {QStringLiteral("-version")}, &err);
+    CHECK(code != 126);
+    CHECK_FALSE(err.contains(QStringLiteral("est refusé")));
+    // Les gardes sont des scripts exécutables par leur seul propriétaire.
+    CHECK(QFileInfo(dir.filePath(QStringLiteral("ffmpeg"))).isExecutable());
+}
+
+TEST_CASE("Agents : Node.js manquant s'installe par un script qui demande l'accord", "[KoraCut]")
+{
+    const QString script = sourcesPath + QStringLiteral("/../data/agents/installer-node.sh");
+    REQUIRE(QFileInfo::exists(script));
+    QTemporaryDir home;
+    REQUIRE(home.isValid());
+    auto run = [&](const QByteArray &answer, QString *output) -> int {
+        QProcess p;
+        QProcessEnvironment env;
+        env.insert(QStringLiteral("HOME"), home.path());
+        env.insert(QStringLiteral("PATH"), QStringLiteral("/usr/bin:/bin"));
+        env.insert(QStringLiteral("KORACUT_LANGUE"), QStringLiteral("fr"));
+        env.insert(QStringLiteral("KORACUT_NODE_ABSENT"), QStringLiteral("1"));
+        env.insert(QStringLiteral("KORACUT_INSTALLER_SIMULER"), QStringLiteral("1"));
+        p.setProcessEnvironment(env);
+        p.setProcessChannelMode(QProcess::MergedChannels);
+        p.start(QStringLiteral("/bin/sh"), {script});
+        p.write(answer);
+        p.closeWriteChannel();
+        REQUIRE(p.waitForFinished(10000));
+        *output = QString::fromUtf8(p.readAll());
+        return p.exitCode();
+    };
+    QString out;
+    // Non (ou rien) : code 2, rien n'est posé.
+    CHECK(run("n\n", &out) == 2);
+    CHECK(out.contains(QStringLiteral("nodejs.org")));
+    CHECK(out.contains(QStringLiteral("Installer Node.js maintenant ?")));
+    CHECK(out.contains(QStringLiteral("Installation annulée")));
+    CHECK(run("", &out) == 2);
+    CHECK_FALSE(QFileInfo::exists(home.filePath(QStringLiteral(".local"))));
+    // Oui, en essai : annoncé, rien de téléchargé.
+    CHECK(run("o\n", &out) == 0);
+    CHECK(out.contains(QStringLiteral("rien n'est téléchargé")));
+    CHECK_FALSE(QFileInfo::exists(home.filePath(QStringLiteral(".local"))));
+    // La liste des dossiers cherchés connaît celui où ce script pose Node.js.
+    bool known = false;
+    for (const QString &p : KoraCutAgentsCli::searchPaths()) {
+        known = known || p.endsWith(QStringLiteral("/.local/share/koracut/node/bin"));
+    }
+    CHECK(known);
 }
 #endif

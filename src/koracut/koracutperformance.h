@@ -116,6 +116,11 @@ bool gradePauseOnModule(GradePauseState &state, bool colorModule);
 bool gradePauseSet(GradePauseState &state, bool paused);
 
 bool gradePaused();
+/** @brief Glisser de la tête de lecture (4 octobre 2026) : l'étalonnage est mis de côté le temps du geste,
+ * sans toucher au bouton ni au choix de la personne, et jamais dans le module Étalonnage. Ne rafraîchit rien. */
+void setScrubGradePause(bool on);
+/** @brief Vrai si l'étalonnage est mis de côté par un glisser en ce moment. */
+bool scrubGradePause();
 /** @brief Met en pause ou remet l'étalonnage de l'aperçu, rafraîchit les moniteurs et l'action. */
 void setGradePaused(bool paused);
 /** @brief L'action à cocher (créée au premier appel, enregistrée par MainWindow avec son raccourci). */

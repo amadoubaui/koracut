@@ -206,6 +206,11 @@ public:
     Q_INVOKABLE QColor videoColorForTrack(int trackId, const QColor &videoColor) const;
     /** @brief KoraCut : vrai si ce clip vient d'un projet Motion (document 19). */
     Q_INVOKABLE bool isMotionClip(int clipId) const;
+    /** @brief KoraCut : la timeline s'anime (glissement, effacement, arrivée des plans). `koracutrc`, groupe
+     *  `[KoraCut]`, clé `timelineAnimations` (vrai par défaut) ; `KORACUT_NO_ANIM=1` coupe pour un essai. */
+    Q_INVOKABLE bool koraCutAnimations() const;
+    /** @brief La durée d'un glissement, en ms (150 ; `KORACUT_ANIM_MS` pour un essai au ralenti). */
+    Q_INVOKABLE int koraCutAnimationDuration() const;
     /** @brief KoraCut : double-clic sur un clip Motion, l'inspecteur montre son texte. */
     Q_INVOKABLE void editMotionClip(int clipId);
     /** @brief KoraCut : prévient la timeline que les rôles des pistes ont changé. */

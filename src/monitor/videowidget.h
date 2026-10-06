@@ -16,6 +16,7 @@
 #include <QRect>
 #include <QSemaphore>
 #include <QThread>
+#include "koracut/koracutseekgate.h"
 #include <QElapsedTimer>
 #include <QTimer>
 
@@ -91,6 +92,11 @@ public:
     int getCurrentPos() const;
     /** @brief Requests a monitor refresh */
     void requestRefresh(bool slowRefresh = false);
+    /** KoraCut (chantier 10, 4 octobre 2026) : pose sur le producteur la position qu'un glisser retient encore.
+     *  À appeler avant de lire la position du producteur (édition, lecture) ; l'image reste due et arrive ensuite. */
+    void flushPendingSeek();
+    /** Vrai pendant un glisser de la tête de lecture (des demandes de position arrivent plus vite que les images). */
+    bool scrubbing() const { return m_scrubbing; }
     void setRulerInfo(int duration, const std::shared_ptr<MarkerSortModel> &model = nullptr);
     MonitorProxy *getControllerProxy();
     bool playZone(bool startFromIn = true, bool loop = false);
@@ -165,6 +171,8 @@ public Q_SLOTS:
 
 Q_SIGNALS:
     void frameDisplayed(const SharedFrame &frame);
+    /** KoraCut : un glisser de la tête de lecture commence (vrai) ou vient de se calmer (faux). */
+    void scrubbingChanged(bool active);
     void frameRendered(int pos);
     void imageReady();
     void dragStarted();
@@ -246,6 +254,19 @@ private:
     QTimer m_refreshTimer;
     /** KoraCut (chantier 10) : l'heure du dernier rafraîchissement, pour limiter une rafale sans retarder un geste seul. */
     QElapsedTimer m_lastRefresh;
+    /** KoraCut (chantier 10, 4 octobre 2026) : une seule demande d'image en vol pendant un glisser. */
+    KoraCutSeekGate m_seekGate;
+    /** Délai de garde : si l'image attendue n'arrive pas, on repart quand même. */
+    QTimer m_seekGuard;
+    /** Calme après la dernière demande d'un glisser : l'image nette revient. */
+    QTimer m_scrubCalm;
+    bool m_scrubbing{false};
+    /** Essais du banc : KORACUT_GLISSER=sans-fusion rend l'ancien comportement (un seek par événement). */
+    bool m_seekGateOff{false};
+    void applySeek(int position, bool noAudioScrub);
+    void runSeekStep(const KoraCutSeekGate::Step &step);
+    void onSeekFrameShown(const SharedFrame &frame);
+    void setScrubbing(bool active);
     int m_colorSpace;
     double m_dar;
     bool m_isZoneMode;

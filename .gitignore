@@ -23,3 +23,7 @@ compile_commands.json
 
 # Artefacts from running KDE CI locally
 kde-ci-reports/*
+
+# KoraCut : jamais de clé ni de secret dans le dépôt
+.env
+.env.*

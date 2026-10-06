@@ -59,13 +59,15 @@ Wizard::Wizard(bool autoClose, QWidget *parent)
     , m_systemCheckIsOk(false)
     , m_brokenModule(false)
 {
-    setWindowTitle(i18nc("@title:window", "Welcome to KoraCut"));
+    // KoraCut, 4 octobre 2026 : cette fenêtre ne s'affiche au lancement que s'il manque quelque chose
+    // (module MLT, ffmpeg). Elle dit donc ce qu'elle est, et non plus « Bienvenue ».
+    setWindowTitle(i18nc("@title:window", "Installation check"));
     int logoHeight = int(fontMetrics().height() * 2.5);
     setWizardStyle(QWizard::ModernStyle);
     setOption(QWizard::NoBackButtonOnLastPage, true);
     // setOption(QWizard::ExtendedWatermarkPixmap, false);
     m_page = new MyWizardPage(this);
-    m_page->setTitle(i18n("Welcome to KoraCut %1", QString(KDENLIVE_VERSION)));
+    m_page->setTitle(i18nc("@title %1 version", "KoraCut %1, installation check", QString(KDENLIVE_VERSION)));
     m_page->setSubTitle(i18n("Using MLT %1", mlt_version_get_string()));
     setPixmap(QWizard::LogoPixmap, QIcon::fromTheme(QStringLiteral(":/pics/koracut.png")).pixmap(logoHeight, logoHeight));
     m_startLayout = new QVBoxLayout;

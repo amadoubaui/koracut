@@ -22,27 +22,17 @@ Window {
     property var fileDates: []
     property var profileIds: []
     property var profileNames: []
-    property var horizontalModel: [{value: "3840x2160x709x1x1x16x9", text: KI18n.i18n("4K UHD 3840x2160")}, {value: "4096x2160x709x1x1x256x135", text: KI18n.i18n("4K DCI 4096x2160")}, {value: "2560x1440x709x1x1x16x9", text: KI18n.i18n("2.5K QHD 2560x1440")}, {value: "1920x1080x709x1x1x16x9", text: KI18n.i18n("Full HD 1920x1080")}, {value: "1280x720x709x1x1x16x9", text: KI18n.i18n("HD 1280x720")}, {value: "720x480x601x32x27x16x9", text: KI18n.i18n("SD NTSC Wide 720x480")}, {value: "720x480x601x8x9x4x3", text: KI18n.i18n("SD NTSC 720x480")}, {value: "720x576x601x64x45x16x9", text: KI18n.i18n("SD PAL Wide 720x576")}, {value: "720x576x601x16x15x4x3", text: KI18n.i18n("SD PAL 720x576")}]
-    property var verticalModel: [{value: "1080x1920x709x1x1x9x16", text: KI18n.i18n("Full HD 1080x1920")}, {value: "720x1280x709x1x1x9x16", text: KI18n.i18n("HD 720x1280")}]
-    property var horizontalFpsModel: [{value: "24000/1001", text: KI18n.i18n("23.98 fps")},
-        {value: "24", text: KI18n.i18n("24 fps")}, {value: "25", text: KI18n.i18n("25 fps")}, {value: "30000/1001", text: KI18n.i18n("29.97 fps")}, {value: "30", text: KI18n.i18n("30 fps")}, {value: "50", text: KI18n.i18n("50 fps")}, {value: "60000/1001", text: KI18n.i18n("59.94 fps")}, {value: "60", text: KI18n.i18n("60 fps")}]
-    property var verticalFpsModel: [{value: "25", text: KI18n.i18n("25 fps")}, {value: "30", text: KI18n.i18n("30 fps")}, {value: "60", text: KI18n.i18n("60 fps")}]
-    property bool firstRun: true
     property bool crashRecovery: false
     property bool actionsEnabled: false
     property bool wasUpgraded: false
-    property bool palFps: true
-    property bool alwaysDark: false
     property int border: 10
 
     signal timeout()
     signal openBlank()
     signal openOtherFile()
     signal closeApp()
-    signal switchPalette(bool dark)
     signal openFile(string url)
     signal openLink(string url)
-    signal firstStart(string resolution, string fps, bool interlaced, int vTracks, int aTracks)
     signal openTemplate(string templateId)
     signal showWelcome(bool show)
     signal resetConfig()
@@ -85,9 +75,7 @@ Window {
     }
 
     Component.onCompleted: {
-        if (splash.firstRun)
-            buttonNext.forceActiveFocus();
-        else if (urls.length === 0) {
+        if (urls.length === 0) {
             tlistView.forceActiveFocus();
         } else {
             listView.forceActiveFocus();
@@ -169,12 +157,7 @@ Window {
             }
         }
         Keys.onEscapePressed: {
-            if (splash.firstRun) {
-                splash.firstStart(profileCombo.currentValue, fpsCombo.currentValue, verticalFrame.checked ? false : interlacedSwitch.enabled ? interlacedSwitch.checked : true, vTracks.value, aTracks.value)
-                splash.hide()
-            } else {
-                splash.openBlank()
-            }
+            splash.openBlank()
         }
 
         Shortcut {
@@ -186,7 +169,6 @@ Window {
         Shortcut {
             sequences: [StandardKey.Open]
             context: Qt.ApplicationShortcut
-            enabled: !splash.firstRun
             onActivated: splash.openOtherFile()
         }
 
@@ -236,7 +218,6 @@ Window {
             anchors.right: splashContent.right
             anchors.rightMargin: splash.border
             anchors.bottom: splashContent.bottom
-            visible: !splash.firstRun
             RowLayout {
                 id: recentListContainer
                 anchors.top: parent.top
@@ -605,8 +586,10 @@ Window {
                 }
 
                 Label {
-                    // KoraCut : le bas de l'écran de démarrage, d'après la charte.
-                    anchors.horizontalCenter: parent.horizontalCenter
+                    // KoraCut : le bas de l'écran de démarrage, d'après la charte. Rangé contre le numéro
+                    // de version : centré, il passait sous « Afficher lors du démarrage » (4 octobre 2026).
+                    anchors.right: kdenliveid.left
+                    anchors.rightMargin: 16
                     anchors.verticalCenter: parent.verticalCenter
                     opacity: 0.62
                     text: KI18n.i18nc("@info écran de démarrage", "Free software · GPL-3.0 · koracut.org")
@@ -739,317 +722,6 @@ Window {
                         loops: Animation.Infinite
                         NumberAnimation { from: -koracutProgressSegment.width; to: koracutProgress.width; duration: 1400; easing.type: Easing.InOutQuad }
                     }
-                }
-            }
-
-        }
-
-        Item {
-            id: welcome
-            anchors.fill: parent
-            anchors.margins: splash.border
-            anchors.topMargin: header.height
-            visible: splash.firstRun
-
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 10
-                spacing: 10
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.alignment: Qt.AlignTop
-                    Label {
-                        Layout.fillWidth: true
-                        textFormat: Text.StyledText
-                        horizontalAlignment: Text.AlignJustify
-                        text: KI18n.i18n("<h3>Welcome to KoraCut Quick Setup</h3>")
-                    }
-
-                    Switch {
-                        id: themeSwitch
-                        enabled: !splash.crashRecovery
-                        // KoraCut, 23 septembre 2026 : l'interrupteur dit le vrai mode. Allumé :
-                        // toujours sombre ; éteint : on suit le système (le défaut). Avant, il était
-                        // allumé d'office et ne faisait rien en mode « système ».
-                        text: KI18n.i18nc("@option:check assistant de premier lancement", "Always dark, even when the system is light")
-                        checked: splash.alwaysDark
-                        onCheckedChanged: {
-                            splash.switchPalette(checked);
-                        }
-                    }
-
-                    Label {
-                        Layout.fillWidth: true
-                        textFormat: Text.StyledText
-                        horizontalAlignment: Text.AlignJustify
-                        wrapMode: Text.WordWrap
-                        text: KI18n.i18n("<b>Default Project Profile</b>")
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.minimumHeight: childrenRect.height + 2 * 14
-                        radius: 5
-                        color: Qt.darker(splashContent.color, 1.4)
-
-                        RowLayout {
-                            id: profileRow
-                            anchors.top: parent.top
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.margins: 14
-                            spacing: 20
-
-                            ColumnLayout {
-                                Layout.fillWidth: false
-                                // Layout.preferredWidth: horizontalFrame.implicitWidth
-
-                                Rectangle {
-                                    id: horizontalFrame
-                                    implicitHeight: buttonNext.height * 1.4
-                                    implicitWidth: horizontalFrame.implicitHeight * 16 / 9
-                                    Layout.alignment: Qt.AlignHCenter
-                                    radius: 5
-                                    property bool checked: true
-                                    property int lastIndex: -1
-                                    property int lastFpsIndex: -1
-                                    border.color: checked ? activePalette.highlight : horizontalArea.containsMouse ? activePalette.highlight : activePalette.text
-                                    border.width: checked ? 3 : horizontalArea.containsMouse ? 2 : 1
-                                    color: checked ? splashContent.color : Qt.darker(splashContent.color, 1.2)
-                                    opacity: checked ? 1 : 0.5
-
-                                    MouseArea {
-                                        id: horizontalArea
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            verticalFrame.lastIndex = profileCombo.currentIndex
-                                            verticalFrame.lastFpsIndex = fpsCombo.currentIndex
-                                            horizontalFrame.checked = true
-                                            verticalFrame.checked = false
-                                            if (horizontalFrame.lastIndex > -1) {
-                                                profileCombo.currentIndex = horizontalFrame.lastIndex
-                                            }
-                                            if (horizontalFrame.lastFpsIndex > -1) {
-                                                fpsCombo.currentIndex = horizontalFrame.lastFpsIndex
-                                            }
-                                        }
-                                    }
-
-                                }
-
-                                Label {
-                                    id: horizontalLabel
-                                    text: KI18n.i18n("Horizontal")
-                                    Layout.alignment: Qt.AlignHCenter
-                                    font.bold: horizontalFrame.checked
-                                }
-
-                            }
-
-                            ColumnLayout {
-                                Layout.fillWidth: false
-
-                                Rectangle {
-                                    id: verticalFrame
-                                    implicitHeight: horizontalFrame.implicitHeight
-                                    implicitWidth: verticalFrame.implicitHeight * 9 / 16
-                                    Layout.alignment: Qt.AlignHCenter
-                                    radius: 5
-                                    property bool checked: false
-                                    property int lastIndex: -1
-                                    property int lastFpsIndex: -1
-                                    border.color: checked ? activePalette.highlight : verticalArea.containsMouse ? activePalette.highlight : activePalette.text
-                                    border.width: checked ? 3 : verticalArea.containsMouse ? 2 : 1
-                                    color: checked ? splashContent.color : Qt.darker(splashContent.color, 1.2)
-                                    opacity: checked ? 1 : 0.5
-
-                                    MouseArea {
-                                        id: verticalArea
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            horizontalFrame.lastIndex = profileCombo.currentIndex
-                                            horizontalFrame.lastFpsIndex = fpsCombo.currentIndex
-                                            horizontalFrame.checked = false
-                                            verticalFrame.checked = true
-                                            if (verticalFrame.lastIndex > -1) {
-                                                profileCombo.currentIndex = verticalFrame.lastIndex
-                                            }
-                                            if (verticalFrame.lastFpsIndex > -1) {
-                                                fpsCombo.currentIndex = verticalFrame.lastFpsIndex
-                                            }
-                                        }
-                                    }
-
-                                }
-
-                                Label {
-                                    id: vLabel
-                                    text: KI18n.i18n("Vertical")
-                                    Layout.alignment: Qt.AlignHCenter
-                                    font.bold: verticalFrame.checked
-                                }
-
-                            }
-
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                Row {
-                                    spacing: 10
-                                    Label {
-                                        text: KI18n.i18n("Resolution")
-                                        verticalAlignment: Qt.AlignVCenter
-                                        Layout.alignment: Qt.AlignVCenter
-                                        height: profileCombo.height
-                                    }
-
-                                    ComboBox {
-                                        id: profileCombo
-                                        // profile value is: width x height x colorspace x sarNum x sarDen x darNum x darDen
-                                        model: horizontalFrame.checked ? splash.horizontalModel : splash.verticalModel
-                                        textRole: "text"
-                                        valueRole: "value"
-                                        property bool sdProfile: horizontalFrame.checked && (currentValue.startsWith("720x480x") || currentValue.startsWith("720x576x"))
-                                        Component.onCompleted: {
-                                            let index = indexOfValue("1920x1080x709x1x1x16x9");
-                                            if (index >= 0) {
-                                                currentIndex = index
-                                            }
-                                        }
-                                    }
-
-                                }
-
-                                Row {
-                                    spacing: 10
-
-                                    Label {
-                                        text: KI18n.i18n("Frame Rate")
-                                        verticalAlignment: Qt.AlignVCenter
-                                        Layout.alignment: Qt.AlignVCenter
-                                        height: profileCombo.height
-                                        enabled: fpsCombo.enabled
-                                    }
-
-                                    ComboBox {
-                                        id: fpsCombo
-                                        model: horizontalFrame.checked ? splash.horizontalFpsModel : splash.verticalFpsModel
-                                        textRole: "text"
-                                        valueRole: "value"
-                                        Component.onCompleted: {
-                                            let index = indexOfValue(splash.palFps ? "25" : horizontalFrame.checked ? "24000/1001" : "30");
-                                            if (index >= 0) {
-                                                currentIndex = index
-                                            }
-                                        }
-                                    }
-
-                                }
-
-                                Row {
-                                    spacing: 10
-                                    Switch {
-                                        id: interlacedSwitch
-                                        text: KI18n.i18n("Interlaced")
-                                        enabled: !profileCombo.sdProfile && horizontalFrame.checked
-                                    }
-
-                                }
-
-                            }
-
-                        }
-
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 10
-                        Label {
-                            text: KI18n.i18n("Video Tracks")
-                            Layout.alignment: Qt.AlignVCenter
-                        }
-                        SpinBox {
-                            id: vTracks
-                            value: 2
-
-                        }
-                        Label {
-                            text: KI18n.i18n("Audio Tracks")
-                            Layout.alignment: Qt.AlignVCenter
-                        }
-                        SpinBox {
-                            id: aTracks
-                            value: 2
-                        }
-                    }
-
-                    Label {
-                        Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
-                        text: KI18n.i18n("This can always be changed later in the Settings.")
-                        font.italic: true
-                    }
-                    Rectangle {
-                        // Crash recovery
-                        visible: splash.crashRecovery
-                        Layout.fillWidth: true
-                        Layout.minimumHeight: crashRecoveryLayout.implicitHeight + radius * 2
-
-                        color: "#22FF0000"
-                        radius: 5
-
-                        RowLayout {
-                            id: crashRecoveryLayout
-                            anchors.fill: parent
-                            anchors.leftMargin: parent.radius * 2
-                            anchors.rightMargin: parent.radius * 2
-                            Label {
-                                id: restartWelcomeLabel
-                                text: KI18n.i18n("KoraCut crashed on last start. Reset config and restart?")
-                                Layout.alignment: Qt.AlignVCenter
-                                wrapMode: Text.Wrap
-                            }
-                            Button {
-                                id: restartWelcomeButton
-                                enabled: splash.actionsEnabled
-                                text: KI18n.i18n("Reset")
-                                icon.name: "view-refresh"
-                                Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
-                                onClicked: splash.resetConfig()
-                            }
-                        }
-                    }
-
-                }
-
-                RowLayout {
-                    Button {
-                        id: buttonHelp
-                        icon.name: "help-browser"
-                        text: KI18n.i18n("Check Online Documentation")
-                        enabled: splash.actionsEnabled
-                        Layout.alignment: Qt.AlignLeft
-                        onClicked: splash.openLink("https://koracut.org/docs")
-                    }
-
-                    Button {
-                        id: buttonNext
-                        icon.name: "go-next"
-                        text: KI18n.i18n("Start Editing")
-                        enabled: splash.actionsEnabled
-                        onClicked: {
-                            splash.firstStart(profileCombo.currentValue, fpsCombo.currentValue, verticalFrame.checked ? false : interlacedSwitch.enabled ? interlacedSwitch.checked : true, vTracks.value, aTracks.value)
-                            splash.hide()
-                        }
-                        Layout.alignment: Qt.AlignRight
-                    }
-
                 }
             }
 

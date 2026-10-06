@@ -54,6 +54,11 @@ const VideoType *byId(const QString &id);
 QSize frameSize(const QString &format);
 /** @brief Nom court du format, pour l'afficher (« Vertical 9:16 »). */
 QString formatLabel(const QString &format);
+/** @brief Le sens choisi à l'accueil de premier lancement : « vertical », « horizontal », ou vide
+ *  si la personne n'a rien choisi. Rangé dans koracutrc, groupe [KoraCut], clé formatPrefere.
+ *  La fenêtre Nouveau projet montre d'abord les types de ce sens. */
+QString preferredFormat();
+void setPreferredFormat(const QString &format);
 /** @brief Texte sans accents ni majuscules, pour chercher. */
 QString searchable(const QString &text);
 

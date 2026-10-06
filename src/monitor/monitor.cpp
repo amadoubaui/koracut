@@ -231,6 +231,7 @@ Monitor::Monitor(Kdenlive::MonitorId id, MonitorManager *manager, QWidget *paren
     connect(m_glMonitor, &VideoWidget::zoomChanged, this, &Monitor::setZoom);
     // KoraCut, document 20 : pincement et Ctrl + molette zooment autour du pointeur.
     connect(m_glMonitor, &VideoWidget::zoomRequested, this, &Monitor::koraCutZoomAt);
+    connect(m_glMonitor, &VideoWidget::scrubbingChanged, this, &Monitor::koraCutScrubChanged);
     connect(m_glMonitor, &VideoWidget::zoomChanged, this, [this]() { koraCutUpdateZoomLabel(); });
     connect(m_glMonitor->getControllerProxy(), &MonitorProxy::overlayMenuRequested, this, [this]() {
         koraCutBuildOverlayMenu();
@@ -740,6 +741,7 @@ Monitor::Monitor(Kdenlive::MonitorId id, MonitorManager *manager, QWidget *paren
 Monitor::~Monitor()
 {
     koraCutEndTransformMacro();
+    koraCutEndScrubLight(false);
     // Une lecture en aperçu réduit au moment de fermer : la résolution choisie est remise avant l'enregistrement des réglages.
     const int restore = m_koraCutAdaptive.stop();
     if (restore >= 0) {
@@ -3320,6 +3322,11 @@ void Monitor::requestSeek(int pos)
     m_glMonitor->getControllerProxy()->setPosition(pos);
 }
 
+void Monitor::flushPendingSeek()
+{
+    m_glMonitor->flushPendingSeek();
+}
+
 void Monitor::requestSeekIfVisible(int pos)
 {
     if (monitorVisible()) {
@@ -3406,6 +3413,8 @@ void Monitor::slotTrimmingPos(int offset)
 {
     offset = pCore->window()->getCurrentTimeline()->controller()->trimmingBoundOffset(offset);
     if (m_glMonitor->producer() != pCore->window()->getCurrentTimeline()->model()->producer().get()) {
+        // KoraCut : la position qu'un glisser retient encore est posée avant d'être lue.
+        m_glMonitor->flushPendingSeek();
         processSeek(m_glMonitor->producer()->position() + offset);
     }
     QString tc(pCore->timecode().getDisplayTimecodeFromFrames(offset, KdenliveSettings::frametimecode()));
@@ -4185,6 +4194,8 @@ void Monitor::koraCutPlaybackChanged(bool play)
     m_koraCutLastFrameNs = 0;
     m_koraCutFramesThisSecond = 0;
     if (play) {
+        // Un glisser qui finit par une lecture : la résolution choisie revient avant que l'aperçu adaptatif la lise.
+        koraCutEndScrubLight(false);
         if (m_id == Kdenlive::ProjectMonitor && KoraCutPerformance::simplifiedHeavyEffects()) {
             const int paused = KoraCutPerformance::HeavyEffects::simplifyCurrentTimeline();
             if (paused > 0 && m_koraCutSimplified) {
@@ -4226,6 +4237,58 @@ void Monitor::koraCutPlaybackChanged(bool play)
             m_monitorManager->refreshMonitors();
         }
         m_droppedTimer.stop();
+    }
+}
+
+// ---- KoraCut, chantier 10 (4 octobre 2026) : le glisser de la tête de lecture ----------------
+// Pendant que les demandes de position arrivent plus vite que les images, l'aperçu descend au plancher du
+// profil et l'étalonnage est mis de côté ; 160 ms après la dernière demande, l'image exacte est refaite en
+// pleine qualité. Rien n'est écrit dans le projet ni dans les réglages.
+
+void Monitor::koraCutScrubChanged(bool active)
+{
+    if (m_id != Kdenlive::ProjectMonitor) {
+        return;
+    }
+    if (!active) {
+        koraCutEndScrubLight(true);
+        return;
+    }
+    if (m_koraCutPlaying || m_koraCutScrubLight) {
+        return;
+    }
+    // Essais du banc : KORACUT_GLISSER=sans-echelle,sans-etalonnage coupe l'un ou l'autre allègement.
+    const QString essai = qEnvironmentVariable("KORACUT_GLISSER");
+    m_koraCutScrubLight = true;
+    if (!essai.contains(QLatin1String("sans-etalonnage"))) {
+        KoraCutPerformance::setScrubGradePause(true);
+    }
+    const int floor = KoraCutPerformance::adaptiveFloor();
+    const int current = KdenliveSettings::previewScaling();
+    if (!essai.contains(QLatin1String("sans-echelle")) && floor > 0 &&
+        MachineProfile::AdaptiveScaling::rank(current) < MachineProfile::AdaptiveScaling::rank(floor)) {
+        // Sans passer par le menu de résolution : son affichage ne bouge pas pendant le geste.
+        m_koraCutScrubRestore = current;
+        KdenliveSettings::setPreviewScaling(floor);
+        m_glMonitor->updateScaling();
+    }
+}
+
+void Monitor::koraCutEndScrubLight(bool refresh)
+{
+    if (!m_koraCutScrubLight) {
+        return;
+    }
+    m_koraCutScrubLight = false;
+    KoraCutPerformance::setScrubGradePause(false);
+    if (m_koraCutScrubRestore >= 0) {
+        KdenliveSettings::setPreviewScaling(m_koraCutScrubRestore);
+        m_koraCutScrubRestore = -1;
+        m_glMonitor->updateScaling();
+    }
+    if (refresh) {
+        // L'image exacte, nette et étalonnée.
+        m_glMonitor->requestRefresh();
     }
 }
 

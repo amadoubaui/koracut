@@ -53,11 +53,13 @@ public:
     void answerPendingConfirmation(bool accepted);
     /** @brief Pour les essais sans souris : décide du dernier plan en attente. */
     void decidePendingPlan(KoraCutAgentSession::PlanDecision decision, const QString &comment = QString());
+    /** @brief Pour les essais sans souris : écrit @p text dans le champ et l'envoie, comme la personne (« agent-saisie:texte »). */
+    void debugType(const QString &text);
     /** @brief Une ligne du service local (démarrage, bascule d'une connexion IA à la suivante). */
     void showServiceNote(const QString &text);
 
 Q_SIGNALS:
-    /** @brief « Monter avec Claude Code » : la fenêtre principale ouvre le terminal et lance Claude Code. */
+    /** @brief « Monter avec un agent » : la fenêtre principale ouvre le terminal sur l'agent de la personne. */
     void claudeCodeRequested();
 
 public:
@@ -77,6 +79,8 @@ private:
     void refreshHeader();
     void setInputMode(InputMode mode, const QString &id = QString());
     void limitBubbleWidths();
+    /** @brief Rien n'est connecté : une carte dans la conversation propose les deux voies (clé, agent en terminal). */
+    void showConnectChoice();
 
     KoraCutAgentSession *m_session{nullptr};
     QLabel *m_status{nullptr};
@@ -97,4 +101,5 @@ private:
     QStringList m_pendingConfirmations;
     QStringList m_pendingPlans;
     QHash<QString, QPointer<QWidget>> m_cards;
+    QPointer<QWidget> m_connectCard;
 };

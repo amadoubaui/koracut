@@ -829,6 +829,21 @@ QPushButton#koracutConsolePrimaryButton {
 QPushButton#koracutConsolePrimaryButton:hover {
     background: {accent_vif};
 }
+/* Le clic se voit (4 octobre 2026) : un bouton enfoncé change de fond tant qu'on appuie. */
+QPushButton#koracutConsolePrimaryButton:pressed, QPushButton#koracutAgentPrimaryButton:pressed {
+    background: {accent@150};
+    padding-top: 6px;
+    padding-bottom: 4px;
+}
+QPushButton#koracutConsoleButton:pressed, QPushButton#koracutAgentButton:pressed {
+    background: {voile@60};
+    padding-top: 6px;
+    padding-bottom: 4px;
+}
+QPushButton#koracutConsoleButton:disabled {
+    color: {encre@100};
+    border: 1px solid {voile@40};
+}
 QPushButton#koracutConsolePrimaryButton:disabled {
     background: {accent@90};
     color: {texte_sur_accent@140/200};
@@ -1217,4 +1232,115 @@ QLabel#koracutEtalonnagePause, QLabel#koracutApercuSimplifie {
     padding: 1px 6px;
     margin: 0 4px;
     font-size: 11px;
+}
+
+/* Fenêtre « Soutenir KoraCut » (menu Aide, 4 octobre 2026). Charte produit : neutre, un seul bouton
+   d'accent, carte de 9 px, boutons de 6 px. */
+QLabel#koracutSupportTitle {
+    color: {texte};
+    background: transparent;
+    font-size: 16px;
+    font-weight: 600;
+}
+QLabel#koracutSupportText {
+    color: {texte};
+    background: transparent;
+    font-size: 13px;
+}
+QLabel#koracutSupportSignature {
+    color: {texte_secondaire};
+    background: transparent;
+    font-size: 12px;
+    font-weight: 600;
+}
+QFrame#koracutSupportCard {
+    background: {surface};
+    border: 1px solid {bordure};
+    border-radius: 9px;
+}
+QLabel#koracutSupportCardTitle {
+    color: {texte_secondaire};
+    background: transparent;
+    font-size: 11px;
+    font-weight: 600;
+}
+QLabel#koracutSupportLine {
+    color: {texte};
+    background: transparent;
+    font-size: 12px;
+}
+QLabel#koracutSupportDot {
+    background: {accent};
+    border-radius: 3px;
+}
+QPushButton#koracutSupportPrimaryButton {
+    background: {accent};
+    color: {texte_sur_accent};
+    border: none;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+}
+QPushButton#koracutSupportPrimaryButton:hover {
+    background: {accent_vif};
+}
+/* Au clavier : l'anneau d'accent ne se verrait pas sur un bouton d'accent, un filet clair à l'intérieur le remplace. */
+QPushButton#koracutSupportPrimaryButton:focus {
+    outline: none;
+    border: 1px solid {texte_sur_accent@170};
+    padding: 5px 13px;
+}
+QPushButton#koracutSupportCloseButton {
+    background: {champ};
+    color: {texte};
+    border: none;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 12px;
+}
+QPushButton#koracutSupportCloseButton:hover {
+    background: {champ_survol};
+}
+/* Le lien : couleur du texte et souligné. L'accent en petit texte sur fond clair n'a pas le contraste de 4,5:1. */
+QPushButton#koracutSupportLink {
+    background: transparent;
+    color: {texte};
+    border: none;
+    padding: 6px 0;
+    font-size: 12px;
+    text-align: left;
+    text-decoration: underline;
+}
+QPushButton#koracutSupportLink:hover {
+    color: {texte_secondaire};
+}
+
+
+/* ---- Accueil de premier lancement (src/koracut/koracutfirstrun.cpp), 4 octobre 2026 ---- */
+QLabel#koracutWelcomeTitle {
+    color: {texte};
+    font-size: 22px;
+    font-weight: 600;
+}
+QLabel#koracutWelcomeLead {
+    color: {texte_secondaire};
+    font-size: 13px;
+}
+QLabel#koracutWelcomeSection {
+    color: {texte};
+    font-size: 12px;
+    font-weight: 600;
+}
+QLabel#koracutWelcomeNote {
+    color: {texte_secondaire};
+    font-size: 11px;
+}
+QPushButton#koracutWelcomeQuiet {
+    background: transparent;
+    color: {texte_secondaire};
+}
+QPushButton#koracutWelcomeQuiet:hover, QPushButton#koracutWelcomeQuiet:focus {
+    background: {voile@18};
+    color: {texte};
 }

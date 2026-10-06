@@ -25,10 +25,6 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QRandomGenerator>
 #include <QStandardPaths>
 
-#ifndef KORACUT_AGENT_SERVICE_DIR
-#define KORACUT_AGENT_SERVICE_DIR ""
-#endif
-
 KoraCutAiBridge::KoraCutAiBridge(KoraCutAgentClient *client, KoraCutAgentPanel *panel, QObject *parent)
     : QObject(parent)
     , m_client(client)
@@ -79,7 +75,11 @@ QString KoraCutAiBridge::serviceDirectory()
     candidates << qEnvironmentVariable("KORACUT_SERVICE_AGENTS");
     candidates << KSharedConfig::openConfig()->group(QStringLiteral("KoraCut IA")).readEntry("serviceDossier", QString());
     candidates << QStandardPaths::locate(QStandardPaths::AppDataLocation, QStringLiteral("agents-service"), QStandardPaths::LocateDirectory);
-    candidates << QString::fromUtf8(KORACUT_AGENT_SERVICE_DIR);
+    // Le dossier de développement, seulement quand KORACUT_SOURCE_ROOT est posé (koracut-run.sh).
+    const QString sourceRoot = qEnvironmentVariable("KORACUT_SOURCE_ROOT");
+    if (!sourceRoot.isEmpty()) {
+        candidates << sourceRoot + QStringLiteral("/Agents in-app/service-essai");
+    }
     for (const QString &dir : std::as_const(candidates)) {
         if (!dir.isEmpty() && QFileInfo::exists(QDir(dir).filePath(QStringLiteral("src/main.ts")))) {
             return QDir(dir).canonicalPath();

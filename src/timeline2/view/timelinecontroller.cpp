@@ -49,9 +49,11 @@
 
 #include "koracut/koracutthemes.h"
 #include <KColorScheme>
+#include <KConfigGroup>
 #include <KGuiItem>
 #include <KMessageBox>
 #include <KRecentDirs>
+#include <KSharedConfig>
 #include <KStandardGuiItem>
 #include <KUrlRequesterDialog>
 #include <QClipboard>
@@ -5408,6 +5410,21 @@ QColor TimelineController::videoColorForTrack(int trackId, const QColor &videoCo
         return KoraCutThemes::trackColor(QStringLiteral("piste_titre"), QColor(0x7C, 0x5C, 0xFF));
     }
     return videoColor;
+}
+
+bool TimelineController::koraCutAnimations() const
+{
+    if (qEnvironmentVariableIsSet("KORACUT_NO_ANIM")) {
+        return false;
+    }
+    return KSharedConfig::openConfig()->group(QStringLiteral("KoraCut")).readEntry("timelineAnimations", true);
+}
+
+int TimelineController::koraCutAnimationDuration() const
+{
+    bool ok = false;
+    const int ms = qEnvironmentVariableIntValue("KORACUT_ANIM_MS", &ok);
+    return ok && ms > 0 ? ms : 150;
 }
 
 bool TimelineController::isMotionClip(int clipId) const

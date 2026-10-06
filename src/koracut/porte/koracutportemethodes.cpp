@@ -25,6 +25,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "koracut/koracutmodules.h"
 #include "koracut/koracutnewprojectdialog.h"
 #include "koracut/koracutpanelfocus.h"
+#include "koracut/motion/koracutmotionrenderer.h"
+#include "koracut/terminal/koracutterminalpanel.h"
 #include "koracut/koracuttopbar.h"
 #include "koracut/koracuttranscriber.h"
 #include "koracut/koracutvisible.h"
@@ -754,7 +756,10 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
                                         {QStringLiteral("qt"), QString::fromLatin1(qVersion())},
                                         {QStringLiteral("mlt"), QString::fromLatin1(mlt_version_get_string())},
                                         {QStringLiteral("systeme"), QSysInfo::prettyProductName()},
-                                        {QStringLiteral("profil_machine"), MachineProfile::levelName(MachineProfile::effectiveLevel())}});
+                                        {QStringLiteral("profil_machine"), MachineProfile::levelName(MachineProfile::effectiveLevel())},
+                                        // Un seul HyperFrames, celui de l'application : sa version et sa commande, pour tout agent du dehors.
+                                        {QStringLiteral("hyperframes"), QJsonObject{{QStringLiteral("version"), KoraCutMotionHost::installedVersion()},
+                                                                                    {QStringLiteral("commande"), KoraCutMotionHost::launcher()}}}});
     });
     porte->registerMethod(QStringLiteral("app.performance"),
                           QStringLiteral("Le profil de la machine et ce que la lecture fait maintenant : i/s, images sautées, temps par image, aperçu, décodeur, proxys, mémoire (panneau Diagnostic)."),
@@ -782,6 +787,136 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
                 }
                 window->close();
             });
+            return Reply::value(QJsonObject{{QStringLiteral("ok"), true}});
+        },
+        true);
+
+    // ---- terminal --------------------------------------------------------------------------
+    // Le terminal intégré vu de la porte (3 octobre 2026) : une IA du dehors ouvre Claude Code dans
+    // KoraCut, lui écrit ses demandes et lit ses réponses, sous les yeux de la personne.
+    // Par le dock et pas par la fenêtre : un panneau fermé n'est plus un enfant de la fenêtre.
+    const auto terminalPanel = [window]() -> KoraCutTerminalPanel * {
+        if (!window) {
+            return nullptr;
+        }
+        if (KDDockWidgets::Core::DockWidget *dock = KDDockWidgets::Core::DockWidget::byName(QStringLiteral("terminal"))) {
+            if (QWidget *guest = KDDockWidgets::QtCommon::View_qt::asQWidget(dock->guestView().get())) {
+                if (auto *panel = qobject_cast<KoraCutTerminalPanel *>(guest)) {
+                    return panel;
+                }
+                return guest->findChild<KoraCutTerminalPanel *>();
+            }
+        }
+        return window->findChild<KoraCutTerminalPanel *>();
+    };
+    const auto terminalShow = [window]() {
+        // La même place que par le bouton (à côté de la timeline) : ouvert par son dock seul, un terminal qui n'a
+        // jamais été rangé s'ouvrait en fenêtre flottante (5 octobre 2026).
+        if (window && QMetaObject::invokeMethod(window, "koraCutRevealTerminalDock", Qt::DirectConnection)) {
+            return;
+        }
+        if (KDDockWidgets::Core::DockWidget *dock = KDDockWidgets::Core::DockWidget::byName(QStringLiteral("terminal"))) {
+            dock->open();
+            dock->setAsCurrentTab();
+        }
+    };
+    const auto terminalFail = [](const QString &code) {
+        if (code == QLatin1String("touche_inconnue")) {
+            return Reply::fail(code, QStringLiteral("Touche inconnue."), QStringLiteral("entree, echap, tab, maj-tab, haut, bas, gauche, droite, retour ou ctrl-c."));
+        }
+        return Reply::fail(QStringLiteral("aucun_onglet"), QStringLiteral("Aucun onglet du terminal ne correspond, ou plus rien n'y tourne."),
+                           QStringLiteral("terminal.ouvrir lance Claude Code ; terminal.etat liste les onglets."));
+    };
+    porte->registerMethod(
+        QStringLiteral("terminal.etat"),
+        QStringLiteral("Le terminal intégré : onglets, Claude Code installé et ouvert, écran de l'onglet visé, agent_travaille et question_ouverte (indicatifs : l'agent attend une réponse à un choix). Avec historique, les dernières lignes de tout son texte."),
+        {p(QStringLiteral("onglet"), QStringLiteral("string"), QStringLiteral("Vide : l'onglet de Claude Code s'il tourne, sinon celui de devant. Ou « claude », un rang (1 au début), un titre.")),
+         p(QStringLiteral("historique"), QStringLiteral("number"), QStringLiteral("Nombre de lignes du défilement à rendre en plus de l'écran, défaut 0."))},
+        [terminalPanel](const Call &call) {
+            KoraCutTerminalPanel *panel = terminalPanel();
+            if (!panel) {
+                return noWindow();
+            }
+            return Reply::value(panel->porteState(call.params.value(QStringLiteral("onglet")).toVariant().toString(),
+                                                  std::clamp(call.params.value(QStringLiteral("historique")).toInt(0), 0, 5000)));
+        });
+    porte->registerMethod(
+        QStringLiteral("terminal.ouvrir"),
+        QStringLiteral("Ouvre le terminal dans le dossier du projet et y lance l'agent qui monte : Claude Code par défaut (compétences posées, consignes du projet écrites, KoraCut branchée), un autre agent du catalogue, ou un simple shell. Une session Claude Code déjà ouverte est ramenée devant. Le projet doit être enregistré. Rend la main tout de suite : terminal.etat dit quand l'agent est prêt."),
+        {p(QStringLiteral("agent"), QStringLiteral("string"), QStringLiteral("claude (défaut), shell, systeme (le terminal du système, sans agent), ou l'identifiant d'un agent du catalogue."))},
+        [window, terminalPanel, terminalShow](const Call &call) {
+            KoraCutTerminalPanel *panel = terminalPanel();
+            if (!panel || !window) {
+                return noWindow();
+            }
+            const QString agent = call.params.value(QStringLiteral("agent")).toString(QStringLiteral("claude")).trimmed().toLower();
+            if (agent == QLatin1String("claude") || agent == QLatin1String("claude-code")) {
+                // Claude Code nommément (l'action « Monter avec un agent » lance le dernier agent choisi). Au tour de
+                // boucle suivant : le panneau lit le projet par la porte, qui doit d'abord rendre la main.
+                terminalShow();
+                QTimer::singleShot(0, panel, [panel]() { panel->editWithClaudeCode(); });
+            } else {
+                terminalShow();
+                // Au tour de boucle suivant, comme l'action : le panneau lit le projet par la porte.
+                QTimer::singleShot(0, panel, [panel, agent]() {
+                    if (agent == QLatin1String("shell")) {
+                        panel->newShell();
+                    } else if (agent == QLatin1String("systeme")) {
+                        // Le terminal du système (Terminal.app, konsole, Windows Terminal) sur ce projet, avec la porte et koracut-ctl.
+                        panel->openInSystemTerminal(QStringLiteral("-"));
+                    } else {
+                        panel->launchAgent(agent, false);
+                    }
+                });
+            }
+            return Reply::value(QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("agent"), agent}, {QStringLiteral("conseil"), QStringLiteral("terminal.etat dit quand l'agent est prêt à lire une demande.")}});
+        });
+    porte->registerMethod(
+        QStringLiteral("terminal.ecrire"),
+        QStringLiteral("Écrit un texte dans le terminal comme s'il était tapé, puis Entrée : la demande à l'agent qui monte, un retour, une réponse à sa question. À confirmation (ce qui s'écrit dans un terminal s'exécute)."),
+        {p(QStringLiteral("texte"), QStringLiteral("string"), QStringLiteral("Le texte, sur une ou plusieurs lignes."), true),
+         p(QStringLiteral("entree"), QStringLiteral("boolean"), QStringLiteral("Valider par Entrée, défaut true.")),
+         p(QStringLiteral("onglet"), QStringLiteral("string"), QStringLiteral("Comme terminal.etat."))},
+        [porte, terminalPanel, terminalShow, terminalFail](const Call &call) {
+            KoraCutTerminalPanel *panel = terminalPanel();
+            if (!panel) {
+                return noWindow();
+            }
+            // « texte=4 » arrive comme un nombre (koracut-ctl lit le JSON) : c'est quand même ce qu'il faut taper.
+            const QString text = call.params.value(QStringLiteral("texte")).toVariant().toString();
+            if (text.isEmpty()) {
+                return Reply::fail(QStringLiteral("parametres_invalides"), QStringLiteral("texte est vide."));
+            }
+            Reply gate;
+            if (porte->needsConfirmation(call, QStringLiteral("écrire dans le terminal"), false, gate)) {
+                return gate;
+            }
+            terminalShow();
+            QString error;
+            if (!panel->porteWrite(call.params.value(QStringLiteral("onglet")).toVariant().toString(), text, call.params.value(QStringLiteral("entree")).toBool(true), error)) {
+                return terminalFail(error);
+            }
+            return Reply::value(QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("caracteres"), text.size()}});
+        },
+        true);
+    porte->registerMethod(
+        QStringLiteral("terminal.touche"),
+        QStringLiteral("Une touche dans le terminal : entree, echap (interrompt l'agent), tab, maj-tab, haut, bas, gauche, droite, retour, ctrl-c. À confirmation."),
+        {p(QStringLiteral("touche"), QStringLiteral("string"), QStringLiteral("Le nom de la touche."), true),
+         p(QStringLiteral("onglet"), QStringLiteral("string"), QStringLiteral("Comme terminal.etat."))},
+        [porte, terminalPanel, terminalFail](const Call &call) {
+            KoraCutTerminalPanel *panel = terminalPanel();
+            if (!panel) {
+                return noWindow();
+            }
+            Reply gate;
+            if (porte->needsConfirmation(call, QStringLiteral("appuyer sur une touche dans le terminal"), false, gate)) {
+                return gate;
+            }
+            QString error;
+            if (!panel->porteKey(call.params.value(QStringLiteral("onglet")).toVariant().toString(), call.params.value(QStringLiteral("touche")).toString(), error)) {
+                return terminalFail(error);
+            }
             return Reply::value(QJsonObject{{QStringLiteral("ok"), true}});
         },
         true);

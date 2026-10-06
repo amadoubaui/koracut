@@ -151,6 +151,12 @@ KoraCutPty::~KoraCutPty()
             }
             ::usleep(5000);
         }
+        // L'agent au premier plan qui n'écoute pas SIGHUP (Gemini CLI en attente de connexion, vu le 4 octobre 2026)
+        // survivait à KoraCut et tournait seul : s'il est encore là, il est arrêté pour de bon.
+        if (group > 0 && group != pid_t(m_pid) && ::kill(-group, 0) == 0) {
+            ::usleep(50000);
+            ::kill(-group, SIGKILL);
+        }
     }
 #else
     if (m_process && !m_processExited) {

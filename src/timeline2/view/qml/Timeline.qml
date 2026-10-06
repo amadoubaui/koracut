@@ -399,16 +399,17 @@ Rectangle {
         y = Math.min(y, maxScroll)
         y += ruler.height
         if (x > scrollView.contentX + scrollView.width - K.UiUtils.baseSizeMedium * 3) {
-            scrollTimer.horizontal = K.UiUtils.baseSizeMedium
-            scrollTimer.interval = 80
+            // KoraCut : même vitesse qu'avant (un pas de baseSizeMedium toutes les 80 ms), en 60 petits pas par seconde.
+            scrollTimer.horizontal = Math.max(2, Math.round(K.UiUtils.baseSizeMedium / 5))
+            scrollTimer.interval = 16
             scrollTimer.start()
         } else if (x < 50) {
             scrollView.contentX = 0;
             scrollTimer.horizontal = 0
             scrollTimer.stop()
         } else if (x < scrollView.contentX + K.UiUtils.baseSizeMedium * 3) {
-            scrollTimer.horizontal = -K.UiUtils.baseSizeMedium
-            scrollTimer.interval = 80
+            scrollTimer.horizontal = -Math.max(2, Math.round(K.UiUtils.baseSizeMedium / 5))
+            scrollTimer.interval = 16
             scrollTimer.start()
         } else {
             if (y > scrollView.contentY + scrollView.height + ruler.height - K.UiUtils.baseSizeMedium) {
@@ -630,6 +631,58 @@ function getTrackColor(audio, header) {
     readonly property color frameColor: Qt.rgba(activePalette.shadow.r, activePalette.shadow.g, activePalette.shadow.b, 0.5)
     property int headerWidth: Math.max(minHeaderWidth, root.timeline.headerWidth())
     property bool blockAutoScroll: false
+    // KoraCut (4 octobre 2026) : la timeline s'anime. Les plans glissent quand un trou se ferme, un plan supprimé
+    // s'efface, un plan qui arrive (coupe, collage, annulation) s'allume un instant. Jamais pendant un glisser,
+    // un rognage, un zoom ni au chargement : `koraAnimate` n'est vrai qu'au repos, et chaque écriture de position
+    // venue de la souris passe sans animation (le Behavior n'est armé que le temps d'une écriture du modèle).
+    property bool koraAnimReady: false
+    property bool koraAnimAllowed: root.timeline.koraCutAnimations()
+    readonly property bool koraAnimate: koraAnimAllowed && koraAnimReady && !dragInProgress && !isPanning && !scrollTimer.running
+    readonly property int koraAnimDuration: root.timeline.koraCutAnimationDuration()
+    // Pas plus de quelques effets à la fois : une annulation de 200 plans ne doit pas lancer 200 animations.
+    property int koraAnimBudget: 16
+    function koraSpend() {
+        if (!koraAnimate || koraAnimBudget <= 0) {
+            return false
+        }
+        koraAnimBudget -= 1
+        koraBudgetTimer.restart()
+        return true
+    }
+    // Coupe l'animation le temps d'une opération en deux temps (retour à l'origine puis position finale).
+    function koraHold() {
+        koraAnimReady = false
+        koraReadyTimer.restart()
+    }
+    function koraGhost(item, tint) {
+        if (!koraSpend() || !item || !item.parent || !tracksContainerArea) {
+            return
+        }
+        var p = item.mapToItem(tracksContainerArea, 0, 0)
+        if (!p || isNaN(p.x) || isNaN(p.y)) {
+            return
+        }
+        koraGhostComponent.createObject(tracksContainerArea, {x: p.x, y: p.y, width: item.width, height: item.height, color: tint})
+    }
+    Timer { id: koraBudgetTimer; interval: 250; onTriggered: root.koraAnimBudget = 16 }
+    Timer { id: koraReadyTimer; interval: 60; onTriggered: root.koraAnimReady = true }
+    Timer { id: koraStartTimer; interval: 900; running: true; onTriggered: root.koraAnimReady = true }
+    Component {
+        id: koraGhostComponent
+        Rectangle {
+            id: ghost
+            radius: 4
+            z: 50
+            opacity: 0.55
+            transformOrigin: Item.Center
+            ParallelAnimation {
+                running: true
+                NumberAnimation { target: ghost; property: "opacity"; to: 0; duration: root.koraAnimDuration; easing.type: Easing.OutCubic }
+                NumberAnimation { target: ghost; property: "scale"; to: 0.96; duration: root.koraAnimDuration; easing.type: Easing.OutCubic }
+                onFinished: ghost.destroy()
+            }
+        }
+    }
     property int duration: root.timeline.duration
     property color audioColor: root.timeline.audioColor
     property color videoColor: root.timeline.videoColor
@@ -2304,6 +2357,8 @@ function getTrackColor(audio, header) {
                                     onCanceled: {
                                     }
                                     onReleased: {
+                                        // KoraCut : deux écritures au relâcher (retour à l'origine, puis la place finale) : pas d'animation.
+                                        root.koraHold()
                                         root.clipBeingMovedId = -1
                                         root.blockAutoScroll = false
                                         var itemId = dragProxy.draggedItem

@@ -94,11 +94,19 @@ Item {
         }
     }*/
 
+    // KoraCut : glisse avec les plans (voir Clip.qml).
+    property bool koraSlide: false
+    Behavior on x {
+        enabled: compositionRoot.koraSlide
+        NumberAnimation { duration: root.koraAnimDuration; easing.type: Easing.OutCubic }
+    }
     onModelStartChanged: {
-        x = modelStart * timeScale;
+        var target = modelStart * timeScale
+        koraSlide = root.koraAnimate && compositionRoot.visible && Math.abs(target - x) > 1
+        x = target;
+        koraSlide = false
     }
     onFakePositionChanged: {
-        console.log('COMPOSITION POS CHANGED TO: ', fakePosition)
         if (fakePosition > -1) {
             x = fakePosition * timeScale
         }
@@ -171,7 +179,6 @@ Item {
     }
 
     function updateDrag() {
-        console.log('XXXXXXXXXXXXXXX\n\nXXXXXXXXXXXXX \nUPDATING COMPO DRAG')
         var itemPos = mapToItem(tracksContainerArea, 0, displayRect.y, displayRect.width, displayRect.height)
         initDrag(compositionRoot, itemPos, compositionRoot.clipId, compositionRoot.modelStart, compositionRoot.trackId, true)
     }

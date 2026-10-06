@@ -24,6 +24,7 @@ set(koracut_SRCS
     koracut/koracutrender.cpp
     # Chantier 10 (29 septembre 2026) : les réglages selon la machine, l'aperçu adaptatif, le diagnostic.
     koracut/koracuthwdecode.cpp
+    koracut/koracutlightcopies.cpp
     koracut/koracutperformance.cpp
     koracut/koracutperfpanel.cpp
     koracut/koracutagenttoolsscript.cpp
@@ -66,6 +67,10 @@ set(koracut_SRCS
     koracut/koracuteffectpreviews.cpp
     koracut/koracutemptystate.cpp
     koracut/koracutextensionsdialog.cpp
+    # 4 octobre 2026 : la fenêtre « Soutenir KoraCut » (menu Aide), un bouton vers la page de don.
+    koracut/koracutsupportdialog.cpp
+    # 4 octobre 2026 : l'accueil de premier lancement, à la place du « Quick Setup » de Kdenlive.
+    koracut/koracutfirstrun.cpp
     koracut/koracuticons.cpp
     koracut/koracutloudness.cpp
     koracut/koracutmodules.cpp
@@ -139,11 +144,8 @@ set_source_files_properties(${_koracut_vterm_c} DIRECTORY "${CMAKE_CURRENT_SOURC
   PROPERTIES INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/terminal/libvterm/include"
              COMPILE_OPTIONS "$<$<NOT:$<C_COMPILER_ID:MSVC>>:-w>;$<$<C_COMPILER_ID:MSVC>:/w>"
              SKIP_AUTOGEN ON)
-# Le dossier de développement (Agents in-app/mcp, Sources/koracut-skills) : trouvé tant qu'on compile
-# depuis le dépôt ; une application installée prend sa copie à elle.
-get_filename_component(_koracut_root "${CMAKE_SOURCE_DIR}/../.." REALPATH)
-set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/terminal/koracutagentinit.cpp" DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
-  PROPERTIES COMPILE_DEFINITIONS "KORACUT_SOURCE_ROOT=\"${_koracut_root}\"")
+# Aucun chemin du dossier de développement n'est compilé dans l'application (5 octobre 2026) : en
+# développement, koracut-run.sh et les tests posent la variable d'environnement KORACUT_SOURCE_ROOT.
 
 set(kdenlive_SRCS
   ${kdenlive_SRCS}

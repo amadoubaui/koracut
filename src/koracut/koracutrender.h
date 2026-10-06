@@ -56,8 +56,9 @@ void touchOpenedMarker(const QString &previewRoot);
 void measurePlayback(int from, int seconds, const std::function<void(const QJsonObject &)> &done);
 /** @brief Mesure le temps de réponse aux gestes (2 octobre 2026, document 6) : sauts de la tête de lecture,
  * départ de la lecture, rognage et déplacement d'un clip, réglage d'étalonnage. Chaque geste est chronométré
- * jusqu'à l'image affichée qui le montre. Modifie la séquence (rogne puis remet) : banc d'essai seulement. */
-void measureGestures(const std::function<void(const QJsonObject &)> &done);
+ * jusqu'à l'image affichée qui le montre. Modifie la séquence (rogne puis remet) : banc d'essai seulement.
+ * @p dragOnly > 0 : seulement le glisser de la tête de lecture, ce nombre de fois (une réponse par passe). */
+void measureGestures(const std::function<void(const QJsonObject &)> &done, int dragOnly = 0);
 
 /** @brief Attend (en faisant tourner la boucle d'événements) que le rendu d'aperçu de la
  * séquence courante soit fini, au plus @p timeoutMs. Vrai s'il est fini. */

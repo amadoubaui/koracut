@@ -4,6 +4,7 @@
 */
 
 #include "koracutperformance.h"
+#include "koracutlightcopies.h"
 #include "koracuthwdecode.h"
 
 #include "core.h"
@@ -379,6 +380,8 @@ QJsonObject stateJson()
                        {QStringLiteral("proxys_auto"), KdenliveSettings::generateproxy()},
                        {QStringLiteral("proxy_largeur_min"), KdenliveSettings::proxyminsize()},
                        {QStringLiteral("proxy_codec_lourd_largeur"), proxyHeavyMinWidth()},
+                       // 4 octobre 2026 : copies légères tout-intra des sources lourdes (faites, en attente, place prise).
+                       {QStringLiteral("copies_legeres"), KoraCutLightCopies::stateJson()},
                        {QStringLiteral("effets_lourds_simplifies"), simplifiedHeavyEffects()},
                        {QStringLiteral("etalonnage_en_pause"), gradePaused()},
                        {QStringLiteral("cache_mo"), KdenliveSettings::maxcachesize()}};
@@ -389,6 +392,9 @@ QJsonObject stateJson()
 namespace {
 GradePauseState s_gradePause;
 std::atomic<int> s_gradeBypass{0};
+// Glisser de la tête de lecture : pause passagère, à part du choix de la personne.
+bool s_scrubGradePause = false;
+bool s_colorModule = false;
 // QPointer : l'action appartient à la fenêtre, détruite avant la fin du processus.
 QPointer<QAction> s_gradePauseAction;
 
@@ -396,7 +402,7 @@ QPointer<QAction> s_gradePauseAction;
 void writeGradeGlobals()
 {
     if (mlt_properties globals = mlt_global_properties()) {
-        mlt_properties_set_int(globals, "koracut_etalonnage_pause", s_gradePause.paused ? 1 : 0);
+        mlt_properties_set_int(globals, "koracut_etalonnage_pause", (s_gradePause.paused || s_scrubGradePause) ? 1 : 0);
         mlt_properties_set_int(globals, "koracut_etalonnage_force", s_gradeBypass.load() > 0 ? 1 : 0);
     }
 }
@@ -457,6 +463,22 @@ bool gradePaused()
     return s_gradePause.paused;
 }
 
+void setScrubGradePause(bool on)
+{
+    // Dans le module Étalonnage, on glisse pour juger la couleur : elle reste.
+    on = on && !s_colorModule;
+    if (on == s_scrubGradePause) {
+        return;
+    }
+    s_scrubGradePause = on;
+    writeGradeGlobals();
+}
+
+bool scrubGradePause()
+{
+    return s_scrubGradePause;
+}
+
 void setGradePaused(bool paused)
 {
     if (gradePauseSet(s_gradePause, paused)) {
@@ -490,6 +512,10 @@ void initGradePause()
     }
     QObject::connect(pCore.get(), &Core::loadLayoutById, s_gradePauseAction, [](const QString &id) {
         const bool color = id == QLatin1String("etalonnage");
+        s_colorModule = color;
+        if (color) {
+            setScrubGradePause(false);
+        }
         if (!gradePauseOnModule(s_gradePause, color)) {
             return;
         }

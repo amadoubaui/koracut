@@ -4,7 +4,7 @@
 # KoraCut, document 18 (1er octobre 2026) : ce que l'application livre aux agents en ligne de commande
 # lancés dans son terminal. Les scripts d'installation (accord demandé, voie officielle) et les
 # compétences koracut-*, que l'application pose elle-même dans ~/.claude/skills.
-install(PROGRAMS installer-claude-code.sh DESTINATION ${KDE_INSTALL_DATADIR}${DATA_INSTALL_PREFIX}/agents)
+install(PROGRAMS installer-claude-code.sh installer-node.sh DESTINATION ${KDE_INSTALL_DATADIR}${DATA_INSTALL_PREFIX}/agents)
 install(FILES installer-claude-code.ps1 DESTINATION ${KDE_INSTALL_DATADIR}${DATA_INSTALL_PREFIX}/agents)
 
 # Les compétences : la source est Sources/koracut-skills dans le dossier KoraCut ; hors de ce dossier

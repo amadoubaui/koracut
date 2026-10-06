@@ -36,6 +36,9 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include <QHash>
 #include <QImage>
 #include <QMutex>
+#include <QSemaphore>
+#include <atomic>
+#include <memory>
 #include <QMimeDatabase>
 #include <QPainter>
 #include <QString>
@@ -836,7 +839,9 @@ void ClipLoadTask::run()
             producer->set("video_index", -1);
         }
     }
-    if (!m_isCanceled.loadAcquire()) {
+    // KoraCut (document 6, 4 octobre 2026) : pendant la fermeture, le fil principal attend la fin de cette
+    // tâche ; lui demander quelque chose en bloquant (setProducer, plus bas) fige l'application pour de bon.
+    if (!m_isCanceled.loadAcquire() && !pCore->closing && !pCore->taskManager.isBlocked()) {
         auto binClip = pCore->projectItemModel()->getClipByBinID(QString::number(m_owner.itemId));
         if (binClip) {
             const QByteArray xmlData = ClipController::producerXml(*producer.get(), true, false);
@@ -856,8 +861,37 @@ void ClipLoadTask::run()
             if (transcode) {
                 producer->set("_wait_for_transcode", 1);
             }
-            QMetaObject::invokeMethod(binClip.get(), "setProducer", Qt::BlockingQueuedConnection, Q_ARG(std::shared_ptr<Mlt::Producer>, std::move(producer)),
-                                      Q_ARG(bool, true));
+            // KoraCut (document 6, 4 octobre 2026) : l'appel bloquant (BlockingQueuedConnection) figeait l'application
+            // quand le fil principal attendait justement la fin de cette tâche (fermeture, rechargement du même
+            // clip : TaskManager prend m_runMutex). L'appel est posté, et la tâche l'attend en regardant si on
+            // l'annule ; annulée, elle rend la main et le producteur n'est pas posé.
+            struct Gate {
+                QSemaphore done;
+                std::atomic<bool> abandoned{false};
+            };
+            auto gate = std::make_shared<Gate>();
+            std::shared_ptr<Mlt::Producer> loaded = std::move(producer);
+            QMetaObject::invokeMethod(
+                binClip.get(),
+                [clip = binClip, loaded, gate]() {
+                    if (!gate->abandoned.load() && !pCore->closing) {
+                        QMetaObject::invokeMethod(clip.get(), "setProducer", Qt::DirectConnection, Q_ARG(std::shared_ptr<Mlt::Producer>, loaded), Q_ARG(bool, true));
+                    }
+                    gate->done.release();
+                },
+                Qt::QueuedConnection);
+            bool delivered = true;
+            while (!gate->done.tryAcquire(1, 50)) {
+                if (m_isCanceled.loadAcquire() || pCore->closing || pCore->taskManager.isBlocked()) {
+                    gate->abandoned.store(true);
+                    delivered = false;
+                    break;
+                }
+            }
+            if (!delivered) {
+                m_progress = 100;
+                return;
+            }
             if (checkProfile && !isVariableFrameRate && seekable) {
                 pCore->bin()->shouldCheckProfile = false;
                 QMetaObject::invokeMethod(pCore->bin(), "slotCheckProfile", Qt::QueuedConnection, Q_ARG(QString, QString::number(m_owner.itemId)));
@@ -877,7 +911,8 @@ void ClipLoadTask::run()
 void ClipLoadTask::abort(bool loadFailed)
 {
     m_progress = 100;
-    if (pCore->taskManager.isBlocked() || m_softDelete || m_thumbOnly) {
+    // KoraCut (document 6, 4 octobre 2026) : pendant la fermeture non plus, rien de bloquant vers le fil principal.
+    if (pCore->taskManager.isBlocked() || pCore->closing || m_softDelete || m_thumbOnly) {
         return;
     }
     auto binClip = pCore->projectItemModel()->getClipByBinID(QString::number(m_owner.itemId));
