@@ -55352,3 +55352,455 @@ msgstr "L'étalonnage est revenu pour que tu voies ce que tu fais. Il se remet e
 msgctxt "@info:status monitor badge, grading is turned off in the preview"
 msgid "Grading paused"
 msgstr "Étalonnage en pause"
+
+msgctxt "@info a background task on a video"
+msgid "Light copy"
+msgstr "Copie légère"
+
+msgctxt "@info:status"
+msgid "The light copy of %1 heavy video is ready: scrubbing is now smooth."
+msgid_plural "The light copies of %1 heavy videos are ready: scrubbing is now smooth."
+msgstr[0] "La copie légère de %1 vidéo lourde est prête : la tête de lecture glisse sans saccade."
+msgstr[1] "Les copies légères de %1 vidéos lourdes sont prêtes : la tête de lecture glisse sans saccade."
+
+msgctxt "@info:status"
+msgid "Preparing a light copy of %1 heavy video in the background, for smooth scrubbing…"
+msgid_plural "Preparing light copies of %1 heavy videos in the background, for smooth scrubbing…"
+msgstr[0] "Copie légère de %1 vidéo lourde en préparation, en fond, pour une lecture sans saccade…"
+msgstr[1] "Copies légères de %1 vidéos lourdes en préparation, en fond, pour une lecture sans saccade…"
+
+msgctxt "@info:status"
+msgid "Light copies are waiting: the battery is low."
+msgstr "Les copies légères attendent : la batterie est faible."
+
+msgctxt "@info:status"
+msgid "Light copies are paused: less than %1 GB free on the disk."
+msgstr "Copies légères en pause : il reste moins de %1 Go sur le disque."
+
+msgctxt "@info:status"
+msgid "Light copies are paused: the %1 GB limit is reached by this project."
+msgstr "Copies légères en pause : ce projet atteint le plafond de %1 Go."
+
+msgctxt "@option:check preferences"
+msgid "Light copies of heavy videos, for smooth scrubbing"
+msgstr "Copies légères des vidéos lourdes, pour une lecture sans saccade"
+
+msgctxt "@info preferences, %1 a size in GB"
+msgid "Phone and camera videos (HEVC, 10 bit, 4K) used in a timeline get a small copy, made in the background and paused while you work. At most %1 GB on the disk. The export always uses the original files."
+msgstr "Les vidéos de téléphone et de caméra (HEVC, 10 bits, 4K) posées dans une timeline reçoivent une petite copie, faite en fond et mise en pause pendant que tu travailles. %1 Go au plus sur le disque. L'export prend toujours les fichiers d'origine."
+
+# KoraCut, 4 octobre 2026 : fenêtre « Soutenir KoraCut » et entrées du menu Aide.
+#: src/koracut/koracutsupportdialog.cpp
+msgctxt "@title:window"
+msgid "Support KoraCut"
+msgstr "Soutenir KoraCut"
+
+#: src/koracut/koracutsupportdialog.cpp
+msgctxt "@title"
+msgid "Support KoraCut"
+msgstr "Soutenir KoraCut"
+
+#: src/koracut/koracutsupportdialog.cpp
+msgctxt "@info mot du fondateur, à la première personne"
+msgid "KoraCut is free software, free of charge, and it will stay that way. I build it in Dakar, every day, with no investor and no advertising. If the application is useful to you, you can buy me a coffee: a few dollars, and it moves forward faster."
+msgstr "KoraCut est libre et gratuit, et il le restera. Je le construis à Dakar, tous les jours, sans investisseur ni publicité. Si l'application te rend service, tu peux m'offrir un café : quelques dollars, et elle avance plus vite."
+
+#: src/koracut/koracutsupportdialog.cpp
+msgctxt "@title:group"
+msgid "What your coffee pays for"
+msgstr "Ce que ton café paie"
+
+#: src/koracut/koracutsupportdialog.cpp
+msgctxt "@info ce que le don paie"
+msgid "Development time"
+msgstr "Du temps de développement"
+
+#: src/koracut/koracutsupportdialog.cpp
+msgctxt "@info ce que le don paie"
+msgid "The Windows, Linux and mobile versions"
+msgstr "Les versions Windows, Linux et mobile"
+
+#: src/koracut/koracutsupportdialog.cpp
+msgctxt "@info ce que le don paie"
+msgid "Tests on modest machines"
+msgstr "Des essais sur des machines modestes"
+
+#: src/koracut/koracutsupportdialog.cpp
+msgctxt "@action:button lien vers le site"
+msgid "Other ways to help"
+msgstr "Autres façons d'aider"
+
+#: src/koracut/koracutsupportdialog.cpp
+msgctxt "@action:button ouvre la page de don dans le navigateur"
+msgid "Buy Me a Coffee"
+msgstr "Offrir un café"
+
+#: src/koracut/koracutsupportdialog.cpp
+msgctxt "@action"
+msgid "Support KoraCut…"
+msgstr "Soutenir KoraCut…"
+
+#: src/koracut/koracutsupportdialog.cpp
+msgctxt "@info:tooltip"
+msgid "Why and how to support the project"
+msgstr "Pourquoi et comment soutenir le projet"
+
+#: src/koracut/koracutsupportdialog.cpp
+msgctxt "@action"
+msgid "Give Your Feedback"
+msgstr "Donner ton avis"
+
+#: src/koracut/koracutsupportdialog.cpp
+msgctxt "@info:tooltip"
+msgid "Open the feedback page of koracut.org in the browser"
+msgstr "Ouvrir la page d'avis de koracut.org dans le navigateur"
+
+#: src/mainwindow.cpp
+msgctxt "@action"
+msgid "Report a Defect…"
+msgstr "Signaler un défaut…"
+
+#: src/koracut/koracutfirstrun.cpp
+msgctxt "@title:window first launch"
+msgid "Welcome"
+msgstr "Bienvenue"
+
+#: src/koracut/koracutfirstrun.cpp
+msgctxt "@title first launch"
+msgid "Welcome to KoraCut"
+msgstr "Bienvenue dans KoraCut"
+
+#: src/koracut/koracutfirstrun.cpp
+msgctxt "@info first launch"
+msgid "Pick the shape of your videos, KoraCut sets up the rest."
+msgstr "Choisis le sens de tes vidéos, KoraCut règle le reste."
+
+#: src/koracut/koracutfirstrun.cpp
+msgctxt "@option:check first launch"
+msgid "Show my recent projects when KoraCut opens"
+msgstr "Montrer mes projets récents à l'ouverture de KoraCut"
+
+#: src/koracut/koracutfirstrun.cpp
+msgctxt "@option:check first launch"
+msgid "Open the agents' terminal (Claude Code, Codex…)"
+msgstr "Ouvrir le terminal des agents (Claude Code, Codex…)"
+
+#: src/koracut/koracutfirstrun.cpp
+msgctxt "@label first launch"
+msgid "Your videos are mostly"
+msgstr "Tes vidéos sont surtout"
+
+#: src/koracut/koracutfirstrun.cpp
+msgctxt "@option:radio video shape"
+msgid "Vertical"
+msgstr "Verticales"
+
+#: src/koracut/koracutfirstrun.cpp
+msgctxt "@option:radio video shape"
+msgid "Horizontal"
+msgstr "Horizontales"
+
+#: src/koracut/koracutfirstrun.cpp
+msgctxt "@info uses of a vertical video"
+msgid "Phone, Reels, TikTok, Shorts"
+msgstr "Téléphone, Reels, TikTok, Shorts"
+
+#: src/koracut/koracutfirstrun.cpp
+msgctxt "@info uses of a horizontal video"
+msgid "YouTube, television"
+msgstr "YouTube, télévision"
+
+#: src/koracut/koracutfirstrun.cpp
+msgctxt "@info first launch"
+msgid "Only a starting point: you choose again for every project."
+msgstr "C'est un point de départ : tu choisis de nouveau à chaque projet."
+
+#: src/koracut/koracutfirstrun.cpp
+msgctxt "@action:button first launch"
+msgid "Open a Project…"
+msgstr "Ouvrir un projet…"
+
+#: src/koracut/koracutfirstrun.cpp
+msgctxt "@action:button first launch"
+msgid "Choose a Video Type"
+msgstr "Choisir un type de vidéo"
+
+#: src/koracut/koracutfirstrun.cpp
+msgctxt "@action:button first launch"
+msgid "Start with an Empty Project"
+msgstr "Commencer avec un projet vide"
+
+#: src/koracut/koracutfirstrun.cpp
+msgctxt "@action:button first launch"
+msgid "Start Without Choosing"
+msgstr "Commencer sans rien choisir"
+
+#: src/dialogs/wizard.cpp
+msgctxt "@title:window"
+msgid "Installation check"
+msgstr "Vérification de l'installation"
+
+#: src/dialogs/wizard.cpp
+msgctxt "@title %1 version"
+msgid "KoraCut %1, installation check"
+msgstr "KoraCut %1, vérification de l'installation"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@action:button opens the terminal with the command line agent of your choice"
+msgid "Edit with an Agent"
+msgstr "Monter avec un agent"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info:tooltip"
+msgid "Opens the terminal with your own agent (Claude Code, Codex, Gemini, OpenCode and others) on this project, connected to KoraCut. If your agent is missing, KoraCut offers to install it."
+msgstr "Ouvre le terminal avec ton agent à toi (Claude Code, Codex, Gemini, OpenCode et d'autres) sur ce projet, branché sur KoraCut. Si ton agent manque, KoraCut propose de l'installer."
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info"
+msgid "The agents are starting. Send your request again in a few seconds."
+msgstr "Les agents démarrent. Renvoie ta demande dans quelques secondes."
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info"
+msgid "No AI is connected yet, so nobody can answer here. Two ways to edit with an AI:"
+msgstr "Aucune IA n'est encore connectée, personne ne peut donc répondre ici. Deux façons de monter avec une IA :"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@title"
+msgid "Connect an AI to edit with you"
+msgstr "Connecte une IA pour monter avec toi"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@title first way to edit with an AI"
+msgid "1. In the KoraCut chat, with your key"
+msgstr "1. Dans le chat de KoraCut, avec ta clé"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info"
+msgid "Add the API key of your provider (Anthropic, OpenAI, Gemini, a local model and others). Then write here."
+msgstr "Ajoute la clé API de ton fournisseur (Anthropic, OpenAI, Gemini, un modèle local et d'autres). Puis écris ici."
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info"
+msgid "Add the API key of your provider. On this computer the chat cannot answer yet: the agents service is not part of this version. For now, use the second way."
+msgstr "Ajoute la clé API de ton fournisseur. Sur cet ordinateur, le chat ne peut pas encore répondre : le service des agents ne fait pas partie de cette version. Pour l'instant, passe par la deuxième façon."
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@title second way to edit with an AI"
+msgid "2. With your agent in the terminal"
+msgstr "2. Avec ton agent en terminal"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info"
+msgid "Claude Code, Codex, Gemini, OpenCode and others, with your own account. The agent works in the KoraCut terminal and edits in this timeline, in front of you. You write your requests there."
+msgstr "Claude Code, Codex, Gemini, OpenCode et d'autres, avec ton compte à toi. L'agent travaille dans le terminal de KoraCut et monte dans cette timeline, sous tes yeux. C'est là que tu écris tes demandes."
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info:placeholder"
+msgid "Write your request. No AI is connected yet: KoraCut will show you how to connect one."
+msgstr "Écris ta demande. Aucune IA n'est encore connectée : KoraCut te montrera comment en connecter une."
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@action"
+msgid "Edit with an Agent"
+msgstr "Monter avec un agent"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info:tooltip"
+msgid "Prepares the project and launches your agent (Claude Code, Codex, Gemini, OpenCode and others) in the KoraCut terminal, connected to KoraCut, with your own account"
+msgstr "Prépare le projet et lance ton agent (Claude Code, Codex, Gemini, OpenCode et d'autres) dans le terminal de KoraCut, branché sur KoraCut, avec ton compte à toi"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info:tooltip"
+msgid "Launches your agent here (Claude Code, Codex, Gemini, OpenCode and others), connected to KoraCut, or lets you choose one. KoraCut prepares the project and offers to install a missing agent. You sign in with your own account."
+msgstr "Lance ton agent ici (Claude Code, Codex, Gemini, OpenCode et d'autres), branché sur KoraCut, ou te laisse en choisir un. KoraCut prépare le projet et propose d'installer un agent qui manque. Tu te connectes avec ton compte à toi."
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info:tooltip"
+msgid "Where the terminal sits: beside the timeline, below, above, or with the Agents panel"
+msgstr "La place du terminal : à côté de la timeline, dessous, dessus, ou avec le panneau Agents"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@action:inmenu terminal place"
+msgid "Right of the Timeline"
+msgstr "À droite de la timeline"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@action:inmenu terminal place"
+msgid "Left of the Timeline"
+msgstr "À gauche de la timeline"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@action:inmenu terminal place"
+msgid "Below the Timeline"
+msgstr "Sous la timeline"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@action:inmenu terminal place"
+msgid "Above the Timeline"
+msgstr "Au-dessus de la timeline"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@action:inmenu terminal place"
+msgid "With the Agents Panel"
+msgstr "Avec le panneau Agents"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info first way to edit with an AI, in the terminal chooser"
+msgid "<b>1. In the KoraCut chat, with your key.</b> You add the API key of your provider, then you write in the Agents panel."
+msgstr "<b>1. Dans le chat de KoraCut, avec ta clé.</b> Tu ajoutes la clé API de ton fournisseur, puis tu écris dans le panneau Agents."
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info second way to edit with an AI, in the terminal chooser"
+msgid "<b>2. With your agent in the terminal.</b> A command line agent works here, with your own account, and edits in the KoraCut timeline while you watch. KoraCut writes its instructions in the project folder and connects it to the application. Nothing is installed without your click."
+msgstr "<b>2. Avec ton agent en terminal.</b> Un agent en ligne de commande travaille ici, avec ton compte à toi, et monte dans la timeline de KoraCut pendant que tu regardes. KoraCut écrit ses consignes dans le dossier du projet et le branche sur l'application. Rien ne s'installe sans ton clic."
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@action:button opens the official Node.js download page"
+msgid "Node.js Website"
+msgstr "Site de Node.js"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@action:button the click was taken, the terminal is opening"
+msgid "Opening the terminal…"
+msgstr "Ouverture du terminal…"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info agent state"
+msgid "Installing…"
+msgstr "Installation…"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info agent state"
+msgid "Installation failed"
+msgstr "Installation ratée"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@action:button %1 agent name"
+msgid "Installing %1…"
+msgstr "Installation de %1…"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@action:button %1 agent name"
+msgid "Install Node.js, then %1"
+msgstr "Installer Node.js, puis %1"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@action:button %1 agent name"
+msgid "Try Again to Install %1"
+msgstr "Réessayer d'installer %1"
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info"
+msgid "This agent needs Node.js, which is not on this computer. KoraCut installs it first, in the terminal, after asking you (official nodejs.org build, in your home folder, no password)."
+msgstr "Cet agent a besoin de Node.js, qui n'est pas sur cet ordinateur. KoraCut l'installe d'abord, dans le terminal, après t'avoir demandé (version officielle de nodejs.org, dans ton dossier personnel, sans mot de passe)."
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info"
+msgid "This agent installs with Homebrew, which is not on this computer. Install Homebrew (brew.sh) first, or pick another agent."
+msgstr "Cet agent s'installe avec Homebrew, qui n'est pas sur cet ordinateur. Installe d'abord Homebrew (brew.sh), ou choisis un autre agent."
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info %1 agent name"
+msgid "%1 is being installed in its terminal tab. Follow it there."
+msgstr "%1 s'installe dans son onglet du terminal. Suis-le là-bas."
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info %1 agent name"
+msgid "%1 is installed."
+msgstr "%1 est installé."
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info %1 agent name"
+msgid "The installation of %1 failed. The reason is in its terminal tab."
+msgstr "L'installation de %1 a échoué. La raison est dans son onglet du terminal."
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info %1 agent name, %2 short reason"
+msgid "The installation of %1 failed (%2). The details are in its terminal tab."
+msgstr "L'installation de %1 a échoué (%2). Le détail est dans son onglet du terminal."
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info %1 agent name"
+msgid "The installation of %1 was cancelled. Nothing was installed."
+msgstr "L'installation de %1 a été annulée. Rien n'a été installé."
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info line in the terminal after Claude Code exits; keep the button name as translated"
+msgid "Claude Code has stopped. To start it again connected to KoraCut, click “Edit with an Agent”."
+msgstr "Claude Code s'est arrêté. Pour le relancer branché sur KoraCut, clique sur « Monter avec un agent »."
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info %1 agent name"
+msgid "%1 is not installed yet. Install it from the KoraCut terminal panel (Edit with an Agent), then come back."
+msgstr "%1 n'est pas encore installé. Installe-le depuis le panneau Terminal de KoraCut (Monter avec un agent), puis reviens."
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info"
+msgid "The system terminal is open on this project."
+msgstr "Le terminal du système est ouvert sur ce projet."
+
+#: src/koracut (document 18, 4 octobre 2026)
+msgctxt "@info first message sent to a command line agent launched in the KoraCut terminal; keep koracut and koracut-ctl as is"
+msgid "You edit INSIDE KoraCut, the editing application open on this computer: every action goes through the koracut tools (MCP) or the koracut-ctl command, never through ffmpeg, melt, a script or another program, and you never write a video file yourself. Read the KoraCut instructions of this folder, look at the open project (projet info, medias lister, timeline etat), then tell me in a few lines what you understand of the video to edit and propose the first step. Do not change anything yet."
+msgstr "Tu montes DANS KoraCut, l'application de montage ouverte sur cet ordinateur : chaque geste passe par les outils koracut (MCP) ou par la commande koracut-ctl, jamais par ffmpeg, melt, un script ou un autre logiciel, et tu n'écris jamais une vidéo toi-même. Lis les consignes KoraCut de ce dossier, regarde le projet ouvert (projet info, medias lister, timeline etat), puis dis-moi en quelques lignes ce que tu comprends de la vidéo à monter et propose la première étape. Ne change rien pour l'instant."
+
+#: src/koracut/export/koracutdeliverpage.cpp
+msgctxt "@info written in the metadata of every exported file; no quotes nor apostrophes"
+msgid "Made with KoraCut, the free and open source editing app. koracut.org"
+msgstr "Monté avec KoraCut, application de montage libre et gratuite. koracut.org"
+
+#: src/koracut/export/koracutdeliverpage.cpp
+msgctxt "@info text ready to paste on a social network after an export, %1 is the link"
+msgid "I edited this video with KoraCut, a free and open source editing app. You can plug your own AI model or agent into it, or edit by hand. %1 #KoraCut"
+msgstr "J'ai monté cette vidéo avec KoraCut, une application de montage libre et gratuite. On y branche son propre modèle d'IA ou son propre agent, ou on monte à la main. %1 #KoraCut"
+
+#: src/koracut/export/koracutdeliverpage.cpp
+msgctxt "@title:window"
+msgid "Share your video"
+msgstr "Partager ta vidéo"
+
+#: src/koracut/export/koracutdeliverpage.cpp
+msgctxt "@title"
+msgid "Your video is ready"
+msgstr "Ta vidéo est prête"
+
+#: src/koracut/export/koracutdeliverpage.cpp
+msgctxt "@info"
+msgid "If KoraCut helped you, say it where your video goes: a line in the description, a comment, a message to a friend. It is the best help you can give to a free app. The text below is yours to change."
+msgstr "Si KoraCut t'a aidé, dis-le là où va ta vidéo : une ligne dans la description, un commentaire, un message à un ami. C'est la meilleure aide qu'on puisse donner à une application gratuite. Le texte ci-dessous est à toi, change-le."
+
+#: src/koracut/export/koracutdeliverpage.cpp
+msgctxt "@action:button"
+msgid "Copy the text"
+msgstr "Copier le texte"
+
+#: src/koracut/export/koracutdeliverpage.cpp
+msgctxt "@action:button after copying"
+msgid "Copied"
+msgstr "Copié"
+
+#: src/koracut/export/koracutdeliverpage.cpp
+msgctxt "@action:button"
+msgid "Copy the link"
+msgstr "Copier le lien"
+
+#: src/koracut/export/koracutdeliverpage.cpp
+msgctxt "@action:button share the exported video"
+msgid "Share"
+msgstr "Partager"
+
+#: src/koracut/export/koracutdeliverpage.cpp
+msgctxt "@info:tooltip"
+msgid "A text ready to paste where your video goes, with the KoraCut link."
+msgstr "Un texte prêt à coller là où va ta vidéo, avec le lien KoraCut."
+
+#: src/koracut/export/koracutdeliverpage.cpp
+msgctxt "@option:check"
+msgid "Write “Made with KoraCut, koracut.org” in the file's information"
+msgstr "Écrire « Monté avec KoraCut, koracut.org » dans les informations du fichier"
+
+#: src/koracut/export/koracutdeliverpage.cpp
+msgctxt "@info:tooltip"
+msgid "A line in the file's metadata (the comment field), never on the image. It helps people discover KoraCut. Uncheck it for a client who wants nothing of the kind."
+msgstr "Une ligne dans les métadonnées du fichier (le champ commentaire), jamais sur l'image. Elle aide les gens à découvrir KoraCut. Décoche-la pour un client qui n'en veut pas."

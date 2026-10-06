@@ -16,7 +16,9 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "timeline2/model/timelineitemmodel.hpp"
 #include "renderpresets/renderpresetrepository.hpp"
 
+#include <KConfigGroup>
 #include <KLocalizedString>
+#include <KSharedConfig>
 
 #include <QDate>
 #include <QDateTime>
@@ -278,6 +280,37 @@ double Settings::estimatedKbps(const QSize &sequence, double fps) const
     return kbps;
 }
 
+bool signatureEnabled()
+{
+    return KSharedConfig::openConfig()->group(QStringLiteral("KoraCut")).readEntry("exportSignature", true);
+}
+
+void setSignatureEnabled(bool on)
+{
+    KConfigGroup g = KSharedConfig::openConfig()->group(QStringLiteral("KoraCut"));
+    g.writeEntry("exportSignature", on);
+    g.sync();
+}
+
+QString signatureText()
+{
+    return i18nc("@info written in the metadata of every exported file; no quotes nor apostrophes",
+                 "Made with KoraCut, the free and open source editing app. koracut.org");
+}
+
+QString shareLink()
+{
+    return QStringLiteral("https://koracut.org/?utm_source=app&utm_medium=partage&utm_campaign=export");
+}
+
+QString shareText()
+{
+    return i18nc("@info text ready to paste on a social network after an export, %1 is the link",
+                 "I edited this video with KoraCut, a free and open source editing app. You can plug your own AI model or agent into it, "
+                 "or edit by hand. %1 #KoraCut",
+                 shareLink());
+}
+
 RenderPresetParams Settings::params(const QSize &sequence, double fps) const
 {
     RenderPresetParams p;
@@ -289,6 +322,10 @@ RenderPresetParams Settings::params(const QSize &sequence, double fps) const
     if (ext == QLatin1String("mp4") || ext == QLatin1String("mov") || ext == QLatin1String("m4a")) {
         // Le fichier se lit avant d'être téléchargé en entier (« Optimisation du réseau » de Resolve).
         p.insert(QStringLiteral("movflags"), QStringLiteral("+faststart"));
+    }
+    if (signatureEnabled()) {
+        // Une ligne dans les informations du fichier, jamais sur l'image : c'est ainsi que KoraCut se fait connaître.
+        p.insert(QStringLiteral("meta.attr.comment.markup"), signatureText());
     }
     const bool withVideo = video && !videoCodec.isEmpty() && ext != QLatin1String("wav") && ext != QLatin1String("m4a") && ext != QLatin1String("mp3");
     if (!withVideo) {

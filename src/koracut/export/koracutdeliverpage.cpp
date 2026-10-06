@@ -21,7 +21,11 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QApplication>
 #include <QButtonGroup>
 #include <QCheckBox>
+#include <QClipboard>
 #include <QComboBox>
+#include <QDialog>
+#include <QGuiApplication>
+#include <QPlainTextEdit>
 #include <QDesktopServices>
 #include <QDir>
 #include <QDoubleSpinBox>
@@ -105,6 +109,63 @@ void reveal(const QString &path)
     // Le fichier montré dans son dossier, sur les trois systèmes : le Finder, l'Explorateur
     // (explorer /select) ou le gestionnaire de fichiers du bureau Linux (FileManager1).
     KIO::highlightInFileManager({QUrl::fromLocalFile(path)});
+}
+
+QLabel *secondary(const QString &text, QWidget *parent);
+
+// La petite fenêtre « Partager » d'un export fini : un texte prêt à coller, le lien mesuré par
+// l'admin de koracut.org, et le fichier à portée de main. Non modale : on la laisse ouverte et on
+// revient à la file. C'est le geste qui fait connaître KoraCut, une vidéo à la fois.
+QDialog *showShareDialog(const QString &path, QWidget *parent)
+{
+    auto *d = new QDialog(parent);
+    d->setAttribute(Qt::WA_DeleteOnClose);
+    d->setObjectName(QStringLiteral("koracutShareDialog"));
+    d->setWindowTitle(i18nc("@title:window", "Share your video"));
+    d->setMinimumWidth(460);
+    auto *lay = new QVBoxLayout(d);
+    lay->setContentsMargins(16, 16, 16, 16);
+    lay->setSpacing(10);
+    auto *title = new QLabel(i18nc("@title", "Your video is ready"), d);
+    QFont tf = title->font();
+    tf.setPixelSize(KoraCutMetrics::FontTitle + 3);
+    tf.setWeight(QFont::DemiBold);
+    title->setFont(tf);
+    lay->addWidget(title);
+    lay->addWidget(secondary(i18nc("@info", "If KoraCut helped you, say it where your video goes: a line in the description, a comment, a message to a friend. "
+                                            "It is the best help you can give to a free app. The text below is yours to change."),
+                             d));
+    auto *text = new QPlainTextEdit(shareText(), d);
+    text->setMinimumHeight(96);
+    text->setMaximumHeight(140);
+    lay->addWidget(text);
+    auto *fileLabel = secondary(QFileInfo(path).fileName(), d);
+    fileLabel->setToolTip(path);
+    lay->addWidget(fileLabel);
+    auto *row = new QHBoxLayout();
+    row->setSpacing(KoraCutMetrics::SpaceTight);
+    auto *copyText = new QPushButton(i18nc("@action:button", "Copy the text"), d);
+    copyText->setDefault(true);
+    QObject::connect(copyText, &QPushButton::clicked, d, [text, copyText]() {
+        QGuiApplication::clipboard()->setText(text->toPlainText());
+        copyText->setText(i18nc("@action:button after copying", "Copied"));
+        QTimer::singleShot(1500, copyText, [copyText]() { copyText->setText(i18nc("@action:button", "Copy the text")); });
+    });
+    auto *copyLink = new QPushButton(i18nc("@action:button", "Copy the link"), d);
+    QObject::connect(copyLink, &QPushButton::clicked, d, []() { QGuiApplication::clipboard()->setText(shareLink()); });
+    auto *folder = new QPushButton(i18nc("@action:button", "Show in folder"), d);
+    QObject::connect(folder, &QPushButton::clicked, d, [path]() { reveal(path); });
+    auto *close = new QPushButton(i18nc("@action:button", "Close"), d);
+    QObject::connect(close, &QPushButton::clicked, d, &QDialog::close);
+    for (QPushButton *b : {copyText, copyLink, folder}) {
+        b->setCursor(Qt::PointingHandCursor);
+        row->addWidget(b);
+    }
+    row->addStretch(1);
+    row->addWidget(close);
+    lay->addLayout(row);
+    d->show();
+    return d;
 }
 
 QLabel *secondary(const QString &text, QWidget *parent)
@@ -257,6 +318,12 @@ public:
                     QDesktopServices::openUrl(QUrl::fromLocalFile(j->path));
                 }
             });
+            button(i18nc("@action:button share the exported video", "Share"),
+                   i18nc("@info:tooltip", "A text ready to paste where your video goes, with the KoraCut link."), [weak, this]() {
+                       if (auto j = weak.lock()) {
+                           showShareDialog(j->path, window());
+                       }
+                   });
         } else {
             button(i18nc("@action:button render again", "Retry"), i18nc("@info:tooltip", "Render this file again with the same settings."), [weak]() {
                 if (auto j = weak.lock()) {
@@ -1064,6 +1131,12 @@ QWidget *KoraCutExportSettingsPanel::fileTab()
         g.sync();
     });
     f->addRow(QString(), m_reveal);
+    m_signature = new QCheckBox(i18nc("@option:check", "Write “Made with KoraCut, koracut.org” in the file's information"), w);
+    m_signature->setToolTip(i18nc("@info:tooltip", "A line in the file's metadata (the comment field), never on the image. "
+                                                   "It helps people discover KoraCut. Uncheck it for a client who wants nothing of the kind."));
+    m_signature->setChecked(signatureEnabled());
+    connect(m_signature, &QCheckBox::toggled, this, [](bool on) { setSignatureEnabled(on); });
+    f->addRow(QString(), m_signature);
     return w;
 }
 
@@ -1460,6 +1533,23 @@ void KoraCutDeliverPage::shotAction(const QString &command)
         page->setSettings(Settings::fromJson(o), false);
     } else if (key == QLatin1String("recharger")) {
         page->reload();
+    } else if (key == QLatin1String("partager")) {
+        // « livraison:partager[=<fichier>] » : la fenêtre Partager, sur ce fichier ou sur le dernier export fini.
+        QString path = value;
+        if (path.isEmpty()) {
+            for (const auto &j : KoraCutExportQueue::self().jobs()) {
+                if (j->state == QLatin1String("termine")) {
+                    path = j->path;
+                }
+            }
+        }
+        QDialog *d = showShareDialog(path.isEmpty() ? QStringLiteral("export.mp4") : path, page->m_queue ? page->m_queue->window() : nullptr);
+        const QString shot = qEnvironmentVariable("KORACUT_SHOT");
+        if (!shot.isEmpty()) {
+            // La fenêtre est à part : on la capture elle-même, dans <capture>-partager.png.
+            QTimer::singleShot(400, d, [d, shot]() { d->grab().save(QFileInfo(shot).path() + QLatin1Char('/') + QFileInfo(shot).completeBaseName() + QStringLiteral("-partager.png")); });
+        }
+        qWarning().noquote() << "KORACUT-LIVRAISON partager" << shareText();
     }
     // Chaque réponse : les réglages courants et l'état de la file, une ligne chacun.
     qWarning().noquote() << "KORACUT-LIVRAISON reglages" << QString::fromUtf8(QJsonDocument(page->m_settings.toJson()).toJson(QJsonDocument::Compact));

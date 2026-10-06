@@ -123,6 +123,16 @@ QString modelForVideoType(const QString &typeId, const QSize &sequence);
 QString modelForSize(const QSize &sequence);
 /** @brief Vrai si le modèle vise ce rapport d'image (ou n'en vise aucun). */
 bool modelFits(const Model &m, const QSize &sequence);
+/** @brief « Monté avec KoraCut » dans les métadonnées (commentaire) de chaque fichier exporté.
+ *  Réglage koracutrc [KoraCut] exportSignature, oui par défaut. Rien n'est dessiné sur l'image. */
+bool signatureEnabled();
+void setSignatureEnabled(bool on);
+/** @brief Le texte de la signature, dans la langue de l'interface, sans guillemets ni apostrophe (il traverse les arguments du rendu). */
+QString signatureText();
+/** @brief Le lien vers koracut.org marqué « partagé depuis l'application », mesuré par l'admin. */
+QString shareLink();
+/** @brief Le texte prêt à coller sur un réseau après un export (le lien compris). */
+QString shareText();
 
 /** @brief Les réglages gardés dans le projet pour cette séquence (uuid), sinon ceux du type, sinon ceux du format. */
 Settings documentSettings(const QString &sequenceUuid, const QSize &sequence, double fps);

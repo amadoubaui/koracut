@@ -87,6 +87,14 @@ TEST_CASE("Module Export : les modèles et leurs réglages", "[KoraCutExport]")
         CHECK(p.value(QStringLiteral("acodec")) == QStringLiteral("aac"));
         CHECK(p.value(QStringLiteral("movflags")) == QStringLiteral("+faststart"));
         CHECK_FALSE(p.contains(QStringLiteral("width")));
+        // La signature « Monté avec KoraCut » : dans le commentaire du fichier par défaut, retirable d'un réglage.
+        CHECK(p.value(QStringLiteral("meta.attr.comment.markup")).contains(QStringLiteral("KoraCut")));
+        CHECK_FALSE(p.value(QStringLiteral("meta.attr.comment.markup")).contains(QLatin1Char('"')));
+        setSignatureEnabled(false);
+        CHECK_FALSE(s.params(hd, 25.).contains(QStringLiteral("meta.attr.comment.markup")));
+        setSignatureEnabled(true);
+        CHECK(shareText().contains(shareLink()));
+        CHECK(shareLink().startsWith(QStringLiteral("https://koracut.org/?utm_source=app")));
         s.width = 1280;
         s.height = 720;
         p = s.params(hd, 25.);

@@ -171,6 +171,7 @@ private:
     QLabel *m_peak{nullptr};
     // Fichier
     QCheckBox *m_reveal{nullptr};
+    QCheckBox *m_signature{nullptr};
     // Bas
     QLabel *m_estimate{nullptr};
     QLabel *m_warnings{nullptr};
