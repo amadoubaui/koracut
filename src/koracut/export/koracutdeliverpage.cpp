@@ -512,11 +512,25 @@ KoraCutDeliverPage::KoraCutDeliverPage(QWidget *window, KoraCutExportTiles *tile
     connect(settings, &KoraCutExportSettingsPanel::edited, this, [this]() { setSettings(m_panel->read(), true); });
     connect(settings, &KoraCutExportSettingsPanel::addToQueue, this, [this]() { render(true); });
     connect(settings, &KoraCutExportSettingsPanel::renderNow, this, [this]() { render(false); });
-    connect(&KoraCutExportQueue::self(), &KoraCutExportQueue::jobFinished, this, [](const QString &id, const QString &state) {
-        if (state == QLatin1String("termine") && revealAtEnd()) {
-            if (auto j = KoraCutExportQueue::self().find(id)) {
-                reveal(j->path);
-            }
+    connect(&KoraCutExportQueue::self(), &KoraCutExportQueue::jobFinished, this, [this](const QString &id, const QString &state) {
+        if (state != QLatin1String("termine")) {
+            return;
+        }
+        auto j = KoraCutExportQueue::self().find(id);
+        if (!j) {
+            return;
+        }
+        if (revealAtEnd()) {
+            reveal(j->path);
+        }
+        // Le tout premier export réussi d'une personne : la fenêtre Partager se propose une fois, d'elle-même,
+        // puis plus jamais (le bouton reste). Pas pendant un export piloté par la porte ou une capture.
+        KConfigGroup g = KSharedConfig::openConfig()->group(QStringLiteral("KoraCut"));
+        const bool sansFenetre = qApp->property("koracut_sans_fenetre").toBool() || !qEnvironmentVariable("KORACUT_SHOT").isEmpty();
+        if (!sansFenetre && !g.readEntry("exportPartagePropose", false)) {
+            g.writeEntry("exportPartagePropose", true);
+            g.sync();
+            showShareDialog(j->path, m_queue ? m_queue->window() : nullptr);
         }
     });
     // Le projet ou la séquence change : on relit ses réglages. Une comparaison d'identifiant, seulement
