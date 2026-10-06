@@ -11,9 +11,13 @@ KoraCut (montage vidéo, PIXEWORK) ouvre une porte de commande locale quand elle
 
 **`koracut-ctl`** (dans le terminal) : `koracut-ctl <famille> <methode> clef=valeur …`. Une valeur qui se lit en JSON (nombre, `true`, `[liste]`, `{objet}`) le reste, sinon c'est une chaîne. `--json` compacte la sortie, `--aide [famille]` liste tout avec les paramètres. Code de retour 0 ok, 1 erreur (le JSON de l'erreur sur stderr), 2 aucune KoraCut ouverte. Si le terminal a été ouvert par KoraCut, `KORACUT_PORTE` désigne déjà la bonne instance ; sinon, avec plusieurs KoraCut ouvertes, `--reglage <nom>` choisit (le nom est dans `porte.json`).
 
-**Le serveur MCP `koracut`** : un outil par méthode, `koracut_<famille>_<methode>` (`koracut_timeline_etat`, `koracut_medias_importer`…), mêmes paramètres, même réponse. Les ressources `koracut://projet`, `koracut://timeline`, `koracut://medias`, `koracut://actions` donnent l'état. Si l'outil n'est pas là : `claude mcp add koracut -- node "<KoraCut>/Agents in-app/mcp/dist/main.js"`.
+**Le serveur MCP `koracut`** : un outil par méthode, `koracut_<famille>_<methode>` (`koracut_timeline_etat`, `koracut_medias_importer`…), mêmes paramètres, même réponse. Les ressources `koracut://projet`, `koracut://timeline`, `koracut://medias`, `koracut://actions` donnent l'état. Le serveur est livré avec l'application, sans Node : c'est `koracut-ctl mcp` (stdio). Si l'outil n'est pas là : `claude mcp add koracut -- koracut-ctl mcp` (chemin complet de `koracut-ctl` hors du terminal de KoraCut).
 
 Les deux parlent à la même porte ; ci-dessous les commandes sont écrites pour `koracut-ctl`, l'outil MCP se déduit.
+
+## La règle qui passe avant tout
+
+**Tu montes DANS KoraCut.** Chaque geste passe par les outils `koracut` (MCP) ou par `koracut-ctl`. Tu n'utilises jamais ffmpeg, melt, un script Python ou un autre logiciel pour fabriquer la vidéo, et tu n'écris jamais une vidéo toi-même dans un dossier. Le résultat est la timeline du projet ouvert ; l'export se fait par `export lancer`, quand la personne le demande. Si un outil manque ou échoue, tu t'arrêtes et tu le dis. Dans le terminal de KoraCut, `ffmpeg` et `melt` refusent de s'exécuter : c'est voulu, ne cherche pas un autre chemin. Si `koracut-ctl` répond `porte_fermee` alors que KoraCut est ouverte, tu es sans doute dans un bac à sable (Codex) qui coupe l'accès à l'application : passe par les outils MCP, qui tournent hors du bac à sable.
 
 ## Les conventions
 
@@ -41,7 +45,7 @@ Les deux parlent à la même porte ; ci-dessous les commandes sont écrites pour
 | `historique` | annuler | `historique lister`, `historique annuler`, `historique refaire`, `historique tour faire=debut|fin|abandon titre=…` |
 | `theme` | l'apparence de KoraCut, tout de suite | `theme lister`, `theme appliquer nom=clair` (ou `sombre`, `systeme`, `matrix`, `spider-man`, `precedent`), `theme creer nom='Kora nuit' couleurs='{"fond": "#0E0B1F", "accent": "#FF5A1F"}'` (contraste vérifié et corrigé, lis `corrections`), `theme modifier couleurs='{"accent": "#FF5A1F"}'`, `theme supprimer nom=…` (à confirmation) |
 | `reglages` | les réglages sûrs de l'application | `reglages lister section=timeline`, `reglages lire cle=autosave_time`, `reglages ecrire cle=snaptopoints valeur=false` (rend `avant` pour revenir) ; compétence `koracut-reglages-et-themes` |
-| `terminal` | le terminal de KoraCut, pour confier le montage à un agent qui y tourne | `terminal ouvrir` (lance Claude Code dans le projet), `terminal etat historique=60` (écran, `agent_travaille`, `question_ouverte`), `terminal ecrire --params '{"texte": "Retour : …"}'` (à confirmation), `terminal touche touche=echap` |
+| `terminal` | le terminal de KoraCut, pour confier le montage à un agent qui y tourne | `terminal ouvrir` (lance Claude Code dans le projet, `agent=<id>` pour un autre agent), `terminal etat historique=60` (écran, `agent_travaille`, `question_ouverte`), `terminal ecrire --params '{"texte": "Retour : …"}'` (à confirmation), `terminal touche touche=echap` |
 | `evenements` | recevoir sans demander | `evenements abonner types='["tete", "selection", "journal", "projet", "timeline", "taches", "fenetre"]' --suivre` |
 
 `koracut-ctl --aide` donne chaque méthode avec ses paramètres, tels que KoraCut les annonce.
