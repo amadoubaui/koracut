@@ -787,6 +787,11 @@ void KoraCutVoiceOver::start(const QString &python, const QJsonObject &job)
     if (!env.contains(QStringLiteral("HF_HUB_CACHE")) && !env.contains(QStringLiteral("HF_HOME"))) {
         env.insert(QStringLiteral("HF_HOME"), QDir::homePath() + QStringLiteral("/.cache/huggingface"));
     }
+    // Python parle UTF-8 dans les deux sens, quel que soit le système : sous Windows, son entrée et sa sortie
+    // suivent sinon la page de code (cp1252), et tout texte accentué arrive abîmé ou fait échouer le script
+    // (« Aucune prise n'a été produite », vu sur la compilation Windows du 11 octobre 2026).
+    env.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
+    env.insert(QStringLiteral("PYTHONIOENCODING"), QStringLiteral("utf-8"));
     m_process->setProcessEnvironment(env);
     connect(m_process, &QProcess::readyReadStandardOutput, this, [this]() {
         m_buffer += m_process->readAllStandardOutput();

@@ -24,6 +24,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QNetworkReply>
 #include <QSaveFile>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QStandardPaths>
 
 #include <algorithm>
@@ -262,6 +263,14 @@ void KoraCutTranscriber::next()
     m_output.clear();
     m_process = new QProcess(this);
     m_process->setProcessChannelMode(QProcess::SeparateChannels);
+    {
+        // Python en UTF-8 sur les trois systèmes : sous Windows, sa sortie suit sinon la page de code et les
+        // mots accentués de la transcription arrivent abîmés (même défaut que la voix off, 11 octobre 2026).
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        env.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
+        env.insert(QStringLiteral("PYTHONIOENCODING"), QStringLiteral("utf-8"));
+        m_process->setProcessEnvironment(env);
+    }
     connect(m_process, &QProcess::readyReadStandardOutput, this, [this]() { m_output += m_process->readAllStandardOutput(); });
     connect(m_process, &QProcess::finished, this, [this, job](int code, QProcess::ExitStatus status) {
         m_output += m_process->readAllStandardOutput();
