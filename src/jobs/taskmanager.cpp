@@ -226,9 +226,18 @@ void TaskManager::taskDone(int cid, AbstractTask *task)
         return;
     }
     m_tasksListLock.lockForWrite();
+    // KoraCut (11 octobre 2026) : une tâche n'a qu'un seul fossoyeur. Qui la retire de la liste la détruit.
+    // discardJobs, discardJob et slotCancelJobs retirent une tâche annulée de la liste, attendent la fin de
+    // run() puis appellent deleteLater() ; si nous faisions de même ici, la tâche pouvait déjà être détruite
+    // par le fil principal quand ce fil-ci y touchait (plantage d'un lancement de koracutanimationtest sur
+    // sept, quand un clip est rechargé deux fois de suite). Absente de la liste : elle n'est plus à nous.
+    bool ours = false;
     if (!m_taskList.empty() && m_taskList.find(cid) != m_taskList.end()) {
-        m_taskList[cid].erase(std::remove(m_taskList[cid].begin(), m_taskList[cid].end(), task), m_taskList[cid].end());
-        if (m_taskList[cid].size() == 0) {
+        auto &tasks = m_taskList[cid];
+        const auto it = std::remove(tasks.begin(), tasks.end(), task);
+        ours = it != tasks.end();
+        tasks.erase(it, tasks.end());
+        if (tasks.size() == 0) {
             m_taskList.erase(cid);
         }
     }
@@ -239,7 +248,9 @@ void TaskManager::taskDone(int cid, AbstractTask *task)
     m_tasksListLock.unlock();
     // Set jobs count
     Q_EMIT jobCount(count);
-    task->deleteLater();
+    if (ours) {
+        task->deleteLater();
+    }
 }
 
 void TaskManager::slotCancelJobs(bool leaveBlocked, const QVector<AbstractTask::JOBTYPE> exceptions)
