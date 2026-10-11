@@ -275,7 +275,7 @@ TEST_CASE("Outils d'agent, lot A : titre, transition, effets, images clés, tran
                              {{QStringLiteral("clip_id"), c}, {QStringLiteral("effet_index"), 0}, {QStringLiteral("parametre"), QStringLiteral("zoom")}, {QStringLiteral("position_dans_clip"), 5}, {QStringLiteral("valeur"), QStringLiteral("1")}})) ==
               QStringLiteral("entree_invalide"));
         r = call(timeline, QStringLiteral("poser_keyframe"),
-                 {{QStringLiteral("clip_id"), c}, {QStringLiteral("effet_index"), 0}, {QStringLiteral("parametre"), QStringLiteral("rect")}, {QStringLiteral("position_dans_clip"), 39}, {QStringLiteral("valeur"), QStringLiteral("x")}, {QStringLiteral("supprimer"), true}});
+                 {{QStringLiteral("clip_id"), c}, {QStringLiteral("effet_index"), 0}, {QStringLiteral("parametre"), QStringLiteral("rect")}, {QStringLiteral("position_dans_clip"), 39}, {QStringLiteral("supprimer"), true}});
         REQUIRE(r.value(QStringLiteral("ok")).toBool());
         CHECK(r.value(QStringLiteral("keyframes")).toArray().size() == 1);
         CHECK(errorCode(call(timeline, QStringLiteral("poser_keyframe"),

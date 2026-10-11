@@ -791,16 +791,24 @@ QJsonObject ajouterClip(const Timeline &timeline, const Args &args)
         return error(QStringLiteral("entree_invalide"), QStringLiteral("partie vaut « video_et_audio », « video » ou « audio »."));
     }
     if (args.contains(QStringLiteral("entree")) || args.contains(QStringLiteral("sortie"))) {
-        const int in = args.contains(QStringLiteral("entree")) ? KoraCutAgentTools::parseTime(args.value(QStringLiteral("entree")), projectFps()) : 0;
-        const int out = KoraCutAgentTools::parseTime(args.value(QStringLiteral("sortie")), projectFps());
-        if (in < 0 || out <= in) {
-            return error(QStringLiteral("entree_invalide"), QStringLiteral("Il faut entree et sortie, avec sortie strictement après entree."));
-        }
-        // Au-delà de la fin du média : le dire avec sa durée (avant le 1er octobre 2026, la pose échouait
-        // et répondait place_occupee, un message faux). Une image, un titre ou une couleur n'ont pas de fin.
+        // Une image, un titre ou une couleur n'ont pas de fin.
         const std::shared_ptr<ProjectClip> media = pCore->projectItemModel()->getClipByBinID(mediaId);
         const int mediaLength = media ? int(media->frameDuration()) : 0;
-        if (media && media->hasLimitedDuration() && mediaLength > 0 && out > mediaLength) {
+        const bool limited = media && media->hasLimitedDuration() && mediaLength > 0;
+        // L'un sans l'autre (11 octobre 2026) : sortie seule part du début du média, entree seule va jusqu'à sa fin.
+        const int in = args.contains(QStringLiteral("entree")) ? KoraCutAgentTools::parseTime(args.value(QStringLiteral("entree")), projectFps()) : 0;
+        if (!args.contains(QStringLiteral("sortie")) && !limited) {
+            return error(QStringLiteral("entree_invalide"), QStringLiteral("Ce média n'a pas de fin : entree seule ne dit pas où s'arrêter."),
+                         QStringLiteral("Donne aussi sortie (sortie - entree = durée du clip)."));
+        }
+        const int out = args.contains(QStringLiteral("sortie")) ? KoraCutAgentTools::parseTime(args.value(QStringLiteral("sortie")), projectFps()) : mediaLength;
+        if (in < 0 || out <= in) {
+            return error(QStringLiteral("entree_invalide"), QStringLiteral("sortie (%1) doit être strictement après entree (%2).").arg(out).arg(in),
+                         QStringLiteral("sortie est la première image qui n'est pas posée : sortie - entree = durée du clip."));
+        }
+        // Au-delà de la fin du média : le dire avec sa durée (avant le 1er octobre 2026, la pose échouait
+        // et répondait place_occupee, un message faux).
+        if (limited && out > mediaLength) {
             QJsonObject e = error(QStringLiteral("hors_media"),
                                   QStringLiteral("Le média %1 dure %2 images (%3) : sortie = %4 dépasse sa fin.")
                                       .arg(mediaId)

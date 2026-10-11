@@ -260,6 +260,20 @@ TEST_CASE("Outils d'agent : monter une séquence", "[KoraCutAgentTools]")
                  {{QStringLiteral("media_id"), sound}, {QStringLiteral("piste_id"), a1}, {QStringLiteral("position"), 300}, {QStringLiteral("partie"), QStringLiteral("audio")},
                   {QStringLiteral("entree"), 0}, {QStringLiteral("sortie"), 10}});
         CHECK(r.value(QStringLiteral("ok")).toBool());
+        // sortie sans entree : du début du média jusqu'à sortie, pas le média entier (relevé le 6 octobre 2026).
+        r = call(timeline, QStringLiteral("ajouter_clip"),
+                 {{QStringLiteral("media_id"), sound}, {QStringLiteral("piste_id"), a1}, {QStringLiteral("position"), 400}, {QStringLiteral("partie"), QStringLiteral("audio")},
+                  {QStringLiteral("sortie"), 4}});
+        REQUIRE(r.value(QStringLiteral("ok")).toBool());
+        CHECK(r.value(QStringLiteral("duree")).toObject().value(QStringLiteral("i")).toInt() == 4);
+        CHECK(timeline->getClipIn(r.value(QStringLiteral("clip_id")).toInt()) == 0);
+        // entree sans sortie : de entree jusqu'à la fin du média.
+        r = call(timeline, QStringLiteral("ajouter_clip"),
+                 {{QStringLiteral("media_id"), sound}, {QStringLiteral("piste_id"), a1}, {QStringLiteral("position"), 500}, {QStringLiteral("partie"), QStringLiteral("audio")},
+                  {QStringLiteral("entree"), 6}});
+        REQUIRE(r.value(QStringLiteral("ok")).toBool());
+        CHECK(r.value(QStringLiteral("duree")).toObject().value(QStringLiteral("i")).toInt() == 4);
+        CHECK(timeline->getClipIn(r.value(QStringLiteral("clip_id")).toInt()) == 6);
         CHECK(errorCode(call(timeline, QStringLiteral("changer_vitesse_clip"), {{QStringLiteral("clip_id"), s}, {QStringLiteral("vitesse_pourcent"), 0}})) == QStringLiteral("entree_invalide"));
         r = call(timeline, QStringLiteral("changer_vitesse_clip"), {{QStringLiteral("clip_id"), s}, {QStringLiteral("vitesse_pourcent"), 50}});
         REQUIRE(r.value(QStringLiteral("ok")).toBool());
