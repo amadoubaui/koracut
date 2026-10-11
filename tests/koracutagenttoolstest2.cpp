@@ -579,6 +579,15 @@ TEST_CASE("Outils d'agent, lot A : le son et les médias", "[KoraCutAgentTools]"
             REQUIRE(r.value(QStringLiteral("ok")).toBool());
             CHECK(r.value(QStringLiteral("parametres")).toObject().value(QStringLiteral("av.f")).toString().toDouble() == 100.);
             CHECK(undoStack->count() == before + 3);
+            // Le dé-esseur arrive réglé : posé nu, son intensité était nulle et il ne faisait rien.
+            if (EffectsRepository::get()->exists(QStringLiteral("avfilter.deesser"))) {
+                r = call(timeline, QStringLiteral("ajouter_effet_audio"), {{QStringLiteral("clip_id"), voice}, {QStringLiteral("traitement"), QStringLiteral("de_esseur")}});
+                INFO(dump(r));
+                REQUIRE(r.value(QStringLiteral("ok")).toBool());
+                CHECK(r.value(QStringLiteral("parametres")).toObject().value(QStringLiteral("av.i")).toString().toDouble() == 0.4);
+                CHECK(r.value(QStringLiteral("parametres")).toObject().value(QStringLiteral("av.f")).toString().toDouble() == 0.5);
+                undoStack->undo();
+            }
             undoStack->undo();
             undoStack->undo();
             undoStack->undo();

@@ -652,6 +652,9 @@ void Wizard::installExtraMimes(const QString &baseName, const QStringList &globs
 
 void Wizard::runUpdateMimeDatabase()
 {
+    // KoraCut : macOS n'a pas de base MIME freedesktop à mettre à jour, la commande sortait en erreur
+    // dans le journal à chaque premier lancement.
+#ifndef Q_OS_MACOS
     const QString localPackageDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/mime/");
     // Q_ASSERT(!localPackageDir.isEmpty());
     KProcess proc;
@@ -661,6 +664,7 @@ void Wizard::runUpdateMimeDatabase()
     if (exitCode != 0) {
         qCWarning(KDENLIVE_LOG) << proc.program() << "exited with error code" << exitCode;
     }
+#endif
 }
 
 void Wizard::adjustSettings()

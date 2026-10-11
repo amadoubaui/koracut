@@ -1021,6 +1021,13 @@ QJsonObject ajouterEffetAudio(const Timeline &timeline, const Args &args)
             params.insert(QStringLiteral("av.threshold"), numberText(dbToLinear(num("seuil_db"))));
         }
         times();
+    } else if (treatment == QLatin1String("de_esseur")) {
+        // Posé tel quel, avfilter.deesser a une intensité nulle et ne fait rien (relevé le 6 octobre 2026) :
+        // on lui donne la recette de « Améliorer la voix » (koracutcliptools.cpp), qui adoucit les sifflantes.
+        params.insert(QStringLiteral("av.i"), QStringLiteral("0.4"));
+        params.insert(QStringLiteral("av.m"), QStringLiteral("0.5"));
+        params.insert(QStringLiteral("av.f"), QStringLiteral("0.5"));
+        params.insert(QStringLiteral("av.s"), QStringLiteral("o"));
     }
     Fun undo = []() { return true; };
     Fun redo = []() { return true; };
