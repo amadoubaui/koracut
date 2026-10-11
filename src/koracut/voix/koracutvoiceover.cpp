@@ -96,6 +96,12 @@ bool modelPresent()
 
 QString kyutaiPython()
 {
+    // Pour les essais (comme KORACUT_VOIX_SCRIPT) : l'interpréteur à la place de celui de l'environnement.
+    // Un lien vers python ne se pose pas de la même façon sur les trois systèmes, une variable si.
+    const QString forced = qEnvironmentVariable("KORACUT_VOIX_PYTHON");
+    if (!forced.isEmpty()) {
+        return forced;
+    }
 #ifdef Q_OS_WIN
     return KoraCutVoiceOver::cacheDir() + QStringLiteral("/kyutai/Scripts/python.exe");
 #else

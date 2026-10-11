@@ -57,8 +57,9 @@ TEST_CASE("Voix off : moteur, fichiers, outils et annulation", "[KoraCutVoix]")
     const QString voices = dir.filePath(QStringLiteral("Voix off"));
     const QString python = QStandardPaths::findExecutable(QStringLiteral("python3"));
     REQUIRE_FALSE(python.isEmpty());
-    QDir().mkpath(cache + QStringLiteral("/kyutai/bin"));
-    REQUIRE(QFile::link(python, cache + QStringLiteral("/kyutai/bin/python")));
+    // L'interpréteur du faux moteur : par la variable d'essai, la même sur les trois systèmes (un lien
+    // « bin/python » ne valait que pour macOS et Linux, le test tombait sous Windows).
+    qputenv("KORACUT_VOIX_PYTHON", python.toUtf8());
     // Les deux moteurs : moshi_mlx (Mac à puce Apple) et moshi (PyTorch, partout ailleurs).
     QDir().mkpath(cache + QStringLiteral("/kyutai/lib/python3.11/site-packages/moshi_mlx"));
     QDir().mkpath(cache + QStringLiteral("/kyutai/lib/python3.11/site-packages/moshi"));
