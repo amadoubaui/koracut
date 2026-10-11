@@ -61,6 +61,9 @@ public:
     /** @brief Copie le grade d'un plan vers d'autres (clic milieu de Resolve). append : ajoute les nœuds
      * à la suite au lieu de remplacer. */
     int copyGrade(int from, const QList<int> &to, bool append = false);
+    /** @brief L'étalonnage par défaut de KoraCut (HDR, Vif, Peau) sur un plan, ou sur tous les plans de la
+     * séquence avec cid = -1 : le même chemin que l'outil etal_signature, une étape d'annulation. */
+    bool applySignature(int cid);
     /** @brief Remet le grade à zéro ; keepNodes garde la structure (Shift-Command-Home). */
     void resetGrade(bool keepNodes);
     /** @brief Coupe ou rétablit tout l'étalonnage du plan (Shift-D de Resolve). */

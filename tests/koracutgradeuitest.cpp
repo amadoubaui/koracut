@@ -347,3 +347,180 @@ TEST_CASE("Étalonnage : les outils etal_* des agents", "[KoraCutGradeUi]")
     timeline.reset();
     pCore->projectManager()->closeCurrentDocument(false, false);
 }
+
+// 8 octobre 2026 : etal_signature, l'étalonnage par défaut de KoraCut (HDR, Vif, Peau, Sujet).
+TEST_CASE("Étalonnage : etal_signature pose l'arbre par défaut en une étape", "[KoraCutGradeUi]")
+{
+    using KoraCutAgentTools::call;
+    auto binModel = pCore->projectItemModel();
+    binModel->clean();
+    std::shared_ptr<DocUndoStack> undoStack = std::make_shared<DocUndoStack>(nullptr);
+    pCore->setCurrentProfile(QStringLiteral("dv_pal"));
+    KdenliveDoc document(undoStack);
+    pCore->projectManager()->testSetDocument(&document);
+    QDateTime documentDate = QDateTime::currentDateTime();
+    KdenliveTests::updateTimeline(false, QString(), QString(), documentDate, 0);
+    auto timeline = document.getTimeline(document.uuid());
+    pCore->projectManager()->testSetActiveTimeline(timeline);
+    KdenliveTests::resetNextId();
+    const QString colourId = KdenliveTests::createProducer(pCore->getProjectProfile(), "red", binModel, 40, false);
+    const QString imageId = KdenliveTests::createFileProducer(pCore->getProjectProfile(), binModel, sourcesPath + QStringLiteral("/dataset/red.png"));
+    const int tid = timeline->getTrackIndexFromPosition(2);
+    int colour = -1, image1 = -1, image2 = -1;
+    REQUIRE(timeline->requestClipInsertion(colourId, tid, 0, colour, true, true, false));
+    REQUIRE(timeline->requestClipInsertion(imageId, tid, 40, image1, true, true, false));
+    REQUIRE(timeline->requestClipInsertion(imageId, tid, 40 + timeline->getClipPlaytime(image1), image2, true, true, false));
+    auto err = [](const QJsonObject &r) { return r.value(QStringLiteral("erreur")).toObject().value(QStringLiteral("code")).toString(); };
+    auto *c = KoraCutGradeController::self();
+    auto labels = [c](int cid) {
+        QStringList out;
+        const QJsonObject g = c->graphFor(cid);
+        for (int id : nodeIds(g)) {
+            out << node(g, id).value(QStringLiteral("etiquette")).toString();
+        }
+        return out;
+    };
+    auto byLabel = [c](int cid, const QString &label) {
+        const QJsonObject g = c->graphFor(cid);
+        for (int id : nodeIds(g)) {
+            if (node(g, id).value(QStringLiteral("etiquette")).toString() == label) {
+                return node(g, id);
+            }
+        }
+        return QJsonObject();
+    };
+
+    // Un plan, avec un visage : HDR, Vif, Peau (fenêtre sur le visage), Sujet. Une seule étape.
+    const int start = undoStack->index();
+    QJsonObject r = call(timeline, QStringLiteral("etal_signature"),
+                         {{QStringLiteral("clip_id"), image1}, {QStringLiteral("visage"), QJsonObject{{QStringLiteral("x"), 0.5}, {QStringLiteral("y"), 0.3}, {QStringLiteral("taille"), 0.34}}}});
+    INFO(QJsonDocument(r).toJson().toStdString());
+    REQUIRE(r.value(QStringLiteral("ok")).toBool());
+    REQUIRE(undoStack->index() == start + 1);
+    REQUIRE(labels(image1) == QStringList{QStringLiteral("HDR"), QStringLiteral("Vif"), QStringLiteral("Peau"), QStringLiteral("Sujet")});
+    REQUIRE(compiles(c->graphFor(image1)));
+    const QJsonObject plan = r.value(QStringLiteral("plans")).toArray().at(0).toObject();
+    REQUIRE(plan.value(QStringLiteral("clip_id")).toInt() == image1);
+    REQUIRE(plan.value(QStringLiteral("noeuds")).toArray().size() == 4);
+    REQUIRE(plan.contains(QStringLiteral("luma_avant")));
+    REQUIRE(plan.contains(QStringLiteral("luma_apres")));
+    const QJsonObject hdr = byLabel(image1, QStringLiteral("HDR")).value(QStringLiteral("primaires")).toObject();
+    // Un plan SDR (sans nœud CST) : le HDR doux.
+    REQUIRE(hdr.value(QStringLiteral("ombres")).toDouble() == 45);
+    REQUIRE(hdr.value(QStringLiteral("hautes_lumieres")).toDouble() == -40);
+    REQUIRE(hdr.value(QStringLiteral("mid_detail")).toDouble() == 4);
+    REQUIRE(hdr.value(QStringLiteral("contraste")).toDouble() == Approx(1.0));
+    REQUIRE_FALSE(hdr.contains(QStringLiteral("lift")));
+    REQUIRE(plan.value(QStringLiteral("hdr")).toString() == QStringLiteral("sdr"));
+    REQUIRE(r.value(QStringLiteral("luma_cible")).toDouble() == 116);
+    REQUIRE(r.value(QStringLiteral("conseil")).toString().contains(QStringLiteral("zone par zone")));
+    const double gamma = hdr.value(QStringLiteral("gamma")).toArray().at(0).toDouble();
+    REQUIRE(gamma >= -0.45);
+    REQUIRE(gamma <= 0.25);
+    REQUIRE(plan.value(QStringLiteral("gamma")).toDouble() == Approx(gamma));
+    // Un rouge plein (luma 54) est sous la cible 116 : le gamma monte, l'image s'éclaircit.
+    REQUIRE(gamma > 0.);
+    REQUIRE(plan.value(QStringLiteral("luma_apres")).toDouble() > plan.value(QStringLiteral("luma_avant")).toDouble());
+    const QJsonObject vif = byLabel(image1, QStringLiteral("Vif")).value(QStringLiteral("primaires")).toObject();
+    REQUIRE(vif.value(QStringLiteral("saturation")).toDouble() == 54);
+    REQUIRE(vif.value(QStringLiteral("boost")).toDouble() == 6);
+    const QJsonObject skin = byLabel(image1, QStringLiteral("Peau"));
+    REQUIRE(skin.value(QStringLiteral("primaires")).toObject().value(QStringLiteral("mid_detail")).toDouble() == -28);
+    REQUIRE(skin.value(QStringLiteral("primaires")).toObject().value(QStringLiteral("gamma")).toArray().at(0).toDouble() == Approx(0.008));
+    REQUIRE(skin.value(QStringLiteral("qualificateur")).toObject().value(QStringLiteral("teinte")).toObject().value(QStringLiteral("centre")).toDouble() == 24);
+    REQUIRE(skin.value(QStringLiteral("qualificateur")).toObject().value(QStringLiteral("flou")).toDouble() == 14);
+    const QJsonObject skinWindow = skin.value(QStringLiteral("fenetres")).toArray().at(0).toObject();
+    REQUIRE(skinWindow.value(QStringLiteral("aspect")).toDouble() == Approx(0.8));
+    REQUIRE(skinWindow.value(QStringLiteral("doux")).toDouble() == Approx(0.8 * 0.34));
+    const QJsonObject subject = byLabel(image1, QStringLiteral("Sujet"));
+    REQUIRE(subject.value(QStringLiteral("primaires")).toObject().value(QStringLiteral("gain")).toArray().at(0).toDouble() == Approx(1.03));
+    REQUIRE(subject.value(QStringLiteral("primaires")).toObject().value(QStringLiteral("gamma")).toArray().at(0).toDouble() == Approx(0.04));
+    REQUIRE_FALSE(subject.value(QStringLiteral("primaires")).toObject().contains(QStringLiteral("saturation")));
+    REQUIRE(subject.value(QStringLiteral("fenetres")).toArray().size() == 1);
+    // Rien n'assombrit le reste : aucun nœud ne lit une clé inversée (outside).
+    for (int id : nodeIds(c->graphFor(image1))) {
+        REQUIRE_FALSE(node(c->graphFor(image1), id).value(QStringLiteral("cle")).toObject().value(QStringLiteral("entree_inverser")).toBool());
+    }
+
+    // Un seul Annuler retire tout l'arbre, et l'effet avec lui.
+    undoStack->undo();
+    REQUIRE(undoStack->index() == start);
+    REQUIRE_FALSE(c->hasGrade(image1));
+    REQUIRE_FALSE(gradeOf(timeline->getClipEffectStackModel(image1)));
+    undoStack->redo();
+    REQUIRE(labels(image1).size() == 4);
+    undoStack->undo();
+
+    // Un plan log : le nœud CST de tête est posé par les mêmes paramètres qu'etal_cst, puis gardé quand on recommence.
+    r = call(timeline, QStringLiteral("etal_signature"), {{QStringLiteral("clip_id"), image1}, {QStringLiteral("camera"), QStringLiteral("iphone_hdr_hlg")}, {QStringLiteral("sans_personne"), true}});
+    REQUIRE(r.value(QStringLiteral("ok")).toBool());
+    REQUIRE(labels(image1) == QStringList{QStringLiteral("CST"), QStringLiteral("HDR"), QStringLiteral("Vif"), QStringLiteral("Peau")});
+    REQUIRE(byLabel(image1, QStringLiteral("CST")).value(QStringLiteral("cst")).toObject().value(QStringLiteral("entree_gamma")).toString() == QStringLiteral("hlg"));
+    REQUIRE(r.value(QStringLiteral("luma_cible")).toDouble() == 136); // sans_personne : la cible par défaut monte
+    {
+        // Un plan qui passe par un CST : le HDR fort.
+        const QJsonObject strong = byLabel(image1, QStringLiteral("HDR")).value(QStringLiteral("primaires")).toObject();
+        REQUIRE(strong.value(QStringLiteral("ombres")).toDouble() == 85);
+        REQUIRE(strong.value(QStringLiteral("hautes_lumieres")).toDouble() == -90);
+        REQUIRE(strong.value(QStringLiteral("mid_detail")).toDouble() == 6);
+        REQUIRE(r.value(QStringLiteral("plans")).toArray().at(0).toObject().value(QStringLiteral("hdr")).toString() == QStringLiteral("fort"));
+    }
+    REQUIRE(byLabel(image1, QStringLiteral("Vif")).value(QStringLiteral("primaires")).toObject().value(QStringLiteral("boost")).toDouble() == 6);
+    REQUIRE_FALSE(byLabel(image1, QStringLiteral("Peau")).contains(QStringLiteral("fenetres")));
+    r = call(timeline, QStringLiteral("etal_signature"), {{QStringLiteral("clip_id"), image1}, {QStringLiteral("luma_cible"), 110}});
+    REQUIRE(r.value(QStringLiteral("ok")).toBool());
+    REQUIRE(labels(image1) == QStringList{QStringLiteral("CST"), QStringLiteral("HDR"), QStringLiteral("Vif"), QStringLiteral("Peau")});
+    REQUIRE(byLabel(image1, QStringLiteral("CST")).value(QStringLiteral("cst")).toObject().value(QStringLiteral("entree_gamut")).toString() == QStringLiteral("rec2020"));
+    // Un objet à regarder : contraste, couleur et netteté dans la fenêtre, ni gain ni gamma (pas de halo).
+    r = call(timeline, QStringLiteral("etal_signature"),
+             {{QStringLiteral("clip_id"), image2}, {QStringLiteral("sujet"), QJsonObject{{QStringLiteral("x"), 0.5}, {QStringLiteral("y"), 0.6}, {QStringLiteral("taille"), 0.3}, {QStringLiteral("aspect"), 1.5}}}});
+    REQUIRE(r.value(QStringLiteral("ok")).toBool());
+    {
+        const QJsonObject object = byLabel(image2, QStringLiteral("Sujet"));
+        const QJsonObject prim = object.value(QStringLiteral("primaires")).toObject();
+        REQUIRE(prim.value(QStringLiteral("contraste")).toDouble() == Approx(1.16));
+        REQUIRE(prim.value(QStringLiteral("saturation")).toDouble() == 60);
+        REQUIRE_FALSE(prim.contains(QStringLiteral("gain")));
+        REQUIRE_FALSE(prim.contains(QStringLiteral("gamma")));
+        REQUIRE(object.value(QStringLiteral("flou")).toObject().value(QStringLiteral("rayon")).toDouble() == Approx(0.45));
+        REQUIRE(object.value(QStringLiteral("fenetres")).toArray().at(0).toObject().value(QStringLiteral("aspect")).toDouble() == Approx(1.5));
+        REQUIRE_FALSE(byLabel(image2, QStringLiteral("Peau")).contains(QStringLiteral("fenetres")));
+        REQUIRE(compiles(c->graphFor(image2)));
+    }
+    undoStack->undo();
+    REQUIRE_FALSE(c->hasGrade(image2));
+    // remplacer = false : les nœuds s'ajoutent à la suite.
+    r = call(timeline, QStringLiteral("etal_signature"), {{QStringLiteral("clip_id"), image1}, {QStringLiteral("remplacer"), false}});
+    REQUIRE(r.value(QStringLiteral("ok")).toBool());
+    REQUIRE(labels(image1).size() == 7);
+    REQUIRE(compiles(c->graphFor(image1)));
+
+    // tous : les deux images en une étape, la couleur est laissée, pas de fenêtre ni de nœud Sujet.
+    const int beforeAll = undoStack->index();
+    r = call(timeline, QStringLiteral("etal_signature"), {{QStringLiteral("tous"), true}});
+    INFO(QJsonDocument(r).toJson().toStdString());
+    REQUIRE(r.value(QStringLiteral("ok")).toBool());
+    REQUIRE(undoStack->index() == beforeAll + 1);
+    REQUIRE(r.value(QStringLiteral("plans")).toArray().size() == 2);
+    REQUIRE(r.value(QStringLiteral("ignores")).toInt() == 1);
+    REQUIRE_FALSE(c->hasGrade(colour));
+    REQUIRE(labels(image2) == QStringList{QStringLiteral("HDR"), QStringLiteral("Vif"), QStringLiteral("Peau")});
+    REQUIRE(labels(image1) == QStringList{QStringLiteral("CST"), QStringLiteral("HDR"), QStringLiteral("Vif"), QStringLiteral("Peau")});
+    undoStack->undo();
+    REQUIRE_FALSE(c->hasGrade(image2));
+    REQUIRE(labels(image1).size() == 7);
+
+    // Les erreurs.
+    REQUIRE(err(call(timeline, QStringLiteral("etal_signature"), {})) == QStringLiteral("entree_invalide"));
+    REQUIRE(err(call(timeline, QStringLiteral("etal_signature"), {{QStringLiteral("tous"), true}, {QStringLiteral("clip_id"), image1}})) == QStringLiteral("entree_invalide"));
+    REQUIRE(err(call(timeline, QStringLiteral("etal_signature"), {{QStringLiteral("clip_id"), image1}, {QStringLiteral("luma_cible"), 220}})) == QStringLiteral("entree_invalide"));
+    REQUIRE(err(call(timeline, QStringLiteral("etal_signature"),
+                     {{QStringLiteral("tous"), true}, {QStringLiteral("visage"), QJsonObject{{QStringLiteral("x"), 0.5}, {QStringLiteral("y"), 0.3}, {QStringLiteral("taille"), 0.3}}}})) ==
+            QStringLiteral("entree_invalide"));
+    REQUIRE(err(call(timeline, QStringLiteral("etal_signature"), {{QStringLiteral("clip_id"), image1}, {QStringLiteral("visage"), QJsonObject{{QStringLiteral("x"), 1.5}}}})) ==
+            QStringLiteral("entree_invalide"));
+    REQUIRE(err(call(timeline, QStringLiteral("etal_signature"), {{QStringLiteral("clip_id"), 9999}})) == QStringLiteral("id_inconnu"));
+
+    timeline.reset();
+    pCore->projectManager()->closeCurrentDocument(false, false);
+}

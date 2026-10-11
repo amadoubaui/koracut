@@ -39,7 +39,7 @@ description: "À lire quand la personne demande « monte-moi cette vidéo » ou 
 | 4 | Le dérushage | le Monteur | `koracut-derushage` | bonnes prises marquées, mauvaises écartées |
 | 5 | Le montage | le Monteur | `koracut-bout-a-bout`, `koracut-rythme-respiration`, la fiche du genre | la séquence montée, dans l'ordre du script |
 | 6 | L'habillage | le Monteur, le Motion designer | `koracut-habillage-titres-bandeaux`, `koracut-animer`, `koracut-sous-titres` | titres, bandeaux, sous-titres, transitions dosées |
-| 7 | Le son puis la couleur | le Mixeur, le Coloriste | `son-*`, `etalonnage-*` | voix claire, musique sous la voix, -14 LUFS ; plans justes et raccord |
+| 7 | Le son puis la couleur | le Mixeur, le Coloriste | `son-*`, `koracut-etalonnage-signature` d'abord, puis `etalonnage-*` | voix claire, musique sous la voix, -14 LUFS ; **l'étalonnage par défaut (HDR, vif, peau, sujet) sur chaque plan**, plans justes et raccord |
 | 8 | La vérification | le Chef | `koracut-verifier-le-montage` | rien de vide, rien de faux, regardé à l'image |
 | 9 | L'export | le Chef | `koracut-export-formats-plateformes`, `export-verifications` | un fichier par plateforme, nom versionné |
 

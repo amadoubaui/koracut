@@ -31,6 +31,7 @@ set(KdenliveTest_SOURCES
     koracutfirstruntest.cpp
     koracutcolorstest.cpp
     koracutdetouragetest.cpp
+    koracutagentflouzonetest.cpp
     koracuteffectpreviewstest.cpp
     koracutgradetest.cpp
     koracutgradeuitest.cpp
@@ -41,6 +42,7 @@ set(KdenliveTest_SOURCES
     koracutloudnesstest.cpp
     koracutmonitortest.cpp
     koracutmotionsynctest.cpp
+    koracutmotionreopentest.cpp
     koracutmotiontoolstest.cpp
     koracutnewtracktest.cpp
     koracutorganisationtest.cpp

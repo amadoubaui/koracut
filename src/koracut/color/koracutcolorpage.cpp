@@ -45,6 +45,9 @@ KoraCutColorPage::KoraCutColorPage(KXmlGuiWindow *window, KoraCutNodeEditor *nod
     add(QStringLiteral("koracut_color_reset_node"), i18nc("@action", "Reset Node Grade"), QKeySequence(Qt::SHIFT | Qt::Key_Home), [this]() { m_nodes->resetCurrentNode(); });
     add(QStringLiteral("koracut_color_reset_grade"), i18nc("@action", "Reset Grade and Nodes"), QKeySequence(Qt::CTRL | Qt::Key_Home), [c]() { c->resetGrade(false); }, true);
     add(QStringLiteral("koracut_color_reset_keep"), i18nc("@action", "Reset Grades and Keep Nodes"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Home), [c]() { c->resetGrade(true); });
+    // L'étalonnage par défaut de KoraCut (8 octobre 2026). Sans raccourci : la palette de commandes et la porte le trouvent.
+    add(QStringLiteral("koracut_color_signature"), i18nc("@action", "KoraCut Grade (HDR, Vivid, Skin)"), QKeySequence(), [c]() { c->applySignature(c->currentClip()); });
+    add(QStringLiteral("koracut_color_signature_all"), i18nc("@action", "KoraCut Grade on All Clips"), QKeySequence(), [c]() { c->applySignature(-1); });
     add(QStringLiteral("koracut_color_grab_still"), i18nc("@action", "Grab Still"), QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_G), [c]() { c->grabStill(); });
     add(QStringLiteral("koracut_color_split"), i18nc("@action", "Before / After Split"), QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_W), [c]() { c->setCompare(!c->comparing()); });
     add(QStringLiteral("koracut_color_log"), i18nc("@action", "Switch Color Wheels / Log Wheels"), QKeySequence(Qt::ALT | Qt::Key_Z), [this]() { m_palettes->togglePrimariesLog(); });

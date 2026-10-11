@@ -13,6 +13,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "color/koracutgradecontroller.h"
 #include "color/koracutnodegraph.h"
 
+#include "bin/projectclip.h"
+#include "bin/projectitemmodel.h"
 #include "core.h"
 #include "timeline2/model/timelineitemmodel.hpp"
 
@@ -22,6 +24,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonDocument>
+
+#include <cmath>
 
 namespace KoraCutAgentToolsPrivate {
 
@@ -290,14 +294,10 @@ const QMap<QString, QPair<QString, QString>> &cameras()
     return map;
 }
 
-QJsonObject etalCst(const Timeline &timeline, const Args &args)
+// Pose dans @p g le CST demandé (camera, ou entree_gamut et entree_gamma) : dans noeud_id s'il est donné,
+// sinon dans le nœud « CST » de tête, créé au besoin. Rend l'id du nœud, ou -1 et l'erreur dans @p failure.
+int applyCst(QJsonObject &g, const Args &args, QJsonObject &failure, QJsonObject *written = nullptr)
 {
-    Scope scope(timeline);
-    QJsonObject failure;
-    const int cid = target(timeline, args, failure);
-    if (cid == -2) {
-        return failure;
-    }
     QString inGamut = args.value(QStringLiteral("entree_gamut")).toString();
     QString inGamma = args.value(QStringLiteral("entree_gamma")).toString();
     const QString camera = args.value(QStringLiteral("camera")).toString();
@@ -306,13 +306,14 @@ QJsonObject etalCst(const Timeline &timeline, const Args &args)
         inGamma = cameras().value(camera).second;
     }
     if (inGamut.isEmpty() || inGamma.isEmpty()) {
-        return error(QStringLiteral("entree_invalide"), QStringLiteral("Donne camera, ou entree_gamut et entree_gamma."),
-                     QStringLiteral("Ne devine pas le log : demande à la personne quelle caméra et quel profil ont servi."));
+        failure = error(QStringLiteral("entree_invalide"), QStringLiteral("Donne camera, ou entree_gamut et entree_gamma."),
+                        QStringLiteral("Ne devine pas le log : demande à la personne quelle caméra et quel profil ont servi."));
+        return -1;
     }
-    QJsonObject g = KoraCutGradeController::self()->graphFor(cid);
     int id = args.value(QStringLiteral("noeud_id")).toInt(-1);
     if (id >= 0 && !hasNode(g, id)) {
-        return error(QStringLiteral("id_inconnu"), QStringLiteral("Aucun nœud %1 sur ce plan.").arg(id), QStringLiteral("Relis les nœuds avec etal_lire."));
+        failure = error(QStringLiteral("id_inconnu"), QStringLiteral("Aucun nœud %1 sur ce plan.").arg(id), QStringLiteral("Relis les nœuds avec etal_lire."));
+        return -1;
     }
     if (id < 0) {
         // Le nœud « CST » de tête : réutilisé s'il existe, sinon le premier nœud s'il est vide, sinon un nouveau avant lui.
@@ -341,6 +342,26 @@ QJsonObject etalCst(const Timeline &timeline, const Args &args)
                           {QStringLiteral("tone_mapping"), args.value(QStringLiteral("tone_mapping")).toString(QStringLiteral("davinci"))},
                           {QStringLiteral("gamut_mapping"), args.value(QStringLiteral("gamut_mapping")).toString(QStringLiteral("compression"))}};
     setSection(g, id, QStringLiteral("cst"), cst);
+    if (written) {
+        *written = cst;
+    }
+    return id;
+}
+
+QJsonObject etalCst(const Timeline &timeline, const Args &args)
+{
+    Scope scope(timeline);
+    QJsonObject failure;
+    const int cid = target(timeline, args, failure);
+    if (cid == -2) {
+        return failure;
+    }
+    QJsonObject g = KoraCutGradeController::self()->graphFor(cid);
+    QJsonObject cst;
+    const int id = applyCst(g, args, failure, &cst);
+    if (id < 0) {
+        return failure;
+    }
     if (QJsonObject e = write(cid, g, i18nc("@action undo text", "color space transform")); !e.isEmpty()) {
         return e;
     }
@@ -443,6 +464,335 @@ QJsonObject etalReinitialiser(const Timeline &timeline, const Args &args)
     return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("noeuds"), nodesJson(g)}};
 }
 
+// ---- etal_signature : l'étalonnage par défaut de KoraCut (demande d'Amadou Ba, 8 octobre 2026) ----
+// Un nœud par intention : CST (seulement s'il existe ou s'il est demandé), HDR (les ombres remontent, les
+// hautes lumières redescendent, le gamma est réglé à la mesure), Vif, Peau (qualificateur, fenêtre sur le
+// visage s'il est donné), Sujet (une fenêtre qui éclaire, jamais rien qui assombrisse le reste).
+// Valeurs revues deux fois le même jour après les retours d'Amadou Ba : la fiche etalonnage-signature fait foi.
+
+constexpr double kSignatureLuma = 116.;         // luma moyenne visée, plan avec une personne
+constexpr double kSignatureLumaNoPerson = 136.; // produit, table, écran : personne à l'image
+constexpr double kSignatureTolerance = 1.5; // écart accepté à la cible
+constexpr double kSignatureGammaLow = -0.45;
+constexpr double kSignatureGammaHigh = 0.25;
+constexpr int kSignatureMeasures = 7;
+
+// Une fenêtre donnée par l'agent : x, y et taille entre 0 et 1, aspect facultatif.
+bool readSpot(const Args &args, const QString &key, bool withAspect, QJsonObject &spot, QJsonObject &failure)
+{
+    if (!args.contains(key)) {
+        return true;
+    }
+    const QJsonObject o = args.value(key).toObject();
+    const double x = o.value(QStringLiteral("x")).toDouble(-1.);
+    const double y = o.value(QStringLiteral("y")).toDouble(-1.);
+    const double size = o.value(QStringLiteral("taille")).toDouble(-1.);
+    const double aspect = o.value(QStringLiteral("aspect")).toDouble(1.);
+    if (x < 0. || x > 1. || y < 0. || y > 1. || size < 0.02 || size > 1. || (withAspect && (aspect < 0.2 || aspect > 5.))) {
+        failure = error(QStringLiteral("entree_invalide"), QStringLiteral("%1 se donne en { x, y, taille } entre 0 et 1 dans l'image (taille au moins 0,02).").arg(key),
+                        QStringLiteral("x et y sont le centre, origine en haut à gauche. Un visage en plan taille : taille 0,30 à 0,36."));
+        return false;
+    }
+    spot = QJsonObject{{QStringLiteral("x"), x}, {QStringLiteral("y"), y}, {QStringLiteral("taille"), size}};
+    if (withAspect && o.contains(QStringLiteral("aspect"))) {
+        spot.insert(QStringLiteral("aspect"), aspect);
+    }
+    return true;
+}
+
+QJsonObject circle(double x, double y, double size, double aspect, double soft)
+{
+    return QJsonObject{{QStringLiteral("type"), QStringLiteral("cercle")}, {QStringLiteral("x"), x},        {QStringLiteral("y"), y},      {QStringLiteral("taille"), size},
+                       {QStringLiteral("aspect"), aspect},                 {QStringLiteral("rotation"), 0}, {QStringLiteral("doux"), soft}};
+}
+
+struct Signature
+{
+    bool replace = true;
+    bool withCst = false;
+    QJsonObject face;    // vide : pas de fenêtre sur la peau
+    QJsonObject subject; // vide : la fenêtre du sujet reprend le visage, ou le nœud Sujet est omis
+};
+
+// Écrit l'arbre de la signature dans @p g. Rend l'id du nœud HDR (son gamma reste à régler), ou -1.
+int buildSignature(QJsonObject &g, const Signature &s, const Args &args, QJsonObject &failure, bool *strong = nullptr)
+{
+    if (s.replace) {
+        // L'arbre repart de zéro, sauf le nœud « CST » de tête : on ne perd pas la conversion d'un plan log.
+        QJsonObject kept;
+        for (int id : nodeIds(g)) {
+            const QJsonObject n = node(g, id);
+            if (isCorrector(n) && n.value(QStringLiteral("etiquette")).toString() == QLatin1String("CST")) {
+                kept = n;
+                break;
+            }
+        }
+        g = defaultGraph();
+        if (!kept.isEmpty()) {
+            QJsonObject first = node(g, 1);
+            static const QStringList structure{QStringLiteral("id"), QStringLiteral("type"), QStringLiteral("entree"), QStringLiteral("entrees"),
+                                               QStringLiteral("x"),  QStringLiteral("y"),    QStringLiteral("cle")};
+            for (auto it = kept.begin(); it != kept.end(); ++it) {
+                if (!structure.contains(it.key())) {
+                    first.insert(it.key(), it.value());
+                }
+            }
+            putNode(g, first);
+        }
+    }
+    if (s.withCst) {
+        Args cst = args;
+        cst.remove(QStringLiteral("noeud_id"));
+        if (applyCst(g, cst, failure) < 0) {
+            return -1;
+        }
+    }
+    // Le nœud HDR : le dernier nœud s'il est encore vide et sans nom, sinon un nœud de plus à la fin.
+    const QJsonObject last = node(g, outputNode(g));
+    int hdr = -1;
+    if (isCorrector(last) && usedTools(last).isEmpty() && last.value(QStringLiteral("etiquette")).toString().isEmpty()) {
+        hdr = outputNode(g);
+    } else {
+        hdr = appendNode(g);
+    }
+    const int vif = hdr > 0 ? appendNode(g) : -1;
+    const int skin = vif > 0 ? appendNode(g) : -1;
+    if (skin < 0) {
+        failure = error(QStringLiteral("non_disponible"), QStringLiteral("Les nœuds n'ont pas pu être ajoutés à cet arbre."),
+                        QStringLiteral("Relance avec remplacer = true, ou range l'arbre avec etal_reinitialiser."));
+        return -1;
+    }
+    setField(g, hdr, QStringLiteral("etiquette"), QStringLiteral("HDR"));
+    // HDR fort pour un plan qui passe par un CST (log, HDR de téléphone) ; plus doux pour un plan SDR, qui a
+    // moins de matière dans les ombres et les hautes lumières (mesuré sur un plan Rec.709, 8 octobre 2026).
+    bool converted = false;
+    for (int id : nodeIds(g)) {
+        const QJsonObject cst = node(g, id).value(QStringLiteral("cst")).toObject();
+        converted = converted || (!cst.value(QStringLiteral("entree_gamma")).toString().isEmpty() && cst.value(QStringLiteral("actif")).toBool(true));
+    }
+    if (strong) {
+        *strong = converted;
+    }
+    setSection(g, hdr, QStringLiteral("primaires"),
+               QJsonObject{{QStringLiteral("ombres"), converted ? 85 : 45},
+                           {QStringLiteral("hautes_lumieres"), converted ? -90 : -40},
+                           {QStringLiteral("mid_detail"), converted ? 6 : 4},
+                           {QStringLiteral("contraste"), 1.0},
+                           {QStringLiteral("gamma"), QJsonArray{0, 0, 0, 0}}});
+    setField(g, vif, QStringLiteral("etiquette"), QStringLiteral("Vif"));
+    setSection(g, vif, QStringLiteral("primaires"), QJsonObject{{QStringLiteral("saturation"), 54}, {QStringLiteral("boost"), 6}});
+    setField(g, skin, QStringLiteral("etiquette"), QStringLiteral("Peau"));
+    setSection(g, skin, QStringLiteral("primaires"), QJsonObject{{QStringLiteral("mid_detail"), -28}, {QStringLiteral("gamma"), QJsonArray{0.008, 0, 0, 0}}});
+    setSection(g, skin, QStringLiteral("qualificateur"),
+               QJsonObject{{QStringLiteral("actif"), true},
+                           {QStringLiteral("mode"), QStringLiteral("hsl")},
+                           {QStringLiteral("teinte"), QJsonObject{{QStringLiteral("centre"), 24}, {QStringLiteral("largeur"), 16}, {QStringLiteral("doux"), 8}, {QStringLiteral("sym"), 50}}},
+                           {QStringLiteral("sat"), QJsonObject{{QStringLiteral("bas"), 8}, {QStringLiteral("haut"), 80}, {QStringLiteral("doux_bas"), 6}, {QStringLiteral("doux_haut"), 10}}},
+                           {QStringLiteral("lum"), QJsonObject{{QStringLiteral("bas"), 6}, {QStringLiteral("haut"), 88}, {QStringLiteral("doux_bas"), 5}, {QStringLiteral("doux_haut"), 8}}},
+                           {QStringLiteral("flou"), 14}});
+    const double fx = s.face.value(QStringLiteral("x")).toDouble();
+    const double fy = s.face.value(QStringLiteral("y")).toDouble();
+    const double fs = s.face.value(QStringLiteral("taille")).toDouble();
+    if (!s.face.isEmpty()) {
+        setSection(g, skin, QStringLiteral("fenetres"), QJsonArray{circle(fx, fy, fs, 0.8, fs * 0.8)});
+    }
+    if (!s.subject.isEmpty() || !s.face.isEmpty()) {
+        // Pas de nœud outside, pas de vignette : le reste ne s'assombrit jamais.
+        const int subject = appendNode(g);
+        setField(g, subject, QStringLiteral("etiquette"), QStringLiteral("Sujet"));
+        if (!s.subject.isEmpty()) {
+            // Un objet, un écran : contraste, couleur et netteté. Ni gain ni gamma, qui dessinaient un halo.
+            setSection(g, subject, QStringLiteral("primaires"), QJsonObject{{QStringLiteral("contraste"), 1.16}, {QStringLiteral("saturation"), 60}});
+            setSection(g, subject, QStringLiteral("flou"), QJsonObject{{QStringLiteral("rayon"), 0.45}});
+        } else {
+            // Un visage : la fenêtre l'éclaire.
+            setSection(g, subject, QStringLiteral("primaires"),
+                       QJsonObject{{QStringLiteral("gamma"), QJsonArray{0.04, 0, 0, 0}}, {QStringLiteral("gain"), QJsonArray{1.03, 1, 1, 1}}});
+        }
+        if (!s.subject.isEmpty()) {
+            const double size = s.subject.value(QStringLiteral("taille")).toDouble();
+            setSection(g, subject, QStringLiteral("fenetres"),
+                       QJsonArray{circle(s.subject.value(QStringLiteral("x")).toDouble(), s.subject.value(QStringLiteral("y")).toDouble(), size,
+                                         s.subject.value(QStringLiteral("aspect")).toDouble(1.), size * 1.2)});
+        } else {
+            setSection(g, subject, QStringLiteral("fenetres"), QJsonArray{circle(fx, fy, fs * 1.1, 0.8, fs * 1.4)});
+        }
+    }
+    return hdr;
+}
+
+// Un plan que « tous » étalonne : un fichier vidéo ou une image, pas un clip Motion, un titre ni une couleur.
+bool signatureSource(const Timeline &timeline, int cid)
+{
+    const auto bin = pCore->projectItemModel()->getClipByBinID(timeline->getClipBinId(cid));
+    if (!bin) {
+        return false;
+    }
+    const ClipType::ProducerType type = bin->clipType();
+    if (type != ClipType::AV && type != ClipType::Video && type != ClipType::Image && type != ClipType::SlideShow) {
+        return false;
+    }
+    return bin->getProducerProperty(QStringLiteral("kdenlive:koracut_motion_project")).isEmpty();
+}
+
+// Les nœuds d'un plan, en court : le détail se lit avec etal_lire.
+QJsonArray nodesBrief(const QJsonObject &g)
+{
+    QJsonArray out;
+    for (int id : nodeIds(g)) {
+        const QJsonObject n = node(g, id);
+        QJsonObject o{{QStringLiteral("id"), id}, {QStringLiteral("etiquette"), n.value(QStringLiteral("etiquette")).toString()}};
+        const int number = displayNumber(g, id);
+        if (number > 0) {
+            o.insert(QStringLiteral("numero"), QStringLiteral("%1").arg(number, 2, 10, QLatin1Char('0')));
+        }
+        out.append(o);
+    }
+    return out;
+}
+
+QJsonObject etalSignature(const Timeline &timeline, const Args &args)
+{
+    Scope scope(timeline);
+    const bool all = args.value(QStringLiteral("tous")).toBool(false);
+    if (all == args.contains(QStringLiteral("clip_id"))) {
+        return error(QStringLiteral("entree_invalide"), QStringLiteral("Donne clip_id (un plan) ou tous = true, l'un ou l'autre."),
+                     QStringLiteral("tous = true étalonne tous les plans vidéo de la séquence ; l'id d'un plan se lit dans etat_timeline."));
+    }
+    const bool noPerson = args.value(QStringLiteral("sans_personne")).toBool(false);
+    const double wanted = args.value(QStringLiteral("luma_cible")).toDouble(noPerson ? kSignatureLumaNoPerson : kSignatureLuma);
+    if (wanted < 95. || wanted > 160.) {
+        return error(QStringLiteral("entree_invalide"), QStringLiteral("luma_cible se donne entre 95 et 160 (défaut 116, ou 136 avec sans_personne)."),
+                     QStringLiteral("116 pour un plan avec une personne, 136 pour un produit, une table ou un écran qui remplit l'image. Clair ne veut pas dire surexposé."));
+    }
+    Signature s;
+    s.replace = args.value(QStringLiteral("remplacer")).toBool(true);
+    s.withCst = args.contains(QStringLiteral("camera")) || args.contains(QStringLiteral("entree_gamut")) || args.contains(QStringLiteral("entree_gamma"));
+    QJsonObject failure;
+    if (!readSpot(args, QStringLiteral("visage"), false, s.face, failure) || !readSpot(args, QStringLiteral("sujet"), true, s.subject, failure)) {
+        return failure;
+    }
+    if (all && (!s.face.isEmpty() || !s.subject.isEmpty())) {
+        return error(QStringLiteral("entree_invalide"), QStringLiteral("visage et sujet désignent un endroit de l'image d'un seul plan : ils ne vont pas avec tous = true."),
+                     QStringLiteral("Pose d'abord la signature sur tous les plans, puis rappelle l'outil avec clip_id et visage sur les plans qui le demandent."));
+    }
+
+    // Les plans : celui qu'on donne, ou tous les fichiers vidéo et images de la séquence. Un sujet détouré
+    // (piste « Sujets détourés ») reprend ensuite le grade du plan qu'il recouvre, pour rester raccord.
+    QList<int> clips;
+    QList<int> cutouts;
+    int skipped = 0;
+    if (all) {
+        const QString cutoutMark = KoraCutAgentTools::subjectTrackProperty();
+        const QList<int> candidates = KoraCutGradeController::self()->videoClips();
+        for (int cid : candidates) {
+            QJsonObject ignored;
+            if (!signatureSource(timeline, cid) || target(timeline, QJsonObject{{QStringLiteral("clip_id"), cid}}, ignored) == -2) {
+                ++skipped;
+            } else if (!timeline->getTrackProperty(timeline->getClipTrackId(cid), cutoutMark).toString().isEmpty()) {
+                cutouts << cid;
+            } else {
+                clips << cid;
+            }
+        }
+        if (clips.isEmpty()) {
+            return error(QStringLiteral("pas_de_matiere"), QStringLiteral("Aucun plan vidéo ni image à étalonner dans cette séquence."),
+                         QStringLiteral("Les clips Motion, les titres et les couleurs ne reçoivent pas cet étalonnage. Pour un plan précis, donne clip_id."));
+        }
+    } else {
+        const int cid = target(timeline, args, failure);
+        if (cid == -2) {
+            return failure;
+        }
+        clips << cid;
+    }
+
+    auto *controller = KoraCutGradeController::self();
+    GradeProbe probe(timeline);
+    QList<QPair<int, QJsonObject>> graphs;
+    QJsonArray plans;
+    for (int cid : std::as_const(clips)) {
+        QJsonObject g = controller->graphFor(cid);
+        bool strong = false;
+        const int hdr = buildSignature(g, s, args, failure, &strong);
+        if (hdr < 0) {
+            return failure;
+        }
+        // Le gamma du nœud HDR, par moitiés successives, jusqu'à la luma moyenne visée.
+        const double before = probe.meanLuma(cid);
+        double low = kSignatureGammaLow;
+        double high = kSignatureGammaHigh;
+        double best = 0.;
+        double bestLuma = -1.;
+        for (int i = 0; i < kSignatureMeasures && before >= 0.; ++i) {
+            const double gamma = std::round((low + high) * 500.) / 1000.;
+            setValue(g, hdr, QStringLiteral("primaires"), QStringLiteral("gamma"), QJsonArray{gamma, 0, 0, 0});
+            const double luma = probe.meanLuma(cid, compact(g));
+            if (luma < 0.) {
+                break;
+            }
+            if (bestLuma < 0. || std::abs(luma - wanted) < std::abs(bestLuma - wanted)) {
+                best = gamma;
+                bestLuma = luma;
+            }
+            if (std::abs(luma - wanted) < kSignatureTolerance) {
+                break;
+            }
+            if (luma > wanted) {
+                high = gamma;
+            } else {
+                low = gamma;
+            }
+        }
+        setValue(g, hdr, QStringLiteral("primaires"), QStringLiteral("gamma"), QJsonArray{best, 0, 0, 0});
+        std::string err;
+        if (!kcgrade::Grade::compile(compact(g).toStdString(), &err)) {
+            return error(QStringLiteral("entree_invalide"), QString::fromStdString(err), QStringLiteral("Relis le plan avec etal_lire."));
+        }
+        graphs.append({cid, g});
+        QJsonObject plan{{QStringLiteral("clip_id"), cid},
+                         {QStringLiteral("gamma"), best},
+                         {QStringLiteral("hdr"), strong ? QStringLiteral("fort") : QStringLiteral("sdr")},
+                         {QStringLiteral("noeuds"), nodesBrief(g)}};
+        if (before >= 0.) {
+            plan.insert(QStringLiteral("luma_avant"), std::round(before * 10.) / 10.);
+        }
+        if (bestLuma >= 0.) {
+            plan.insert(QStringLiteral("luma_apres"), std::round(bestLuma * 10.) / 10.);
+            if (std::abs(bestLuma - wanted) >= kSignatureTolerance) {
+                plan.insert(QStringLiteral("avertissement"), QStringLiteral("La cible n'est pas atteinte dans la plage du gamma (-0,45 à +0,25) : regarde le plan, ou change luma_cible."));
+            }
+        } else {
+            plan.insert(QStringLiteral("avertissement"), QStringLiteral("Aucune image n'a pu être mesurée : le gamma du nœud HDR est resté à 0. Règle-le avec mesurer_image et etal_noeud_regler."));
+        }
+        plans.append(plan);
+    }
+    QList<QPair<int, QJsonObject>> matches;
+    for (int cid : std::as_const(cutouts)) {
+        const int middle = timeline->getClipPosition(cid) + timeline->getClipPlaytime(cid) / 2;
+        for (const auto &[under, g] : std::as_const(graphs)) {
+            if (middle >= timeline->getClipPosition(under) && middle < timeline->getClipPosition(under) + timeline->getClipPlaytime(under)) {
+                matches.append({cid, g});
+                break;
+            }
+        }
+    }
+    const int matched = int(matches.size());
+    graphs.append(matches);
+    if (!controller->setGraphsFor(graphs, i18nc("@action undo text", "KoraCut grade (HDR, vivid, skin)"))) {
+        return error(QStringLiteral("non_disponible"), QStringLiteral("L'étalonnage n'a pas pu être posé sur tous les plans."), QStringLiteral("Relis les plans avec etal_lire."));
+    }
+    QJsonObject result{{QStringLiteral("ok"), true},
+                       {QStringLiteral("luma_cible"), wanted},
+                       {QStringLiteral("plans"), plans},
+                       {QStringLiteral("conseil"), QStringLiteral("Exporte quelques images et regarde-les zone par zone (zone sombre, sujet, zone claire) avant de livrer.")}};
+    if (all) {
+        result.insert(QStringLiteral("ignores"), skipped + int(cutouts.size()) - matched);
+        result.insert(QStringLiteral("sujets_detoures_raccordes"), matched);
+    }
+    return result;
+}
+
 QJsonObject etalExporterLut(const Timeline &timeline, const Args &args)
 {
     Scope scope(timeline);
@@ -490,6 +840,7 @@ QMap<QString, Tool> gradeTools()
         {QStringLiteral("etal_copier"), etalCopier},
         {QStringLiteral("etal_reinitialiser"), etalReinitialiser},
         {QStringLiteral("etal_exporter_lut"), etalExporterLut},
+        {QStringLiteral("etal_signature"), etalSignature},
     };
 }
 

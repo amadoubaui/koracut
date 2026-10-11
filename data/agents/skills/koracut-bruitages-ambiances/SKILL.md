@@ -51,6 +51,15 @@ description: "À lire avant de poser un bruitage (whoosh, pop, impact, riser) ou
 4. Fondus de 3 images au moins sur chaque bruitage coupé, 12 à 25 sur les ambiances.
 5. Le Mixeur règle l'équilibre final.
 
+## Percutant, pas doux (8 octobre 2026)
+
+Par défaut, le sound design d'un montage rythmé (publicité, teaser, making-of, clip) est **franc** : des coups graves, des claps, des coups secs, calés à l'image près sur les coupes et sur les entrées de texte. Un effet qu'on n'entend pas ne sert à rien. Ce qui reste interdit : les glissements de hauteur (« tiou »), les sifflements, les balayages stridents. Percutant veut dire du grave et de l'attaque, pas de l'aigu.
+
+- Cale la **crête** de l'effet sur l'image de la coupe, pas son début : pose le clip `crête × cadence` images avant.
+- Coupe la queue d'un effet à sa fin utile, pour qu'il ne bave pas sur le suivant.
+- Un clip par son, sur des pistes à part (« Effets », « Impacts ») : la personne déplace chaque coup.
+- Mesure à la fin : le fichier sort à -14 LUFS pour le web, crête sous -1 dB.
+
 ## Erreurs à éviter
 
 - Des bruitages plus forts que la voix.

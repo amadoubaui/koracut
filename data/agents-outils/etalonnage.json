@@ -1567,6 +1567,268 @@
     "x_confirmation": false
   },
   {
+    "name": "etal_signature",
+    "description": "L'étalonnage par défaut de KoraCut, à poser sur chaque montage sauf demande contraire de la personne (un look sombre, une LUT de marque, « garde l'image telle quelle »). Un seul appel pose l'arbre du plan, un nœud par intention : « HDR » (HDR fort sur un plan qui a un nœud CST, log ou HDR de téléphone : ombres +85, hautes lumières -90, mid_detail +6 ; plus doux sur un plan SDR, sans CST : ombres +45, hautes lumières -40, mid_detail +4 ; les parties sombres s'éclaircissent, les parties trop claires redescendent, comme une photo fusionnée de trois poses, et le gamma est réglé par des mesures successives jusqu'à luma_cible), « Vif » (saturation 54, boost 6 : les couleurs ressortent, sans excès), « Peau » (qualificateur de peau, mid_detail -28 : le teint est adouci, là seulement), et « Sujet » si visage ou sujet est donné (une fenêtre douce : sur un visage elle éclaire, gamma +0,04 et gain 1,03 ; sur un objet ou un écran elle donne du contraste, de la couleur et de la netteté, sans gain ni gamma, qui dessineraient un halo). Rien n'assombrit jamais le reste de l'image : ni nœud outside, ni vignette. Donner clip_id (un plan, avec visage ou sujet si on sait où ils sont) ou tous = true (tous les plans de la séquence active qui viennent d'un fichier vidéo ou d'une image ; les clips Motion, les titres et les couleurs sont laissés ; la peau se fait au qualificateur seul et le nœud Sujet est omis ; un sujet détouré reprend le grade du plan qu'il recouvre). Un plan log ou HDR doit avoir son nœud « CST » : celui qui existe est gardé, sinon donner camera, ou entree_gamut et entree_gamma (ne jamais deviner le log). Par défaut, l'arbre existant est remplacé, sauf le nœud CST de tête : ne pas rappeler l'outil sur un étalonnage que la personne a validé. Une seule étape d'annulation par appel. Renvoie { ok, luma_cible, conseil, plans: [{ clip_id, luma_avant, luma_apres, gamma, hdr (fort ou sdr), noeuds: [{ id, numero, etiquette }], avertissement? }] }, plus ignores et sujets_detoures_raccordes avec tous. Ensuite, exporter quelques images et les regarder zone par zone (zone sombre, sujet, zone claire) avant de livrer : pas sur le moniteur.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le plan à étalonner (champ id de etat_timeline). Absent : donne tous = true."
+        },
+        "tous": {
+          "type": "boolean",
+          "description": "true : tous les plans vidéo et images de la séquence active, en une seule étape d'annulation. Ne va pas avec clip_id, visage ni sujet."
+        },
+        "luma_cible": {
+          "type": "number",
+          "minimum": 95,
+          "maximum": 160,
+          "description": "Luma moyenne visée après étalonnage, sur 0 à 255. Défaut 116 (un plan avec une personne), 136 quand sans_personne est vrai. Clair ne veut pas dire surexposé : ne pas monter sans raison."
+        },
+        "visage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "x",
+            "y",
+            "taille"
+          ],
+          "description": "Le visage de la personne, dans l'image source (origine en haut à gauche). Limite le nœud Peau à ce visage (cercle, aspect 0,8) et pose le nœud Sujet dessus. À ne donner que si le visage ne traverse pas l'image.",
+          "properties": {
+            "x": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Centre, de gauche (0) à droite (1)."
+            },
+            "y": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Centre, du haut (0) au bas (1)."
+            },
+            "taille": {
+              "type": "number",
+              "minimum": 0.02,
+              "maximum": 1,
+              "description": "Taille du visage, en part de la hauteur de l'image. Un plan taille : 0,30 à 0,36."
+            }
+          }
+        },
+        "sujet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "x",
+            "y",
+            "taille"
+          ],
+          "description": "Ce que l'œil doit regarder quand ce n'est pas un visage (un produit, un écran, un objet tenu). Pose le nœud Sujet sur cette fenêtre : contraste 1,16, saturation 60, netteté, sans gain ni gamma.",
+          "properties": {
+            "x": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Centre, de gauche (0) à droite (1)."
+            },
+            "y": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Centre, du haut (0) au bas (1)."
+            },
+            "taille": {
+              "type": "number",
+              "minimum": 0.02,
+              "maximum": 1,
+              "description": "Taille de la fenêtre, en part de la hauteur de l'image. Un produit ou un téléphone tenu : 0,30."
+            },
+            "aspect": {
+              "type": "number",
+              "minimum": 0.2,
+              "maximum": 5,
+              "description": "Largeur sur hauteur. Défaut 1 ; 1,5 pour un objet couché."
+            }
+          }
+        },
+        "sans_personne": {
+          "type": "boolean",
+          "description": "true : personne à l'image (produit, décor, table, écran). La luma visée par défaut passe de 116 à 136. Défaut false."
+        },
+        "remplacer": {
+          "type": "boolean",
+          "description": "Défaut true : l'arbre du plan est remplacé, sauf le nœud CST de tête. false : les nœuds de la signature s'ajoutent à la fin de l'arbre existant."
+        },
+        "camera": {
+          "type": "string",
+          "enum": [
+            "sony_slog3_sgamut3cine",
+            "sony_slog3_sgamut3",
+            "sony_slog2",
+            "panasonic_vlog",
+            "canon_log3",
+            "canon_log2",
+            "canon_log",
+            "arri_logc3",
+            "arri_logc4",
+            "blackmagic_film_gen5",
+            "red_log3g10",
+            "apple_log",
+            "iphone_hdr_hlg",
+            "dji_dlog",
+            "nikon_nlog",
+            "fujifilm_flog2",
+            "fujifilm_flog",
+            "leica_llog",
+            "gopro_gplog2",
+            "davinci_intermediate"
+          ],
+          "description": "Plan log ou HDR sans nœud CST : la caméra et son profil (comme etal_cst). iphone_hdr_hlg pour un téléphone en HDR."
+        },
+        "entree_gamut": {
+          "type": "string",
+          "enum": [
+            "rec709",
+            "rec2020",
+            "p3d65",
+            "dcip3",
+            "sgamut3",
+            "sgamut3cine",
+            "vgamut",
+            "cinemagamut",
+            "awg3",
+            "awg4",
+            "bmdwg5",
+            "dwg",
+            "rwg",
+            "dgamut",
+            "fgamutc",
+            "protune",
+            "ap0",
+            "ap1"
+          ],
+          "description": "Sans camera : l'espace d'entrée."
+        },
+        "entree_gamma": {
+          "type": "string",
+          "enum": [
+            "gamma24",
+            "rec709",
+            "srgb",
+            "gamma22",
+            "gamma26",
+            "lineaire",
+            "hlg",
+            "pq",
+            "davinci_intermediate",
+            "acescct",
+            "slog3",
+            "slog2",
+            "vlog",
+            "clog",
+            "clog2",
+            "clog3",
+            "logc3",
+            "logc4",
+            "bmdfilm5",
+            "log3g10",
+            "applelog",
+            "dlog",
+            "nlog",
+            "flog",
+            "flog2",
+            "llog",
+            "gplog2",
+            "protune"
+          ],
+          "description": "Sans camera : la courbe d'entrée."
+        },
+        "sortie_gamut": {
+          "type": "string",
+          "enum": [
+            "rec709",
+            "rec2020",
+            "p3d65",
+            "dcip3",
+            "sgamut3",
+            "sgamut3cine",
+            "vgamut",
+            "cinemagamut",
+            "awg3",
+            "awg4",
+            "bmdwg5",
+            "dwg",
+            "rwg",
+            "dgamut",
+            "fgamutc",
+            "protune",
+            "ap0",
+            "ap1"
+          ],
+          "description": "Défaut rec709."
+        },
+        "sortie_gamma": {
+          "type": "string",
+          "enum": [
+            "gamma24",
+            "rec709",
+            "srgb",
+            "gamma22",
+            "gamma26",
+            "lineaire",
+            "hlg",
+            "pq",
+            "davinci_intermediate",
+            "acescct",
+            "slog3",
+            "slog2",
+            "vlog",
+            "clog",
+            "clog2",
+            "clog3",
+            "logc3",
+            "logc4",
+            "bmdfilm5",
+            "log3g10",
+            "applelog",
+            "dlog",
+            "nlog",
+            "flog",
+            "flog2",
+            "llog",
+            "gplog2",
+            "protune"
+          ],
+          "description": "Défaut gamma24."
+        },
+        "tone_mapping": {
+          "type": "string",
+          "enum": [
+            "aucun",
+            "simple",
+            "davinci",
+            "luminance"
+          ],
+          "description": "Défaut davinci."
+        },
+        "gamut_mapping": {
+          "type": "string",
+          "enum": [
+            "aucun",
+            "ecreter",
+            "compression"
+          ],
+          "description": "Défaut compression."
+        }
+      },
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (8 octobre 2026) : koracutagenttoolsgrade.cpp, etalSignature ; la mesure passe par GradeProbe (une seule copie de la scène par appel).",
+    "x_confirmation": false
+  },
+  {
     "name": "etal_lut",
     "description": "Pose une LUT (.cube) dans un nœud : une LUT constructeur (log vers Rec.709) dans le nœud de tête, une LUT créative dans un nœud « Look » en fin d'arbre, dosée par melange. Défaut : un nouveau nœud en fin d'arbre, étiqueté d'après le fichier. Rien n'est téléchargé : le fichier doit exister. Renvoie { ok, noeud_id, fichier }.",
     "input_schema": {

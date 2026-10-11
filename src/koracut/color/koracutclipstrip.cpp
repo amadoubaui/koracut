@@ -237,6 +237,9 @@ void KoraCutClipStrip::contextMenuEvent(QContextMenuEvent *e)
     menu.addAction(i18nc("@action", "Append This Grade to Selected Clips"), this, [c, cid, targets]() { c->copyGrade(cid, targets, true); })->setEnabled(!targets.isEmpty());
     menu.addAction(i18nc("@action", "Apply This Grade to All Clips"), this, [c, cid, this]() { c->copyGrade(cid, m_clips, false); });
     menu.addSeparator();
+    menu.addAction(i18nc("@action", "KoraCut Grade (HDR, Vivid, Skin)"), this, [c, cid]() { c->applySignature(cid); })->setEnabled(cid >= 0);
+    menu.addAction(i18nc("@action", "KoraCut Grade on All Clips"), this, [c]() { c->applySignature(-1); });
+    menu.addSeparator();
     menu.addAction(i18nc("@action", "Grab Still"), this, [c]() { c->grabStill(); });
     menu.exec(e->globalPos());
 }

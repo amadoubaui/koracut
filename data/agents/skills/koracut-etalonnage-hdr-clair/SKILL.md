@@ -1,6 +1,6 @@
 ---
 name: koracut-etalonnage-hdr-clair
-description: "À lire quand la personne veut une image claire, colorée, attirante, où tout se lit, comme une photo HDR : ombres relevées, hautes lumières retenues, sujet mis en valeur sans jamais assombrir le reste."
+description: "> Depuis le 8 octobre 2026, la recette à poser par défaut est dans `etalonnage-signature` (quatre nœuds : HDR, Vif, Peau, Sujet). Cette fiche garde l'histoire des essais et des refus, et les valeurs à ne pas dépasser."
 ---
 
 # Étalonner clair, vif et équilibré (rendu « HDR »)
@@ -26,6 +26,8 @@ description: "À lire quand la personne veut une image claire, colorée, attiran
 | `proposer_plan` | pas d'équivalent : écris le plan à la personne dans la conversation et attends son accord |
 | `annuler_dernier_tour` | `historique tour faire=abandon` pendant le tour, `historique annuler` après |
 | montrer ce que tu fais | `timeline tete position=…`, `timeline selection clip_ids='[…]'`, `timeline zoom ajuster=true`, `ui message texte=…` |
+
+> Depuis le 8 octobre 2026, la recette à poser par défaut est dans `koracut-etalonnage-signature` (quatre nœuds : HDR, Vif, Peau, Sujet). Cette fiche garde l'histoire des essais et des refus, et les valeurs à ne pas dépasser.
 
 À lire quand la personne veut une image claire, colorée, attirante, où tout se lit, comme une photo HDR : ombres relevées, hautes lumières retenues, sujet mis en valeur sans jamais assombrir le reste.
 

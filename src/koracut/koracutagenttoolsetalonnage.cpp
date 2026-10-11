@@ -414,6 +414,167 @@ ImageMeasure measureClip(const Timeline &timeline, int cid, int positionInClip, 
     return m;
 }
 
+// Le filtre koracut_grade d'un service de la copie, ou nul.
+std::unique_ptr<Mlt::Filter> gradeFilterOf(Mlt::Service &service)
+{
+    for (int f = 0; f < service.filter_count(); ++f) {
+        std::unique_ptr<Mlt::Filter> filter(service.filter(f));
+        if (filter && filter->is_valid() && qstrcmp(filter->get("mlt_service"), "koracut_grade") == 0) {
+            return filter;
+        }
+    }
+    return nullptr;
+}
+
+// Remplace, dans la copie, le graphe du plan qui commence à @p clipStart sur cette piste. Le filtre est
+// créé en tête de pile si le plan n'a pas encore de grade (comme le fait le module Étalonnage).
+bool setClipGrade(Mlt::Service &service, int clipStart, int position, const QByteArray &graph)
+{
+    const mlt_service_type type = service.type();
+    if (type == mlt_service_tractor_type || type == mlt_service_multitrack_type) {
+        Mlt::Tractor sub(service);
+        if (!sub.is_valid()) {
+            return false;
+        }
+        for (int j = 0; j < sub.count(); ++j) {
+            std::unique_ptr<Mlt::Producer> inner(sub.track(j));
+            if (inner && inner->is_valid()) {
+                Mlt::Service innerService(inner->get_service());
+                if (setClipGrade(innerService, clipStart, position, graph)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    if (type != mlt_service_playlist_type) {
+        return false;
+    }
+    Mlt::Playlist playlist(service);
+    if (!playlist.is_valid()) {
+        return false;
+    }
+    const int index = playlist.get_clip_index_at(position);
+    // Pendant un fondu enchaîné, les deux listes de la piste ont un clip ici : le bon commence à clipStart.
+    if (index < 0 || index >= playlist.count() || playlist.is_blank(index) || playlist.clip_start(index) != clipStart) {
+        return false;
+    }
+    std::unique_ptr<Mlt::Producer> entry(playlist.get_clip(index));
+    if (!entry || !entry->is_valid()) {
+        return false;
+    }
+    Mlt::Service cut(entry->get_service());
+    std::unique_ptr<Mlt::Filter> filter = gradeFilterOf(cut);
+    if (!filter) {
+        Mlt::Producer parent = entry->parent();
+        if (parent.is_valid()) {
+            Mlt::Service parentService(parent.get_service());
+            filter = gradeFilterOf(parentService);
+        }
+    }
+    if (!filter) {
+        filter = std::make_unique<Mlt::Filter>(pCore->getProjectProfile(), "koracut_grade");
+        if (!filter->is_valid() || cut.attach(*filter) != 0) {
+            return false;
+        }
+        const int last = cut.filter_count() - 1;
+        if (last > 0) {
+            cut.move_filter(last, 0);
+        }
+    }
+    filter->set("graphe", graph.constData());
+    filter->set("disable", 0);
+    return true;
+}
+
+} // namespace
+
+namespace KoraCutAgentToolsPrivate {
+
+// L'ordre compte : la garde du cache des décodeurs est détruite après le producteur de la copie.
+struct GradeProbe::Data
+{
+    Timeline timeline;
+    std::unique_ptr<KoraCutPerformance::DecoderCacheRoom> room;
+    std::unique_ptr<KoraCutPerformance::GradeBypass> graded;
+    std::unique_ptr<Mlt::Producer> producer;
+    std::unique_ptr<Mlt::Tractor> tractor;
+    QList<int> hidden; // l'état « hide » de chaque piste dans le projet
+    int height = 270;
+};
+
+GradeProbe::GradeProbe(const Timeline &timeline)
+    : d(new Data)
+{
+    d->timeline = timeline;
+    int projectWidth = 1920;
+    int projectHeight = 1080;
+    if (const auto &profile = pCore->getCurrentProfile()) {
+        projectWidth = profile->width();
+        projectHeight = profile->height();
+    }
+    d->height = std::max(1, kMeasureWidth * projectHeight / std::max(1, projectWidth));
+    const QString xml = timeline->sceneList(QString());
+    if (xml.isEmpty()) {
+        return;
+    }
+    d->room = std::make_unique<KoraCutPerformance::DecoderCacheRoom>(xml);
+    d->graded = std::make_unique<KoraCutPerformance::GradeBypass>();
+    d->producer = std::make_unique<Mlt::Producer>(pCore->getProjectProfile(), "xml-string", xml.toUtf8().constData());
+    if (!d->producer->is_valid()) {
+        d->producer.reset();
+        return;
+    }
+    Mlt::Service service(d->producer->get_service());
+    d->tractor = std::make_unique<Mlt::Tractor>(service);
+    if (!d->tractor->is_valid()) {
+        d->tractor.reset();
+        d->producer.reset();
+        return;
+    }
+    for (int i = 0; i < d->tractor->count(); ++i) {
+        std::unique_ptr<Mlt::Producer> track(d->tractor->track(i));
+        d->hidden << (track && track->is_valid() ? track->get_int("hide") : 0);
+    }
+}
+
+GradeProbe::~GradeProbe() = default;
+
+bool GradeProbe::valid() const
+{
+    return d->producer && d->tractor;
+}
+
+double GradeProbe::meanLuma(int clipId, const QString &graph)
+{
+    if (!valid() || !d->timeline->isClip(clipId)) {
+        return -1.;
+    }
+    const int start = d->timeline->getClipPosition(clipId);
+    const int position = start + d->timeline->getClipPlaytime(clipId) / 2;
+    const int keep = d->timeline->getTrackMltIndex(d->timeline->getClipTrackId(clipId));
+    const int count = d->tractor->count();
+    for (int i = 1; i < count; ++i) {
+        std::unique_ptr<Mlt::Producer> track(d->tractor->track(i));
+        if (!track || !track->is_valid()) {
+            continue;
+        }
+        track->set("hide", i == keep ? d->hidden.value(i) : 3);
+        if (i == keep && !graph.isEmpty()) {
+            Mlt::Service trackService(track->get_service());
+            if (!setClipGrade(trackService, start, position, graph.toUtf8())) {
+                return -1.;
+            }
+        }
+    }
+    const ImageMeasure m = measureImage(KThumb::getFrame(*d->producer, position, kMeasureWidth, d->height));
+    return m.ok ? m.lumaMean : -1.;
+}
+
+} // namespace KoraCutAgentToolsPrivate
+
+namespace {
+
 // ---------------------------------------------------------------------------------------------
 // mesurer_image
 

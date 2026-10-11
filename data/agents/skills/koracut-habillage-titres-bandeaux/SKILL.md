@@ -52,6 +52,16 @@ Le choix entre les gestes de l'application et HyperFrames, et les règles du mou
 - **Transitions** : la coupe franche dans 90 % des cas. Un fondu enchaîné pour le temps qui passe, un fondu au noir pour une fin de chapitre. Une transition principale et une ou deux en accent sur toute la vidéo, pas une différente à chaque coupe. Transitions « PowerPoint » (étoiles, volets fantaisie, cubes) et bande ou trait incliné qui balaie l'image : jamais.
 - **Qui fait quoi** : le Monteur pose titres, cartons, fondus et gestes de l'application ; le Motion designer dessine ce qui demande HyperFrames (bandeau animé, compteur, logo qui arrive, transition graphique).
 
+## La zone sûre d'une vidéo verticale (8 octobre 2026)
+
+Sur TikTok, Reels et Shorts, l'application pose ses propres éléments par-dessus la vidéo : la barre de recherche et les onglets en haut, la description, le nom du compte et la musique en bas, les boutons à droite. Un texte posé là est caché.
+
+En 1080 × 1920, tout texte et toute animation tiennent **entre 270 et 1480 px de haut**, et à gauche de 960 px de large pour ce qui doit absolument se lire. Le haut de l'image (0 à 270) et le bas (1480 à 1920) ne portent que de l'image.
+
+- Si la seule zone vide du plan est tout en bas (une table, un sol), **recadre le plan** (un zoom de 1,15 calé en bas remonte la table) plutôt que de poser le texte hors zone.
+- Si le texte tombe alors sur un fond chargé, écris-le en blanc avec une ombre douce, pas en noir.
+- Vérifie sur des images exportées, avec deux traits tirés à 270 et 1480.
+
 ## Erreurs à éviter
 
 - Habiller avant que le montage soit fixé : chaque déplacement de plan décale les titres.

@@ -713,6 +713,30 @@ void PreviewManager::addPreviewRange(const QPoint zone, bool add)
     }
 }
 
+void PreviewManager::koraCutWaitPreviewStopped()
+{
+    // KoraCut (6 octobre 2026) : cette attente se fait sur le fil principal. Le 6 octobre, le processus de rendu
+    // était déjà mort (zombie) sans que QProcess l'ait vu : chaque appel attendait deux fois trente secondes, et
+    // le miroir Motion en faisait un par clip posé. L'application ne répondait plus. On attend donc peu, on tue,
+    // et un processus qui ne veut pas finir n'est attendu qu'une fois.
+    if (m_previewProcess.state() == QProcess::NotRunning) {
+        m_koraCutStuckPid = 0;
+        return;
+    }
+    const qint64 pid = m_previewProcess.processId();
+    if (pid != 0 && pid == m_koraCutStuckPid) {
+        return;
+    }
+    if (m_previewProcess.waitForFinished(1500)) {
+        return;
+    }
+    m_previewProcess.kill();
+    if (!m_previewProcess.waitForFinished(1500)) {
+        m_koraCutStuckPid = pid;
+        qCWarning(KDENLIVE_LOG) << "KoraCut: preview render process" << pid << "did not stop, not waiting again";
+    }
+}
+
 void PreviewManager::abortRendering()
 {
     if (m_previewProcess.state() == QProcess::NotRunning) {
@@ -732,11 +756,7 @@ void PreviewManager::abortRendering()
     }
 #endif
     Q_EMIT abortPreview();
-    m_previewProcess.waitForFinished();
-    if (m_previewProcess.state() != QProcess::NotRunning) {
-        m_previewProcess.kill();
-        m_previewProcess.waitForFinished();
-    }
+    koraCutWaitPreviewStopped();
     // Re-init time estimation
     Q_EMIT previewRender(-1, QString(), 1000);
 }
@@ -1076,7 +1096,7 @@ void PreviewManager::gotPreviewRender(int frame, const QString &file, int progre
 void PreviewManager::corruptedChunk(int frame, const QString &fileName)
 {
     Q_EMIT abortPreview();
-    m_previewProcess.waitForFinished();
+    koraCutWaitPreviewStopped();
     if (workingPreview >= 0) {
         workingPreview = -1;
         Q_EMIT workingPreviewChanged();

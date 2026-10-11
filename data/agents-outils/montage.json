@@ -886,6 +886,112 @@
     "x_confirmation": false
   },
   {
+    "name": "flouter_zone",
+    "description": "Cache une zone rectangulaire d'un plan par un flou, et la suit quand elle bouge. À utiliser dès qu'un nom, un numéro, une adresse, un visage d'un tiers ou une conversation privée est lisible à l'écran (le nom d'un contact dans WhatsApp, un numéro de téléphone, un e-mail, une plaque, un écran d'ordinateur) : tu le repères avec voir_image et tu le floutes sans attendre qu'on te le demande. Donne dans zone le rectangle qui entoure juste ce qu'il faut cacher, à l'image position_dans_clip du plan ; l'outil ajoute une petite marge et suit une zone plus large autour pour ne pas décrocher. Repère source (défaut) : pixels de l'image du média, comptés depuis son coin haut gauche, image redressée si le téléphone a filmé debout (largeur et hauteur du média : champs l et h de lister_medias). Repère image : pixels de l'image du projet, celle que montre voir_image, cadrage du plan compris. suivre true (défaut) : le mouvement de la zone est calculé à côté, sans bloquer (environ la durée du plan), puis écrit en images clés ; plan de 30 secondes au plus (couper d'abord le plan autour du moment où la zone est visible), vitesse du plan à 100 %. suivre false : un rectangle fixe, pour un plan sur pied, une image ou un titre. type flou (défaut), pixels (mosaïque) ou plein (aplat noir, quand rien ne doit se deviner). Le suivi part de position_dans_clip vers la fin du plan : choisis de préférence la première image, avant elle le rectangle reste fixe. Si le suivi décroche, un rectangle fixe est posé quand même et la réponse porte suivi false et suivi_perdu true : vérifie la fin du plan. Le flou est rangé avant le Transformer du plan quand c'est possible (place avant_transformer : il reste juste si le cadrage change), sinon après (place apres_transformer : si le cadrage change ensuite, retirer le flou et le refaire). Toujours vérifier le début et la fin du plan avec voir_image. Une seule étape d'annulation. Pour retirer un flou : supprimer_effet avec le clip_id et l'effet_index rendus (flous_lister les retrouve). Erreurs : non_disponible (module de suivi OpenCV absent, média introuvable ou vitesse changée), entree_invalide (zone hors de l'image, plan trop long), hors_clip. Renvoie { ok, clip_id, effet_index, effet_id, images_cles, suivi, suivi_perdu?, zone_debut, zone_fin (même repère que zone), repere, type, force, place, duree_calcul_ms, etiquette?, avertissement?, conseil }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le clip vidéo du plan (champ k = « v »), ou son clip audio (l'image groupée avec lui est prise)."
+        },
+        "zone": {
+          "type": "object",
+          "properties": {
+            "x_px": {
+              "type": "number",
+              "description": "Bord gauche de la zone, en pixels."
+            },
+            "y_px": {
+              "type": "number",
+              "description": "Bord haut de la zone, en pixels."
+            },
+            "largeur_px": {
+              "type": "number",
+              "minimum": 4,
+              "description": "Largeur de la zone, en pixels."
+            },
+            "hauteur_px": {
+              "type": "number",
+              "minimum": 4,
+              "description": "Hauteur de la zone, en pixels."
+            }
+          },
+          "required": [
+            "x_px",
+            "y_px",
+            "largeur_px",
+            "hauteur_px"
+          ],
+          "additionalProperties": false,
+          "description": "Le rectangle à cacher, tel qu'il est à l'image position_dans_clip."
+        },
+        "repere": {
+          "type": "string",
+          "enum": [
+            "source",
+            "image"
+          ],
+          "description": "source (défaut) : pixels de l'image du média. image : pixels de l'image du projet, celle de voir_image."
+        },
+        "position_dans_clip": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "L'image du plan où la zone est donnée, en images depuis le début du clip. Défaut : 0."
+        },
+        "suivre": {
+          "type": "boolean",
+          "description": "true (défaut) : la zone est suivie. false : rectangle fixe."
+        },
+        "force": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 200,
+          "description": "Force du flou, ou taille des carreaux pour pixels, en pixels du projet. Défaut : 40."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "flou",
+            "pixels",
+            "plein"
+          ],
+          "description": "Défaut : flou."
+        },
+        "etiquette": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Ce que la zone cache, pour la retrouver : « nom WhatsApp », « numéro de téléphone »."
+        }
+      },
+      "required": [
+        "clip_id",
+        "zone"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/koracutagenttoolsflou.cpp : effet opencv.tracker (data/effects/tracker.xml, module MLT opencv). L'analyse est lancée par melt dans un processus à part (deux fichiers .mlt temporaires : le plan avec les effets qui précèdent le flou, puis le filtre de suivi par-dessus, consommateur xml), algorithme KCF sur une zone élargie ; les images clés vont dans le paramètre results, shape_width 0, blur et blur_type selon force et type ; EffectStackModel::appendEffectWithParams, moveEffectWithUndo (avant le Transformer). L'effet porte la propriété kdenlive:koracut_flou.",
+    "x_confirmation": false
+  },
+  {
+    "name": "flous_lister",
+    "description": "Liste les zones floutées de la séquence (celles que flouter_zone a posées, et tout effet de suivi qui cache une zone), pour les retrouver, les vérifier ou les retirer. Sans clip_id : toute la séquence. Pour retirer un flou : supprimer_effet avec son clip_id et son effet_index. Pour le déplacer : le retirer, puis rappeler flouter_zone. Ne change rien. Renvoie { ok, nombre, flous: [ { clip_id, piste, position, effet_index, type, force, suivi, images_cles, actif, etiquette?, zone_debut_image?, zone_fin_image?, debut_dans_clip? } ] } ; zone_debut_image et zone_fin_image sont en pixels de l'image du projet.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Un seul plan. Vide : toute la séquence."
+        }
+      },
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/koracut/koracutagenttoolsflou.cpp : parcourt les piles d'effets des clips vidéo, garde les effets opencv.tracker marqués kdenlive:koracut_flou ou dont blur est positif.",
+    "x_confirmation": false
+  },
+  {
     "name": "sous_titres_poser",
     "description": "Pose des sous-titres de dialogue sur la piste de sous-titres de la séquence ouverte (la piste native, rendue par libass et incrustée à l'export). À utiliser pour sous-titrer une interview, un podcast, une vidéo verticale : cartons courts et rythmés, mots clés en couleur. Chaque carton a debut, fin (temps de la timeline) et texte ; un retour à la ligne avec \\n (deux lignes au plus) ; un mot entre *étoiles* prend la couleur accent de son style. Les styles sont nommés (Default existe toujours) et se règlent en pixels du projet ; la taille et la marge par défaut suivent l'orientation (en vertical, au-dessus de la zone des boutons). remplacer (vrai par défaut) retire d'abord les sous-titres de la séquence. Relis et corrige l'orthographe avant : le texte est posé tel quel. Pour ajouter un titre ou un nom en bas d'écran, utiliser ajouter_titre ou motion_element_seul. Annulable (le retrait et la pose sont deux étapes). Renvoie { ok, cartons, retires, styles, format, premier, dernier, fichier }.",
     "input_schema": {

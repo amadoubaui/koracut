@@ -1778,6 +1778,7 @@ QMap<QString, Tool> buildTools()
     map.insert(voixTools());
     map.insert(outilsTools());
     map.insert(detourageTools());
+    map.insert(flouTools());
     return map;
 }
 

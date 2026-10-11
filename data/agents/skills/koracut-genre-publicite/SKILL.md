@@ -55,6 +55,15 @@ description: "À lire pour une publicité, un spot produit, une vidéo de promot
 - **La même carte de fin sur toute la campagne** : logo, signature, un seul appel à l'action.
 - **Trois versions** : v1 fidèle au script, v2 après ta propre relecture (lisibilité, plans trop sombres, mouvement), v3 après l'avis de la personne. Chaque version est un nouveau fichier.
 
+## Une publicité rythmée, calée sur la musique (Samsung Fold8, 8 octobre 2026)
+
+- **Mesure le morceau avant de couper.** Tempo, durée d'une mesure en images, place du drop. À 145 battements par minute, une mesure dure 1,66 s, soit 50 images : les coupes tombent sur 0, 50, 99, 149, 199…
+- **Le drop tombe sur le geste clé** (le téléphone qui s'ouvre, le produit qui apparaît). On choisit le point d'entrée dans la musique pour ça, on ne déplace pas le geste.
+- **Une idée par mesure ou par deux mesures.** Chaque étape du script a son plan, son texte à l'écran et sa phrase de voix ; deux plans du même geste à deux grosseurs (un zoom de 1,4 puis de 1,65) donnent le rythme sans changer d'idée.
+- **Les animations vont dans les zones vides** : la table sous un visage, le plan de travail au-dessus d'un téléphone vu de dessus. Jamais sur le visage ni sur l'écran du produit. Vérifie sur un export, image par image.
+- **Une marque, son style.** Cherche la police, les couleurs, les formes et les mouvements de la marque avant de dessiner (pour Samsung : titres en casse de phrase avec un point final, coins très arrondis, entrées par échelle et flou, noir et blanc avec un accent). Les logos des applications montrées sont les vrais, pas un pictogramme générique.
+- **Le son frappe** : un impact grave sur chaque coupe forte, un clap ou un coup sec sur les autres, une montée de deux secondes avant le drop, un tic à chaque texte qui entre. Voir `koracut-bruitages-ambiances`.
+
 ## Critères de qualité
 
 - Sans le son, on sait ce qui est vendu, par qui, et comment l'acheter.

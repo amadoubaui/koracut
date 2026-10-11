@@ -99,6 +99,27 @@ void setParametersWithUndo(const std::shared_ptr<EffectItemModel> &effect, const
  * couleur : ceux que posent les outils du Coloriste, plus ceux que la personne pose à la main. */
 bool isColourEffect(const QString &effectId);
 
+/** @brief Mesure la luma moyenne d'un plan avec un grade d'essai, sans toucher au projet (etal_signature,
+ * 8 octobre 2026). La scène est copiée une seule fois ; chaque essai remplace, dans la copie, le graphe
+ * du filtre koracut_grade du plan. Même chemin et même image que mesurer_image (milieu du plan, seule
+ * sa piste visible, effets compris). */
+class GradeProbe
+{
+public:
+    explicit GradeProbe(const Timeline &timeline);
+    ~GradeProbe();
+    GradeProbe(const GradeProbe &) = delete;
+    GradeProbe &operator=(const GradeProbe &) = delete;
+    bool valid() const;
+    /** @brief La luma moyenne (0 à 255) du plan, -1 si aucune image ne sort. @p graph vide : le plan tel
+     * qu'il est ; sinon ce graphe JSON prend la place du grade du plan dans la copie. */
+    double meanLuma(int clipId, const QString &graph = QString());
+
+private:
+    struct Data;
+    std::unique_ptr<Data> d;
+};
+
 // ---- Les outils, par lot -------------------------------------------------------------------------
 
 /** @brief Lot A (24 septembre 2026) : titre, transition, effets, images clés, transformation. */
@@ -142,6 +163,9 @@ QMap<QString, Tool> detourageTools();
  *  @p trackId ou, à -1, sur la piste « Sujets détourés » (créée au besoin) ; l'étalonnage et le Transformer
  *  du plan sont recopiés. Une seule étape d'annulation. */
 QJsonObject placeSubjectCutout(const Timeline &timeline, int clipId, const QString &file, int trackId = -1);
+/** @brief 8 octobre 2026 (koracutagenttoolsflou.cpp) : flouter_zone et flous_lister (montage.json), une zone
+ *  d'un plan floutée et suivie par l'effet de suivi de l'application (filtre MLT opencv.tracker). */
+QMap<QString, Tool> flouTools();
 QStringList reglagesToolNames();
 
 } // namespace KoraCutAgentToolsPrivate

@@ -980,6 +980,11 @@ bool KoraCutMotionMirror::applyFromFile(const QString &name, bool logUndo, const
     bool hasAudio = false;
     const bool single = comp.isElement();
     for (const Element &e : single ? QList<Element>() : comp.elements) {
+        // Une piste n'est créée que pour un élément qui n'a pas encore de clip : si la personne a rangé les clips
+        // d'une composition sur une autre piste (plusieurs scènes sur une piste « Scènes »), rien n'est recréé.
+        if (clipFor(name, e.id) >= 0) {
+            continue;
+        }
         if (e.kind == Kind::Audio) {
             hasAudio = true;
         } else if (!indexes.contains(e.trackIndex)) {
@@ -1016,7 +1021,13 @@ bool KoraCutMotionMirror::applyFromFile(const QString &name, bool logUndo, const
             const int tid = tl->getClipTrackId(cid);
             const bool audio = e.kind == Kind::Audio;
             // Un élément seul reste sur la piste où il est : c'est la personne qui le range.
-            const int wantedTrack = single ? tid : ensureTrack(entry, audio ? 0 : e.trackIndex, audio, *undo, *redo);
+            // Une composition entière ou à plusieurs éléments suit sa piste Motion seulement quand le HTML change
+            // d'index de piste. Un clip que la personne a déplacé sur une autre piste y reste (6 octobre 2026).
+            int wantedTrack = tid;
+            if (!single && !audio && tl->getTrackProperty(tid, kTrackProject).toString() == entry.name &&
+                tl->getTrackProperty(tid, kTrackIndex).toInt() != e.trackIndex) {
+                wantedTrack = ensureTrack(entry, e.trackIndex, false, *undo, *redo);
+            }
             if (wantedLength > 0 && tl->getClipPlaytime(cid) != wantedLength) {
                 int size = wantedLength;
                 tl->requestItemResize(cid, size, true, true, *undo, *redo);

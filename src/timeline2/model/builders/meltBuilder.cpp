@@ -676,6 +676,14 @@ bool constructTrackFromMelt(const std::shared_ptr<TimelineItemModel> &timeline, 
             if (!koraCutColor.isEmpty()) {
                 timeline->setTrackProperty(tid, QStringLiteral("kdenlive:koracut_color"), koraCutColor);
             }
+            // KoraCut (6 octobre 2026) : les marques des pistes Motion. Sans elles, le miroir ne reconnaissait plus ses
+            // pistes à la réouverture et en créait de nouvelles à chaque fois (document 19, journal).
+            for (const char *key : {"kdenlive:koracut_motion", "kdenlive:koracut_motion_track", "kdenlive:koracut_motion_audio"}) {
+                const QString mark = QString::fromUtf8(track.get(key));
+                if (!mark.isEmpty()) {
+                    timeline->setTrackProperty(tid, QString::fromLatin1(key), mark);
+                }
+            }
             if (audioTrack) {
                 // This is an audio track
                 timeline->setTrackProperty(tid, QStringLiteral("kdenlive:audio_track"), QStringLiteral("1"));

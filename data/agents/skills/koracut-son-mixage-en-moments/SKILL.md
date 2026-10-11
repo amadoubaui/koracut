@@ -70,6 +70,15 @@ Musique sur « Musique », effets en alternance sur « Bruitages et SFX 1 » et 
 - Mesure finale à -14 LUFS, plage dynamique de 4 à 8 LU.
 - Tu dis à la personne que le choix est fait sur mesure et qu'elle doit écouter.
 
+## Un instrumental par moment (8 octobre 2026)
+
+« Plusieurs musiques mixées » veut dire **des morceaux différents**, pas trois clips du même morceau. La musique change quand ce qui se passe à l'image change : la question, la démonstration, la phrase forte, la sortie. Trois moments, trois instrumentaux.
+
+- Choisis des morceaux de tempos voisins (5 % d'écart au plus) et **cale-les tous sur le tempo du montage** : `atempo` de ffmpeg sur une copie du fichier, rangée dans le dossier Musique avec « calé à N BPM » dans son nom. Les coupes restent sur les mesures.
+- Fais partir chaque morceau **de son drop**, sur la première image du nouveau moment, avec un impact par-dessus pour souder le changement.
+- Mesure le niveau de chaque morceau (LUFS sur sa partie utilisée) et règle le gain de chaque clip pour qu'ils sortent au même niveau sous la voix.
+- Un clip par morceau et par moment sur la piste Musique : la personne peut en changer un sans toucher aux autres.
+
 ## Erreurs à éviter
 
 - Une musique unique à niveau constant.

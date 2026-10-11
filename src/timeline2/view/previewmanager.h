@@ -153,6 +153,10 @@ private:
     /** @brief Le rendu se met en pause pendant la lecture et pendant un geste (souris enfoncée), puis reprend. */
     QTimer m_playbackWatch;
     bool m_suspended{false};
+    /** KoraCut : le rendu d'aperçu qui n'a pas voulu s'arrêter (on ne l'attend qu'une fois). */
+    qint64 m_koraCutStuckPid{0};
+    /** KoraCut : attend l'arrêt du rendu d'aperçu sans jamais figer le fil principal plus de trois secondes. */
+    void koraCutWaitPreviewStopped();
     /** @brief Vrai si la personne lit ou fait un geste : le rendu attend. */
     static bool userIsBusy();
     /** @brief Range un fichier rendu dans l'historique d'annulation, ou l'efface (réglage apercuEtapesAnnulation). */

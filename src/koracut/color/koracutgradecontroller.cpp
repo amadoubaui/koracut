@@ -23,9 +23,11 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "kcgrade.h"
 #include "macros.hpp"
 #include "undohelper.hpp"
+#include "koracut/koracutagenttools.h"
 #include "koracut/koracutagenttools_p.h"
 
 #include <KLocalizedString>
+#include <QApplication>
 #include <QBuffer>
 #include <QDateTime>
 #include <QDir>
@@ -523,6 +525,23 @@ int KoraCutGradeController::copyGrade(int from, const QList<int> &to, bool appen
     return int(list.size());
 }
 
+
+bool KoraCutGradeController::applySignature(int cid)
+{
+    auto t = timeline();
+    if (!t || (cid >= 0 && !t->isClip(cid))) {
+        return false;
+    }
+    // La mesure de chaque plan prend un instant sur une longue séquence.
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const QJsonObject args = cid >= 0 ? QJsonObject{{QStringLiteral("clip_id"), cid}} : QJsonObject{{QStringLiteral("tous"), true}};
+    const bool ok = KoraCutAgentTools::call(t, QStringLiteral("etal_signature"), args).value(QStringLiteral("ok")).toBool();
+    QApplication::restoreOverrideCursor();
+    if (!ok) {
+        pCore->displayMessage(i18nc("@info:status", "The KoraCut grade could not be applied here."), ErrorMessage);
+    }
+    return ok;
+}
 
 void KoraCutGradeController::resetGrade(bool keepNodes)
 {

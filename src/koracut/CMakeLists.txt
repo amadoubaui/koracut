@@ -56,6 +56,8 @@ set(koracut_SRCS
     koracut/koracutagenttoolsoutils.cpp
     # 1er octobre 2026 : detourer_sujet, le sujet d'un plan détouré et posé au-dessus de lui.
     koracut/koracutagenttoolsdetourage.cpp
+    # 8 octobre 2026 : flouter_zone, une zone floutée qui suit ce qu'elle cache (nom, numéro, visage).
+    koracut/koracutagenttoolsflou.cpp
     # Le mode « montage visible » : l'écran suit chaque geste des agents et de la porte.
     koracut/koracutvisible.cpp
     koracut/koracutassetcards.cpp
