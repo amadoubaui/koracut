@@ -20,6 +20,7 @@
 #include "doc/kdenlivedoc.h"
 #include "effects/effectstack/model/effectitemmodel.hpp"
 #include "effects/effectstack/model/effectstackmodel.hpp"
+#include "effects/effectsrepository.hpp"
 #include "koracut/koracutagenttools.h"
 #include "profiles/profilemodel.hpp"
 
@@ -154,6 +155,18 @@ TEST_CASE("Flouter une zone : le flou suivi, le rectangle fixe, l'annulation", "
     const QPointF first = squareAt(0);
     const QPointF last = squareAt(length - 1);
     REQUIRE(last.x() - first.x() > 80);
+
+    // Sans le module OpenCV de MLT (le MLT de MSYS2 sous Windows ne l'a pas), l'outil doit le dire et ne rien
+    // poser : c'est tout ce qu'on peut vérifier sur une telle machine.
+    if (!EffectsRepository::get()->exists(tracker)) {
+        const int steps = undoStack->index();
+        CHECK(errorCode(call(timeline, QStringLiteral("flouter_zone"), {{QStringLiteral("clip_id"), clip}, {QStringLiteral("zone"), zone(10, 10, 50, 50)}, {QStringLiteral("suivre"), false}})) ==
+              QStringLiteral("non_disponible"));
+        CHECK(undoStack->index() == steps);
+        WARN("module de suivi OpenCV absent de MLT : seul le refus a été joué");
+        pCore->projectManager()->closeCurrentDocument(false, false);
+        return;
+    }
 
     SECTION("Les refus")
     {
