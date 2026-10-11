@@ -11,12 +11,14 @@
 #include <QDir>
 #include <QFuture>
 #include <QMutex>
+#include <QPointer>
 #include <QProcess>
 #include <QSet>
 #include <QTimer>
 #include <QUuid>
 
 class TimelineController;
+class KdenliveDoc;
 
 namespace Mlt {
 class Tractor;
@@ -126,6 +128,8 @@ private:
     /** @brief: Since some timeline operations generate several invalidate calls, use a timer to get them all. */
     QTimer m_previewGatherTimer;
     bool m_initialized;
+    /** KoraCut : le document connu à l'initialisation, pour ne pas lire un document détruit à la fermeture. */
+    QPointer<KdenliveDoc> m_koraCutDoc;
     QList<int> m_waitingThumbs;
     QFuture<void> m_previewThread;
     /** @brief: The count of chunks to process - to calculate job progress */

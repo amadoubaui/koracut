@@ -359,16 +359,21 @@ void KoraCutExportQueue::notifyEnd(const JobPtr &job)
 {
     Q_EMIT jobFinished(job->id, job->state);
     const QString file = QFileInfo(job->path).fileName();
+    // Sans bureau (plateforme « offscreen » : tests, machine sans écran), pas de notification du système :
+    // KNotifications plante sous Windows quand personne ne peut l'afficher (trois tests, 11 octobre 2026).
+    const bool desktop = QGuiApplication::platformName() != QLatin1String("offscreen");
     if (job->state == QLatin1String("termine")) {
         // La notification du système (comme Resolve à la fin de la liste d'export), et la barre d'état.
-        KNotification::event(QStringLiteral("RenderFinished"), i18nc("@info notification", "Export finished: %1", file), QPixmap());
+        if (desktop) {
+            KNotification::event(QStringLiteral("RenderFinished"), i18nc("@info notification", "Export finished: %1", file), QPixmap());
+        }
         if (pCore) {
             pCore->displayMessage(i18nc("@info", "Export finished: %1", file), OperationCompletedMessage, 6000);
         }
         if (auto *w = QApplication::activeWindow(); !w && pCore && pCore->window()) {
             QApplication::alert(pCore->window());
         }
-    } else if (job->state == QLatin1String("echec")) {
+    } else if (job->state == QLatin1String("echec") && desktop) {
         KNotification::event(QStringLiteral("ErrorMessage"), i18nc("@info notification", "Export failed: %1", file), QPixmap());
     }
 }

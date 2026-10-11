@@ -102,7 +102,11 @@ PreviewManager::~PreviewManager()
         if (m_undoDir.dirName() == QLatin1String("undo")) {
             m_undoDir.removeRecursively();
         }
-        if ((pCore->currentDoc()->url().isEmpty() && m_cacheDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot).isEmpty()) ||
+        // KoraCut (11 octobre 2026) : à la fermeture de l'application, le document peut être détruit avant nous
+        // (ProjectManager le détruit avant ses séquences) ; pCore->currentDoc() rend alors un pointeur mort
+        // (plantage de timelinepreviewtest sous Windows). On lit le document qu'on a connu, s'il vit encore.
+        const bool unsaved = m_koraCutDoc && m_koraCutDoc->url().isEmpty();
+        if ((unsaved && m_cacheDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot).isEmpty()) ||
             m_cacheDir.entryList(QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty()) {
             if (m_cacheDir.dirName() == QLatin1String("preview")) {
                 m_cacheDir.removeRecursively();
@@ -202,6 +206,7 @@ bool PreviewManager::initialize()
     }
     connect(this, &PreviewManager::previewRender, this, &PreviewManager::gotPreviewRender, Qt::DirectConnection);
     connect(&m_previewGatherTimer, &QTimer::timeout, this, &PreviewManager::slotProcessDirtyChunks);
+    m_koraCutDoc = pCore->currentDoc();
     m_initialized = true;
     return true;
 }
