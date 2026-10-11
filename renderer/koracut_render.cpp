@@ -57,7 +57,7 @@ int main(int argc, char **argv)
     QImageReader::setAllocationLimit(1024);
 
     QCommandLineParser parser;
-    parser.setApplicationDescription("Kdenlive video renderer for MLT");
+    parser.setApplicationDescription("KoraCut video renderer for MLT");
     parser.addHelpOption();
     parser.addVersionOption();
 

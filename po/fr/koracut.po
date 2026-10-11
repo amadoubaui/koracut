@@ -52749,6 +52749,22 @@ msgctxt "@action"
 msgid "Apply This Grade to All Clips"
 msgstr "Appliquer cet étalonnage à tous les plans"
 
+msgctxt "@action"
+msgid "KoraCut Grade (HDR, Vivid, Skin)"
+msgstr "Étalonnage KoraCut (HDR, vif, peau)"
+
+msgctxt "@action"
+msgid "KoraCut Grade on All Clips"
+msgstr "Étalonnage KoraCut sur tous les plans"
+
+msgctxt "@info:status"
+msgid "The KoraCut grade could not be applied here."
+msgstr "L'étalonnage KoraCut n'a pas pu être posé ici."
+
+msgctxt "@action undo text"
+msgid "KoraCut grade (HDR, vivid, skin)"
+msgstr "étalonnage KoraCut (HDR, vif, peau)"
+
 msgctxt "@action:button take a still of the current clip"
 msgid "Grab Still"
 msgstr "Prendre un still"
@@ -55265,6 +55281,17 @@ msgstr "Détourer le sujet"
 msgctxt "@info:status subject cut-out progress, %1 percent, %2 clip name"
 msgid "Cutting out the subject: %1% · %2"
 msgstr "Détourage du sujet : %1 % · %2"
+
+#. KoraCut, 8 octobre 2026 : flouter_zone, une zone floutée qui suit ce qu'elle cache.
+#: src/koracut/koracutagenttoolsflou.cpp
+msgctxt "@action undo text"
+msgid "Blur area"
+msgstr "Flouter une zone"
+
+#: src/koracut/koracutagenttoolsflou.cpp
+msgctxt "@info:status area tracking progress, %1 percent, %2 clip name"
+msgid "Tracking the area to blur: %1% · %2"
+msgstr "Suivi de la zone à flouter : %1 % · %2"
 
 #. KoraCut, document 18 (1er octobre 2026) : Monter avec Claude Code.
 msgctxt "@action:button one click: prepare the project and launch Claude Code in the terminal"
