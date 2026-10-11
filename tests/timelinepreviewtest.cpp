@@ -77,6 +77,12 @@ TEST_CASE("Timeline preview insert-remove", "[TimelinePreview]")
                  << p.readAllStandardError();
     }
     // This should create 3 output chunks
+    // KoraCut : nommer les fichiers trouvés quand le compte est faux (4 au lieu de 3 sous Windows, 11 octobre 2026).
+    QStringList foundNames;
+    for (const auto &file : std::as_const(list)) {
+        foundNames << QStringLiteral("%1 (%2 octets)").arg(file.fileName()).arg(file.size());
+    }
+    INFO(foundNames.join(QStringLiteral(", ")).toStdString());
     REQUIRE(list.size() == 3);
 
     // Create and insert clip
