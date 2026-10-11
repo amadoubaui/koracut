@@ -63,7 +63,8 @@ TEST_CASE("Timeline preview insert-remove", "[TimelinePreview]")
         qDebug() << ":::: WAITING FOR PROGRESS...";
         qApp->processEvents();
     }
-    QFileInfoList list = dir.entryInfoList(QDir::Files, QDir::Time);
+    // KoraCut : seulement les morceaux rendus ; le témoin « .koracut-ouvert » est un fichier ordinaire sous Windows.
+    QFileInfoList list = dir.entryInfoList({QStringLiteral("*.avi")}, QDir::Files, QDir::Time);
     for (auto &file : list) {
         qDebug() << "::: FOUND FILE: " << dir.absoluteFilePath(file.fileName());
     }
@@ -94,7 +95,7 @@ TEST_CASE("Timeline preview insert-remove", "[TimelinePreview]")
     REQUIRE(timeline->requestClipInsertion(binId, tid3, 50, cid1, true, true, false));
     REQUIRE(timeline->getClipsCount() == 1);
     timeline->previewManager()->invalidatePreviews();
-    list = dir.entryInfoList(QDir::Files, QDir::Time);
+    list = dir.entryInfoList({QStringLiteral("*.avi")}, QDir::Files, QDir::Time);
     for (auto &file : list) {
         qDebug() << "::: FOUND FILE AFTER: " << file.fileName();
     }

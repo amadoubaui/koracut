@@ -49,6 +49,9 @@ void cleanupOldProjects(const QString &currentDocumentId);
 void healAfterHardwareRefusal(const QString &path, bool legacy);
 /** @brief Pose le témoin « projet ouvert » dans le dossier de rendu d'un projet. */
 void touchOpenedMarker(const QString &previewRoot);
+/** Le nom de ce témoin. Son point de tête le cache sous macOS et Linux, pas sous Windows : qui liste le
+ *  dossier du rendu d'aperçu doit donc l'écarter par son nom. */
+QString openedMarkerName();
 
 /** @brief Lit la séquence dans le moniteur Programme pendant @p seconds secondes depuis @p from
  * et compte les images affichées. Rend { images_affichees, images_attendues, images_sautees,

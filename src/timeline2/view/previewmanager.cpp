@@ -106,8 +106,11 @@ PreviewManager::~PreviewManager()
         // (ProjectManager le détruit avant ses séquences) ; pCore->currentDoc() rend alors un pointeur mort
         // (plantage de timelinepreviewtest sous Windows). On lit le document qu'on a connu, s'il vit encore.
         const bool unsaved = m_koraCutDoc && m_koraCutDoc->url().isEmpty();
-        if ((unsaved && m_cacheDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot).isEmpty()) ||
-            m_cacheDir.entryList(QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty()) {
+        // Le témoin d'ouverture ne compte pas : caché par son point sous macOS et Linux, il était compté sous
+        // Windows, où un dossier de rendu vide n'était donc jamais retiré.
+        QStringList entries = m_cacheDir.entryList(QDir::AllEntries | QDir::Hidden | QDir::NoDotAndDotDot);
+        entries.removeAll(KoraCutRender::openedMarkerName());
+        if ((unsaved && m_cacheDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot).isEmpty()) || entries.isEmpty()) {
             if (m_cacheDir.dirName() == QLatin1String("preview")) {
                 m_cacheDir.removeRecursively();
             }

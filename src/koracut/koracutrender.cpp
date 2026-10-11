@@ -379,6 +379,11 @@ int undoStepsKept()
     return std::clamp(koraCutGroup().readEntry("apercuEtapesAnnulation", 0), 0, 5);
 }
 
+QString openedMarkerName()
+{
+    return kOpenedMarker;
+}
+
 void touchOpenedMarker(const QString &previewRoot)
 {
     QFile marker(QDir(previewRoot).absoluteFilePath(kOpenedMarker));
