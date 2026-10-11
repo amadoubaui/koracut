@@ -8,6 +8,8 @@ pilotable par des agents IA, avec le modèle de langage de ton choix.
 
 Développée par PIXEWORK à Dakar. Logiciel libre, sous licence GPL v3.
 
+Site, documentation et téléchargement : https://koracut.org
+
 ## Modules
 
 | Numéro | Module | État |
@@ -18,7 +20,8 @@ Développée par PIXEWORK à Dakar. Logiciel libre, sous licence GPL v3.
 | 4 | VFX | en place, graphe de nœuds à venir |
 | 5 | Photo | à venir |
 | 6 | Illustration | à venir |
-| 7 | Export | à venir |
+| 7 | Export | en place |
+| 8 | Motion design | en place |
 
 ## Construire
 
@@ -33,8 +36,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build
 ```
 
-Sur macOS, la chaîne utilisée au studio passe par KDE Craft. La procédure
-complète, avec les pièges, est dans `Sources/BUILD.md` du dossier de projet.
+Sur macOS, la chaîne utilisée au studio passe par KDE Craft.
 
 ## Empaqueter
 
