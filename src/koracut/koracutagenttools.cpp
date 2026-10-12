@@ -741,7 +741,9 @@ QJsonObject supprimerPiste(const Timeline &timeline, const Args &args)
     if (timeline->getTracksCount() < 2) {
         return error(QStringLiteral("entree_invalide"), QStringLiteral("La dernière piste de la timeline ne se retire pas."));
     }
-    const QString name = trackLabel(timeline, tid);
+    // Le nom donné à la piste s'il y en a un (« Musique »), son étiquette sinon (« A3 »), comme ajouter_piste.
+    const QString given = timeline->getTrackProperty(tid, QStringLiteral("kdenlive:track_name")).toString();
+    const QString name = given.isEmpty() ? trackLabel(timeline, tid) : given;
     const bool audio = timeline->isAudioTrack(tid);
     if (!timeline->requestTrackDeletion(tid)) {
         return error(QStringLiteral("entree_invalide"), QStringLiteral("La piste %1 n'a pas pu être retirée.").arg(name));

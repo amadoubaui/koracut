@@ -186,6 +186,7 @@ TEST_CASE("Outils d'agent : monter une séquence", "[KoraCutAgentTools]")
             QJsonObject d = call(timeline, QStringLiteral("supprimer_piste"), {{QStringLiteral("piste_id"), newAudio}});
             REQUIRE(d.value(QStringLiteral("ok")).toBool());
             CHECK(d.value(QStringLiteral("type")).toString() == QStringLiteral("audio"));
+            CHECK_FALSE(d.value(QStringLiteral("nom")).toString().isEmpty());
             CHECK(d.value(QStringLiteral("pistes_restantes")).toInt() == count - 1);
             CHECK(timeline->getTracksCount() == count - 1);
             CHECK_FALSE(timeline->isTrack(newAudio));
