@@ -270,6 +270,26 @@
     "x_confirmation": false
   },
   {
+    "name": "temps_musique",
+    "description": "Trouve le tempo et les temps d'un morceau posé sur la timeline, sans rien modifier, pour poser les coupes et les effets sonores dessus. Renvoie { ok, tempo_bpm (null si aucun tempo régulier ne ressort), confiance (0 à 1), intervalle_images (images entre deux temps, à virgule), premier_temps {i, tc}, temps: [ {i, tc} ] (chaque temps sur la timeline, 600 au plus, tronque: true au-delà), temps_forts: [ { position {i, tc}, force (0 à 1) } ] (les attaques les plus nettes, 60 au plus, dans l'ordre du temps) }. Seule la partie du morceau que le clip joue est analysée, au moins quatre secondes. Le tempo rendu peut être la moitié ou le double de celui que l'oreille compte : les temps restent justes pour couper. Une coupe se pose sur un temps (ou une image avant), pas entre deux ; un plan dure un nombre entier de temps (2, 4 ou 8). Sans tempo (parole, ambiance, morceau qui change de tempo), s'appuyer sur temps_forts.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le clip audio du morceau, lu dans etat_timeline (champ id). Valable pour la session en cours seulement."
+        }
+      },
+      "required": [
+        "clip_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait (12 octobre 2026) : koracutagenttoolsmedia.cpp (tempsMusique), KoraCutTimelineAudio::fileEnergy (le fichier relu par MLT, énergie en dB cent fois par seconde) et analyseBeats (hausse d'énergie, grille de temps la mieux calée entre 60 et 180 à la minute, préférence pour le tempo le plus près de 120). Kdenlive n'a rien de tel.",
+    "x_confirmation": false
+  },
+  {
     "name": "ajouter_effet_audio",
     "description": "Pose un traitement sonore courant sur un clip ou une piste, avec des réglages en unités de métier. passe_haut : coupe les graves sous frequence_hz (80 à 100 Hz sur une voix retire le ronflement). passe_bas : coupe les aigus au-dessus. egaliseur : creuse ou pousse une bande autour de frequence_hz. compresseur : resserre les écarts de niveau d'une voix. limiteur : plafonne les crêtes. porte : ferme le son sous un seuil. de_esseur : adoucit les sifflantes. echo : pour un effet, pas pour corriger. Pour le bruit de fond, prendre reduire_bruit. Donner clip_id ou piste_id. Renvoie { ok, effet_index, effet_id, parametres }.",
     "input_schema": {

@@ -758,3 +758,62 @@ TEST_CASE("Coupe automatique : monter les caméras sans rien supprimer", "[KoraC
     timeline.reset();
     pCore->projectManager()->closeCurrentDocument(false, false);
 }
+
+namespace {
+/** Une énergie de synthèse, cent fois par seconde : un coup à chaque temps (décalé de 0,37 s), un coup plus
+ *  faible à chaque demi-temps, sur un fond bruité. @p bpm à 0 : le fond seul. */
+QVector<float> syntheticEnergy(double bpm, double seconds)
+{
+    const double rate = 100.;
+    const int n = int(seconds * rate);
+    QVector<float> energy(n, -30.f);
+    quint32 seed = 12345;
+    for (int i = 0; i < n; ++i) {
+        seed = seed * 1664525u + 1013904223u;
+        energy[i] += float((seed >> 16) % 400) / 100.f - 2.f; // plus ou moins 2 dB
+    }
+    if (bpm > 0.) {
+        const double period = rate * 60. / bpm;
+        for (double beat = 37.; beat < n; beat += period / 2.) {
+            const bool strong = std::fmod((beat - 37.) / period + 1e-6, 1.) < 0.01;
+            const int at = int(std::lround(beat));
+            for (int k = 0; k < 8 && at + k < n; ++k) {
+                energy[at + k] = qMax(energy.at(at + k), float((strong ? -6. : -19.) - 3. * k));
+            }
+        }
+    }
+    return energy;
+}
+} // namespace
+
+TEST_CASE("Temps de la musique : le tempo et les temps d'une énergie de synthèse", "[KoraCutBeats]")
+{
+    for (double bpm : {128., 93.5, 140.}) {
+        const auto found = KoraCutTimelineAudio::analyseBeats(syntheticEnergy(bpm, 90.), 100.);
+        INFO("tempo attendu " << bpm << ", trouvé " << found.bpm << ", confiance " << found.confidence);
+        CHECK(std::abs(found.bpm - bpm) < 0.3);
+        CHECK(found.confidence > 0.5);
+        REQUIRE(found.beats.size() > 100);
+        // Chaque temps rendu tombe sur un coup, du début à la fin (aucune dérive).
+        const double period = 60. / bpm;
+        double worst = 0.;
+        for (double t : found.beats) {
+            const double fromGrid = std::fmod(t - 0.37 + 100. * period, period);
+            worst = qMax(worst, qMin(fromGrid, period - fromGrid));
+        }
+        INFO("écart le plus grand à un coup : " << worst << " s");
+        CHECK(worst < 0.04);
+        CHECK(found.hits.size() > 20);
+        CHECK(found.hits.size() <= 60);
+    }
+    // Un fond sans battue : pas de tempo inventé.
+    const auto noise = KoraCutTimelineAudio::analyseBeats(syntheticEnergy(0., 60.), 100.);
+    INFO("bruit : tempo " << noise.bpm << ", confiance " << noise.confidence);
+    CHECK(noise.bpm == 0.);
+    CHECK(noise.beats.isEmpty());
+    // Du silence, et un son trop court : rien.
+    const auto silence = KoraCutTimelineAudio::analyseBeats(QVector<float>(6000, -120.f), 100.);
+    CHECK(silence.bpm == 0.);
+    CHECK(silence.hits.isEmpty());
+    CHECK(KoraCutTimelineAudio::analyseBeats(syntheticEnergy(120., 2.), 100.).bpm == 0.);
+}

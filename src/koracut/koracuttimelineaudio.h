@@ -8,6 +8,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "undohelper.hpp"
 
 #include <QList>
+#include <QPair>
 #include <QVector>
 #include <cstdint>
 #include <memory>
@@ -44,6 +45,26 @@ QVector<double> clipLevels(const std::shared_ptr<TimelineItemModel> &timeline, i
 /** @brief L'enveloppe du fichier entier d'un clip (5 points par image), sur son flux audio choisi.
  * Vide si les niveaux ne sont pas encore calculés. */
 QVector<float> clipEnvelope(const std::shared_ptr<TimelineItemModel> &timeline, int clipId);
+
+/** @brief L'énergie d'un fichier son, en dB, cent fois par seconde (12 octobre 2026, outil temps_musique).
+ * Plus fin que les niveaux par image : c'est ce qu'il faut pour trouver un tempo. Vide si le fichier ne se
+ * lit pas. @param stream le flux audio, -1 pour celui par défaut. @param maxSeconds on s'arrête là. */
+QVector<float> fileEnergy(const QString &path, int stream = -1, double maxSeconds = 600.);
+
+/** @brief Le tempo et les temps d'un morceau. Les instants sont en secondes depuis le début de ce qui a
+ * été analysé. */
+struct Beats
+{
+    double bpm = 0.;                      ///< 0 si aucun tempo ne ressort
+    double confidence = 0.;               ///< de 0 à 1
+    QVector<double> beats;                ///< les temps, réguliers (vide sans tempo)
+    QVector<QPair<double, double>> hits;  ///< les temps forts : instant, force de 0 à 1, dans l'ordre du temps
+};
+
+/** @brief Cherche le tempo (60 à 180 à la minute) et les temps forts dans une énergie en dB échantillonnée
+ * @p rate fois par seconde. Fonction pure. Un tempo deux fois plus lent ou plus rapide que celui que
+ * l'oreille compte reste juste pour poser des coupes : on préfère celui qui est le plus près de 120. */
+Beats analyseBeats(const QVector<float> &energyDb, double rate);
 
 /** @brief Ce que la synchronisation a fait d'un clip. */
 struct SyncOutcome

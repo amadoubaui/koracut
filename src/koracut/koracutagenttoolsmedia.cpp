@@ -671,6 +671,86 @@ QJsonObject detecterSilences(const Timeline &timeline, const Args &args)
 }
 
 // ---------------------------------------------------------------------------------------------
+// temps_musique (12 octobre 2026) : le tempo et les temps d'un morceau posé sur la timeline, pour poser les
+// coupes dessus. Lecture seule. Le fichier est relu à cent mesures par seconde (les niveaux par image sont
+// trop grossiers pour un tempo), sur la seule partie que le clip joue.
+
+QJsonObject tempsMusique(const Timeline &timeline, const Args &args)
+{
+    const int cid = args.value(QStringLiteral("clip_id")).toInt(-1);
+    if (!timeline->isClip(cid)) {
+        return error(QStringLiteral("id_inconnu"), QStringLiteral("Aucun clip n'a l'identifiant %1.").arg(cid), QStringLiteral("Relis etat_timeline."));
+    }
+    if (QJsonObject e = audioClipCheck(timeline, cid); !e.isEmpty()) {
+        return e;
+    }
+    auto binClip = pCore->projectItemModel()->getClipByBinID(timeline->getClipBinId(cid));
+    const QString path = binClip ? binClip->url() : QString();
+    if (path.isEmpty() || !QFileInfo::exists(path)) {
+        return error(QStringLiteral("non_disponible"), QStringLiteral("Le son de ce clip n'a pas pu être lu."), QStringLiteral("Vérifie que le fichier est bien sur le disque."));
+    }
+    const QMap<int, QString> streams = binClip->audioStreams();
+    int stream = timeline->data(timeline->makeClipIndexFromID(cid), TimelineModel::AudioStreamRole).toInt();
+    if (!streams.contains(stream)) {
+        stream = streams.isEmpty() ? -1 : streams.firstKey();
+    }
+    const double fps = projectFps();
+    const double speed = qMax(0.01, qAbs(timeline->getClipSpeed(cid)));
+    const int position = timeline->getClipPosition(cid);
+    const int length = timeline->getClipPlaytime(cid);
+    const double sourceStart = timeline->getClipIn(cid) * speed / fps;
+    const double sourceEnd = (timeline->getClipIn(cid) + length) * speed / fps;
+    const double rate = 100.;
+    const QVector<float> whole = KoraCutTimelineAudio::fileEnergy(path, stream, qMin(sourceEnd + 1., 900.));
+    const int from = std::clamp(int(sourceStart * rate), 0, int(whole.size()));
+    const int to = std::clamp(int(sourceEnd * rate), from, int(whole.size()));
+    if (to - from < int(rate * 4.)) {
+        return error(QStringLiteral("non_disponible"), QStringLiteral("Il faut au moins quatre secondes de son pour trouver un tempo."),
+                     QStringLiteral("Pose un passage plus long du morceau, ou repère les temps forts avec mesurer_audio."));
+    }
+    const KoraCutTimelineAudio::Beats found = KoraCutTimelineAudio::analyseBeats(whole.mid(from, to - from), rate);
+    const auto frameOf = [&](double seconds) { return position + int(std::lround(seconds * fps / speed)); };
+    QJsonArray beats;
+    bool truncated = false;
+    for (double t : found.beats) {
+        const int frame = frameOf(t);
+        if (frame >= position + length) {
+            break;
+        }
+        if (beats.size() >= 600) {
+            truncated = true;
+            break;
+        }
+        beats.append(time(frame));
+    }
+    QJsonArray hits;
+    for (const auto &hit : found.hits) {
+        const int frame = frameOf(hit.first);
+        if (frame < position + length) {
+            hits.append(QJsonObject{{QStringLiteral("position"), time(frame)}, {QStringLiteral("force"), round2(hit.second)}});
+        }
+    }
+    QJsonObject result{{QStringLiteral("ok"), true},
+                       {QStringLiteral("tempo_bpm"), found.bpm > 0. ? QJsonValue(found.bpm) : QJsonValue()},
+                       {QStringLiteral("confiance"), round2(found.confidence)},
+                       {QStringLiteral("temps"), beats},
+                       {QStringLiteral("temps_forts"), hits}};
+    if (found.bpm > 0.) {
+        result.insert(QStringLiteral("intervalle_images"), round2(60. / found.bpm * fps / speed));
+        result.insert(QStringLiteral("premier_temps"), beats.isEmpty() ? QJsonValue() : beats.first());
+        if (found.confidence < 0.6) {
+            result.insert(QStringLiteral("remarque"), QStringLiteral("Tempo incertain (morceau ternaire, swing ou battue peu marquée) : vérifie que les temps tombent sur des temps_forts avant de caler toutes les coupes dessus."));
+        }
+    } else {
+        result.insert(QStringLiteral("remarque"), QStringLiteral("Aucun tempo régulier ne ressort (parole, ambiance, morceau sans battue ou qui change de tempo) : appuie-toi sur temps_forts."));
+    }
+    if (truncated) {
+        result.insert(QStringLiteral("tronque"), true);
+    }
+    return result;
+}
+
+// ---------------------------------------------------------------------------------------------
 // appliquer_ducking
 
 QJsonObject appliquerDucking(const Timeline &timeline, const Args &args)
@@ -1512,6 +1592,7 @@ QMap<QString, Tool> mediaTools()
         {QStringLiteral("ajouter_marqueur"), ajouterMarqueur},     {QStringLiteral("importer_media"), importerMedia},
         {QStringLiteral("retirer_media"), retirerMedia},           {QStringLiteral("voir_image"), voirImage},
         {QStringLiteral("transcrire_media"), transcrireMedia},     {QStringLiteral("detecter_silences"), detecterSilences},
+        {QStringLiteral("temps_musique"), tempsMusique},
         {QStringLiteral("regler_gain_clip"), reglerGainClip},      {QStringLiteral("regler_piste_audio"), reglerPisteAudio},
         {QStringLiteral("mesurer_audio"), mesurerAudio},           {QStringLiteral("normaliser_loudness"), normaliserLoudness},
         {QStringLiteral("appliquer_ducking"), appliquerDucking},   {QStringLiteral("ajouter_effet_audio"), ajouterEffetAudio},

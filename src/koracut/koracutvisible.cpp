@@ -187,7 +187,7 @@ bool KoraCutVisible::isReadOnly(const QString &tool)
     // Ce qui ne change pas la timeline, ou qui prend du temps de lui-même (rendus, transcription).
     static const QStringList names{QStringLiteral("script_lire"),       QStringLiteral("motion_lire"),       QStringLiteral("motion_lister"),
                                    QStringLiteral("motion_instantane"), QStringLiteral("motion_verifier"),   QStringLiteral("motion_rendre"),
-                                   QStringLiteral("transcrire_media"),  QStringLiteral("detecter_silences"), QStringLiteral("exporter"),
+                                   QStringLiteral("transcrire_media"),  QStringLiteral("detecter_silences"), QStringLiteral("temps_musique"),     QStringLiteral("exporter"),
                                    QStringLiteral("exporter_serie"),    QStringLiteral("exporter_image"),    QStringLiteral("annuler_export"),
                                    QStringLiteral("rendre_apercu"),     QStringLiteral("proposer_plan"),     QStringLiteral("deleguer"),
                                    QStringLiteral("voix_off_voix"),     QStringLiteral("voix_off_installer")};

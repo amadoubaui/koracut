@@ -458,7 +458,25 @@ TEST_CASE("Outils d'agent, lot A : le son et les médias", "[KoraCutAgentTools]"
         CHECK(frames(byTrack, QStringLiteral("total_silence")) == frames(r, QStringLiteral("total_silence")));
         CHECK(errorCode(call(timeline, QStringLiteral("detecter_silences"), {})) == QStringLiteral("entree_invalide"));
         CHECK(errorCode(call(timeline, QStringLiteral("detecter_silences"), {{QStringLiteral("clip_id"), video}})) == QStringLiteral("mauvais_type_de_piste"));
-        CHECK(errorCode(call(timeline, QStringLiteral("detecter_silences"), {{QStringLiteral("piste_id"), v1}})) == QStringLiteral("mauvais_type_de_piste"));
+        CHECK(errorCode(call(timeline, QStringLiteral("detecter_silences"), {{QStringLiteral("piste_id"), v1}})) == QStringLiteral("mauvais_type_de_piste"));        // temps_musique sur le même fichier, lu en entier par MLT : une réponse bien formée (une voix n'a pas
+        // forcément de tempo, l'analyse elle-même est essayée dans koracutautocuttest), et les erreurs.
+        const QJsonObject beats = call(timeline, QStringLiteral("temps_musique"), {{QStringLiteral("clip_id"), voice}});
+        INFO(dump(beats));
+        REQUIRE(beats.value(QStringLiteral("ok")).toBool());
+        CHECK(beats.value(QStringLiteral("temps")).isArray());
+        CHECK(beats.value(QStringLiteral("temps_forts")).isArray());
+        CHECK(beats.value(QStringLiteral("confiance")).toDouble() >= 0.);
+        CHECK(beats.value(QStringLiteral("confiance")).toDouble() <= 1.);
+        CHECK(beats.contains(QStringLiteral("tempo_bpm")));
+        const int clipStart = timeline->getClipPosition(voice);
+        const int clipEnd = clipStart + timeline->getClipPlaytime(voice);
+        for (const QJsonValue &hit : beats.value(QStringLiteral("temps_forts")).toArray()) {
+            const int at = hit.toObject().value(QStringLiteral("position")).toObject().value(QStringLiteral("i")).toInt(-1);
+            CHECK(at >= clipStart);
+            CHECK(at < clipEnd);
+        }
+        CHECK(errorCode(call(timeline, QStringLiteral("temps_musique"), {{QStringLiteral("clip_id"), video}})) == QStringLiteral("mauvais_type_de_piste"));
+        CHECK(errorCode(call(timeline, QStringLiteral("temps_musique"), {{QStringLiteral("clip_id"), 9999}})) == QStringLiteral("id_inconnu"));
     }
 
     SECTION("Mesurer, normaliser, baisser sous la voix, traiter")

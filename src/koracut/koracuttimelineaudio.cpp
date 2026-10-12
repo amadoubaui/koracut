@@ -17,6 +17,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "timeline2/model/timelineitemmodel.hpp"
 
 #include <QFileInfo>
+#include <algorithm>
 #include <cmath>
 #include <mlt++/Mlt.h>
 
@@ -125,6 +126,192 @@ QVector<double> fileLevels(const QString &path, double fps, int stream)
         levels.append(KoraCutDucking::peakToDb(peak));
     }
     return levels;
+}
+
+QVector<float> fileEnergy(const QString &path, int stream, double maxSeconds)
+{
+    QVector<float> energy;
+    if (path.isEmpty()) {
+        return energy;
+    }
+    // 25 images par seconde, 48 kHz : 1920 échantillons par image, quatre blocs de 480 (un centième de seconde).
+    Mlt::Profile profile;
+    profile.set_frame_rate(25, 1);
+    Mlt::Producer producer(profile, path.toUtf8().constData());
+    if (!producer.is_valid()) {
+        return energy;
+    }
+    producer.set("video_index", -1);
+    if (stream >= 0) {
+        producer.set("audio_index", stream);
+    }
+    const int length = qMin(producer.get_length(), int(maxSeconds * 25.));
+    if (length <= 0) {
+        return energy;
+    }
+    energy.reserve(length * 4);
+    for (int i = 0; i < length; ++i) {
+        std::unique_ptr<Mlt::Frame> frame(producer.get_frame());
+        if (!frame || !frame->is_valid()) {
+            break;
+        }
+        mlt_audio_format format = mlt_audio_s16;
+        int freq = 48000;
+        int channels = 2;
+        int samples = 1920;
+        const auto *data = static_cast<const int16_t *>(frame->get_audio(format, freq, channels, samples));
+        const int block = qMax(1, samples / 4);
+        for (int b = 0; b < 4; ++b) {
+            double sum = 0.;
+            int count = 0;
+            if (data) {
+                for (int k = b * block * channels; k < qMin(samples, (b + 1) * block) * channels; ++k) {
+                    const double v = data[k] / 32768.;
+                    sum += v * v;
+                    ++count;
+                }
+            }
+            const double rms = count > 0 ? std::sqrt(sum / count) : 0.;
+            energy.append(float(rms > 1e-6 ? 20. * std::log10(rms) : -120.));
+        }
+    }
+    return energy;
+}
+
+Beats analyseBeats(const QVector<float> &energyDb, double rate)
+{
+    Beats result;
+    const int n = energyDb.size();
+    if (n < int(rate * 4.) || rate < 20.) {
+        return result;
+    }
+    // 1. Ce qui monte d'un coup : la hausse d'énergie d'un échantillon au suivant, plancher à -60 dB.
+    QVector<double> flux(n, 0.);
+    for (int i = 1; i < n; ++i) {
+        flux[i] = qMax(0., qMax(-60., double(energyDb.at(i))) - qMax(-60., double(energyDb.at(i - 1))));
+    }
+    // 2. On retire la moyenne locale (une seconde), pour qu'un passage fort ne pèse pas plus qu'un passage doux.
+    const int window = qMax(2, int(rate));
+    QVector<double> prefix(n + 1, 0.);
+    for (int i = 0; i < n; ++i) {
+        prefix[i + 1] = prefix.at(i) + flux.at(i);
+    }
+    QVector<double> onset(n, 0.);
+    double total = 0.;
+    for (int i = 0; i < n; ++i) {
+        const int from = qMax(0, i - window / 2);
+        const int to = qMin(n, i + window / 2 + 1);
+        onset[i] = qMax(0., flux.at(i) - (prefix.at(to) - prefix.at(from)) / (to - from));
+        total += onset.at(i);
+    }
+    const double mean = total / n;
+    if (mean <= 1e-9) {
+        return result; // du silence, ou un son tenu sans aucune attaque
+    }
+    // 3. Les temps forts : les pics nets, à 0,15 s au moins l'un de l'autre, soixante au plus.
+    double squares = 0.;
+    for (int i = 0; i < n; ++i) {
+        squares += (onset.at(i) - mean) * (onset.at(i) - mean);
+    }
+    const double floorLevel = mean + 2.5 * std::sqrt(squares / n);
+    const int spacing = qMax(1, int(rate * 0.15));
+    QVector<QPair<double, int>> peaks; // force, échantillon
+    double strongest = 0.;
+    for (int i = 1; i < n - 1; ++i) {
+        if (onset.at(i) < floorLevel || onset.at(i) < onset.at(i - 1) || onset.at(i) < onset.at(i + 1)) {
+            continue;
+        }
+        if (!peaks.isEmpty() && i - peaks.last().second < spacing) {
+            if (onset.at(i) > peaks.last().first) {
+                peaks.last() = {onset.at(i), i};
+            }
+        } else {
+            peaks.append({onset.at(i), i});
+        }
+        strongest = qMax(strongest, onset.at(i));
+    }
+    std::sort(peaks.begin(), peaks.end(), [](const QPair<double, int> &a, const QPair<double, int> &b) { return a.first > b.first; });
+    if (peaks.size() > 60) {
+        peaks.resize(60);
+    }
+    std::sort(peaks.begin(), peaks.end(), [](const QPair<double, int> &a, const QPair<double, int> &b) { return a.second < b.second; });
+    for (const auto &p : std::as_const(peaks)) {
+        result.hits.append({p.second / rate, strongest > 0. ? p.first / strongest : 0.});
+    }
+    // 4. Le tempo : pour chaque période, la grille de temps qui tombe le mieux sur ce qui monte. Une fausse
+    // période dérive le long du morceau, la bonne reste calée : c'est ce qui la fait sortir.
+    const auto at = [&](double position) {
+        const int i = int(std::lround(position));
+        double best = 0.;
+        for (int k = qMax(0, i - 1); k <= qMin(n - 1, i + 1); ++k) {
+            best = qMax(best, onset.at(k));
+        }
+        return best;
+    };
+    const auto gridScore = [&](double period, double *bestPhase) {
+        double best = 0.;
+        for (int phase = 0; phase < int(period); ++phase) {
+            double sum = 0.;
+            int count = 0;
+            for (double position = phase; position < n; position += period) {
+                sum += at(position);
+                ++count;
+            }
+            const double score = count > 0 ? sum / count : 0.;
+            if (score > best) {
+                best = score;
+                if (bestPhase) {
+                    *bestPhase = phase;
+                }
+            }
+        }
+        return best;
+    };
+    const auto weight = [](double bpm) {
+        const double octaves = std::log2(bpm / 120.);
+        // Une préférence douce : elle départage un tempo et son double (même grille, à égalité), sans faire
+        // passer une subdivision à trois temps (108 pour un morceau à 72) devant le vrai battement.
+        return std::exp(-0.5 * (octaves / 1.2) * (octaves / 1.2));
+    };
+    double bestBpm = 0.;
+    double bestScore = 0.;
+    double scoreSum = 0.;
+    int scoreCount = 0;
+    for (double bpm = 60.; bpm <= 180.; bpm += 0.5) {
+        const double raw = gridScore(rate * 60. / bpm, nullptr);
+        scoreSum += raw;
+        ++scoreCount;
+        if (raw * weight(bpm) > bestScore) {
+            bestScore = raw * weight(bpm);
+            bestBpm = bpm;
+        }
+    }
+    if (bestBpm <= 0. || scoreCount == 0) {
+        return result;
+    }
+    double refined = bestBpm;
+    double refinedScore = 0.;
+    for (double bpm = bestBpm - 0.5; bpm <= bestBpm + 0.5; bpm += 0.02) {
+        const double raw = gridScore(rate * 60. / bpm, nullptr);
+        if (raw > refinedScore) {
+            refinedScore = raw;
+            refined = bpm;
+        }
+    }
+    // La confiance : de combien la meilleure grille dépasse une grille quelconque.
+    const double contrast = refinedScore / qMax(1e-9, scoreSum / scoreCount);
+    result.confidence = std::clamp((contrast - 1.3) / 1.2, 0., 1.);
+    if (result.confidence < 0.2) {
+        return result;
+    }
+    result.bpm = std::round(refined * 10.) / 10.;
+    const double period = rate * 60. / refined;
+    double phase = 0.;
+    gridScore(period, &phase);
+    for (double position = phase; position < n; position += period) {
+        result.beats.append(position / rate);
+    }
+    return result;
 }
 
 QVector<double> clipLevels(const std::shared_ptr<TimelineItemModel> &timeline, int clipId, bool *fromFile)
