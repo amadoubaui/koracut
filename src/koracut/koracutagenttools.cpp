@@ -720,6 +720,39 @@ QJsonObject ajouterPiste(const Timeline &timeline, const Args &args)
                        {QStringLiteral("rang"), tracksOnScreen(timeline).indexOf(newId)}};
 }
 
+// supprimer_piste (11 octobre 2026) : seulement une piste vide. Retirer des clips reste l'affaire de
+// supprimer_clip, qui demande l'accord de la personne ; cet outil ne doit pas devenir un moyen de s'en passer.
+QJsonObject supprimerPiste(const Timeline &timeline, const Args &args)
+{
+    const int tid = args.value(QStringLiteral("piste_id")).toInt(-1);
+    if (QJsonObject e = trackIdCheck(timeline, tid, true); !e.isEmpty()) {
+        return e;
+    }
+    const int clips = timeline->getTrackClipsCount(tid);
+    const int compositions = timeline->getTrackCompositionsCount(tid);
+    if (clips > 0 || compositions > 0) {
+        QJsonObject e = error(QStringLiteral("place_occupee"),
+                              QStringLiteral("La piste %1 n'est pas vide : %2 clip(s), %3 composition(s).").arg(trackLabel(timeline, tid)).arg(clips).arg(compositions),
+                              QStringLiteral("Déplace-les (deplacer_clip) ou retire-les (supprimer_clip), puis rappelle supprimer_piste."));
+        e.insert(QStringLiteral("clips"), clips);
+        e.insert(QStringLiteral("compositions"), compositions);
+        return e;
+    }
+    if (timeline->getTracksCount() < 2) {
+        return error(QStringLiteral("entree_invalide"), QStringLiteral("La dernière piste de la timeline ne se retire pas."));
+    }
+    const QString name = trackLabel(timeline, tid);
+    const bool audio = timeline->isAudioTrack(tid);
+    if (!timeline->requestTrackDeletion(tid)) {
+        return error(QStringLiteral("entree_invalide"), QStringLiteral("La piste %1 n'a pas pu être retirée.").arg(name));
+    }
+    return QJsonObject{{QStringLiteral("ok"), true},
+                       {QStringLiteral("piste_id"), tid},
+                       {QStringLiteral("nom"), name},
+                       {QStringLiteral("type"), audio ? QStringLiteral("audio") : QStringLiteral("video")},
+                       {QStringLiteral("pistes_restantes"), timeline->getTracksCount()}};
+}
+
 QJsonObject reglerPiste(const Timeline &timeline, const Args &args)
 {
     const int tid = args.value(QStringLiteral("piste_id")).toInt(-1);
@@ -1761,7 +1794,7 @@ QMap<QString, Tool> buildTools()
         {QStringLiteral("etat_timeline"), etatTimeline}, {QStringLiteral("couper_clip"), couperClip},
         {QStringLiteral("couper_toutes_pistes"), couperToutesPistes}, {QStringLiteral("deplacer_clip"), deplacerClip},
         {QStringLiteral("supprimer_clip"), supprimerClip}, {QStringLiteral("rogner_clip"), rognerClip},
-        {QStringLiteral("ajouter_piste"), ajouterPiste}, {QStringLiteral("regler_piste"), reglerPiste},
+        {QStringLiteral("ajouter_piste"), ajouterPiste}, {QStringLiteral("regler_piste"), reglerPiste}, {QStringLiteral("supprimer_piste"), supprimerPiste},
         {QStringLiteral("ajouter_clip"), ajouterClip}, {QStringLiteral("lister_medias"), listerMedias},
         {QStringLiteral("supprimer_espace"), supprimerEspace}, {QStringLiteral("changer_vitesse_clip"), changerVitesseClip},
         {QStringLiteral("ajouter_fondu"), ajouterFondu},

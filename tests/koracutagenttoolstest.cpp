@@ -180,6 +180,26 @@ TEST_CASE("Outils d'agent : monter une séquence", "[KoraCutAgentTools]")
         CHECK(timeline->isAudioTrack(newAudio));
         CHECK(r.value(QStringLiteral("rang")).toInt() == timeline->getTracksCount() - 1); // tout en bas
 
+        // supprimer_piste : une piste vide part en une étape, et revient à l'annulation.
+        {
+            const int count = timeline->getTracksCount();
+            QJsonObject d = call(timeline, QStringLiteral("supprimer_piste"), {{QStringLiteral("piste_id"), newAudio}});
+            REQUIRE(d.value(QStringLiteral("ok")).toBool());
+            CHECK(d.value(QStringLiteral("type")).toString() == QStringLiteral("audio"));
+            CHECK(d.value(QStringLiteral("pistes_restantes")).toInt() == count - 1);
+            CHECK(timeline->getTracksCount() == count - 1);
+            CHECK_FALSE(timeline->isTrack(newAudio));
+            CHECK(errorCode(call(timeline, QStringLiteral("supprimer_piste"), {{QStringLiteral("piste_id"), newAudio}})) == QStringLiteral("id_inconnu"));
+            undoStack->undo();
+            CHECK(timeline->getTracksCount() == count);
+            undoStack->redo();
+            CHECK(timeline->getTracksCount() == count - 1);
+            // Verrouillée : refusée.
+            call(timeline, QStringLiteral("regler_piste"), {{QStringLiteral("piste_id"), titles}, {QStringLiteral("verrouillee"), true}});
+            CHECK(errorCode(call(timeline, QStringLiteral("supprimer_piste"), {{QStringLiteral("piste_id"), titles}})) == QStringLiteral("piste_verrouillee"));
+            call(timeline, QStringLiteral("regler_piste"), {{QStringLiteral("piste_id"), titles}, {QStringLiteral("verrouillee"), false}});
+        }
+
         r = call(timeline, QStringLiteral("regler_piste"), {{QStringLiteral("piste_id"), titles}, {QStringLiteral("masquee"), true}});
         REQUIRE(r.value(QStringLiteral("ok")).toBool());
         CHECK(r.value(QStringLiteral("masquee")).toBool());

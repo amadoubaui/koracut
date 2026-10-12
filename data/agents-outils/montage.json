@@ -376,6 +376,26 @@
     "x_confirmation": false
   },
   {
+    "name": "supprimer_piste",
+    "description": "Retire une piste vide de la timeline. À utiliser pour ranger : une piste créée en trop, une piste restée vide après un déplacement de clips. Ne retire jamais de clips : une piste qui porte encore un clip ou une composition répond place_occupee avec leur nombre (déplace-les avec deplacer_clip ou retire-les avec supprimer_clip, puis rappelle). Une piste verrouillée répond piste_verrouillee. La dernière piste de la timeline ne se retire pas. Une étape d'annulation. Renvoie { ok, piste_id, nom, type, pistes_restantes }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "piste_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant de la piste, lu dans etat_timeline (champ id des pistes)."
+        }
+      },
+      "required": [
+        "piste_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/timeline2/model/timelinemodel.hpp:TimelineModel::requestTrackDeletion(trackId)",
+    "x_confirmation": false
+  },
+  {
     "name": "regler_piste",
     "description": "Renomme une piste, la verrouille, ou la masque (piste vidéo cachée, piste audio muette). Verrouiller une piste la protège des coupes et des insertions en ripple. Ne donne que les champs à changer. Renvoie { ok, piste_id, nom, verrouillee, masquee }.",
     "input_schema": {
