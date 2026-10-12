@@ -174,6 +174,17 @@ TEST_CASE("Motion, lot 5 : la composition d'un seul élément (analyse et catalo
         CHECK(analyse(renamed).elements.first().text == QStringLiteral("Sintel"));
         CHECK(analyse(renamed).elements.first().hash != e.hash);
         CHECK(KoraCutMotionCatalog::readableName(analyse(renamed), QStringLiteral("titre-essai")) == QStringLiteral("Title · Sintel"));
+        // Dans le chutier : un élément de sorte générique sans texte porte le nom de sa composition, pas son style
+        // (quarante médias écrits par un agent s'appelaient tous « agent · 16:9 », 6 octobre 2026).
+        {
+            Composition generic;
+            generic.elementKind = QStringLiteral("element");
+            generic.style = QStringLiteral("agent");
+            generic.width = 1920;
+            generic.height = 1080;
+            CHECK(KoraCutMotionCatalog::binClipName(generic, QStringLiteral("scene-03")) == QStringLiteral("scene-03 · 16:9"));
+            CHECK(KoraCutMotionCatalog::binClipName(generic, QString()) == QStringLiteral("agent · 16:9"));
+        }
     }
 
     SECTION("Les transitions du catalogue : une composition, sa coupe, son nom")

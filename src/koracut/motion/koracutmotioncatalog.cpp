@@ -744,14 +744,19 @@ QString kindLabel(const QString &element)
     return i18nc("@item kind of a Motion element", "Element");
 }
 
-QString readableName(const KoraCutMotion::Composition &composition, const QString &project)
+namespace {
+// Ce qui distingue un élément seul dans une liste : son texte, sinon son style (« Transition · cordes »).
+// Pour un élément de sorte générique, le nom de sa composition passe avant le style (12 octobre 2026) : un
+// agent écrit toutes ses compositions avec le même style (« agent »), et quarante médias s'appelaient alors
+// « agent · 16:9 » dans le chutier.
+QString elementDetail(const KoraCutMotion::Composition &composition, const QString &project, bool projectFirst)
 {
-    if (!composition.isElement()) {
-        return project;
-    }
     QString detail;
     if (!composition.elements.isEmpty()) {
         detail = composition.elements.first().text;
+    }
+    if (detail.isEmpty() && projectFirst) {
+        detail = project;
     }
     if (detail.isEmpty()) {
         detail = composition.style;
@@ -759,6 +764,16 @@ QString readableName(const KoraCutMotion::Composition &composition, const QStrin
     if (detail.size() > 32) {
         detail = detail.left(31) + QChar(0x2026);
     }
+    return detail;
+}
+} // namespace
+
+QString readableName(const KoraCutMotion::Composition &composition, const QString &project)
+{
+    if (!composition.isElement()) {
+        return project;
+    }
+    const QString detail = elementDetail(composition, project, false);
     return detail.isEmpty() ? kindLabel(composition.elementKind) : i18nc("@item Motion element name: kind · detail", "%1 · %2", kindLabel(composition.elementKind), detail);
 }
 
@@ -781,13 +796,7 @@ QString binClipName(const KoraCutMotion::Composition &composition, const QString
     QString base = readableName(composition, project);
     if (composition.isElement() && kindLabel(composition.elementKind) == kindLabel(QString())) {
         // La sorte générique « Élément » n'apprend rien : le détail seul suffit.
-        QString detail = composition.elements.isEmpty() ? QString() : composition.elements.first().text;
-        if (detail.isEmpty()) {
-            detail = composition.style;
-        }
-        if (detail.size() > 32) {
-            detail = detail.left(31) + QChar(0x2026);
-        }
+        const QString detail = elementDetail(composition, project, true);
         if (!detail.isEmpty()) {
             base = detail;
         }
