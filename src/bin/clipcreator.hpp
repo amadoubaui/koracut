@@ -95,6 +95,12 @@ QString createClipFromFile(
     const std::function<void(const QString &)> &readyCallBack = [](const QString &) {}, const bool &updateShouldCheckProfile = false);
 bool createClipFromFile(const QString &path, const QString &parentFolder, std::shared_ptr<ProjectItemModel> model);
 
+/** @brief KoraCut : vrai quand le premier clip importé ne doit pas changer le format du projet. C'est le cas quand
+ *  l'import vient d'un agent ou de la porte (aucune fenêtre ne peut poser la question « Basculer vers le profil… ? »,
+ *  la réponse par défaut changeait le format sans rien dire) et que le format du projet a été choisi à sa création
+ *  (propriété de document koracut:format_choisi). À la souris, rien ne change : la question reste posée. */
+bool koraCutKeepProjectFormat();
+
 /** @brief Iterates recursively through the given url list and add the files it finds, recreating a folder structure
    @param list: the list of items (can be folders)
    @param checkRemovable: if true, it will check if files are on removable devices, and warn the user if so

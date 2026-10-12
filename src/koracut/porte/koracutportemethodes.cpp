@@ -1436,7 +1436,9 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
     porte->registerMethod(
         QStringLiteral("projet.nouveau"), QStringLiteral("Un projet neuf depuis un plan : type de vidéo (suffit), nom, format, pistes. À confirmation si le projet courant est modifié."),
         {p(QStringLiteral("plan"), QStringLiteral("object"),
-           QStringLiteral("{ type_video, nom, largeur, hauteur, ips (24, 25, 30, 50, 60, ou 23.976, 29.97, 59.94), pistes_video: [noms], pistes_audio: [noms] }"), true)},
+           QStringLiteral("{ type_video, nom, largeur, hauteur, ips (24, 25, 30, 50, 60, ou 23.976, 29.97, 59.94), pistes_video: [noms], pistes_audio: [noms] }"), true),
+         p(QStringLiteral("enregistrer"), QStringLiteral("boolean"),
+           QStringLiteral("Quand le projet courant a des changements : true l'enregistre avant, false les abandonne. Obligatoire dans ce cas."))},
         [porte, window](const Call &call) {
             if (!window) {
                 return noWindow();
@@ -1504,9 +1506,25 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
                                    QStringLiteral("largeur et hauteur d'au moins 16, ips au moins 1 (24, 25, 29.97, 30…)."));
             }
             if (pCore->currentDoc() && pCore->currentDoc()->isModified()) {
-                Reply gate;
-                if (porte->needsConfirmation(call, QStringLiteral("remplacer le projet courant, qui a des changements non enregistrés"), false, gate)) {
-                    return gate;
+                // 12 octobre 2026, comme projet.ouvrir : sans ce choix, newFileFromPlan ouvrait la fenêtre « Avertissement »
+                // (Enregistrer / Ne pas enregistrer), et une commande de la porte n'ouvre jamais de fenêtre (PORTE.md § 2 bis).
+                if (!call.params.contains(QStringLiteral("enregistrer"))) {
+                    return Reply::fail(QStringLiteral("parametres_invalides"), QStringLiteral("Le projet courant a des changements non enregistrés."),
+                                       QStringLiteral("Dis enregistrer=true pour l'enregistrer avant, ou enregistrer=false pour abandonner ses changements."));
+                }
+                const bool save = call.params.value(QStringLiteral("enregistrer")).toBool();
+                if (save && documentFile().isEmpty()) {
+                    return Reply::fail(QStringLiteral("parametres_invalides"), QStringLiteral("Le projet courant n'a pas encore de fichier : il ne peut pas être enregistré tout seul."),
+                                       QStringLiteral("projet.enregistrer chemin=… d'abord, ou enregistrer=false pour abandonner ses changements."));
+                }
+                if (!save) {
+                    Reply gate;
+                    if (porte->needsConfirmation(call, QStringLiteral("abandonner les changements non enregistrés du projet courant pour en créer un neuf"), false, gate)) {
+                        return gate;
+                    }
+                    pCore->currentDoc()->setModified(false);
+                } else if (!pCore->projectManager()->saveFile()) {
+                    return Reply::fail(QStringLiteral("ecriture_impossible"), QStringLiteral("Le projet courant n'a pas pu être enregistré : rien n'a été créé."));
                 }
             }
             pCore->projectManager()->newFileFromPlan(out);

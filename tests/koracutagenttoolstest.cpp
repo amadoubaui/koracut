@@ -5,6 +5,8 @@
 #include "catch.hpp"
 #include "test_utils.hpp"
 
+#include <QApplication>
+#include "bin/clipcreator.hpp"
 #include "core.h"
 #include "doc/docundostack.hpp"
 #include "doc/kdenlivedoc.h"
@@ -180,6 +182,18 @@ TEST_CASE("Outils d'agent : monter une séquence", "[KoraCutAgentTools]")
         CHECK(timeline->isAudioTrack(newAudio));
         CHECK(r.value(QStringLiteral("rang")).toInt() == timeline->getTracksCount() - 1); // tout en bas
 
+        // Le format choisi à la création du projet n'est pas changé par un import venu d'un agent ou de la porte
+        // (12 octobre 2026) : il faut les deux, l'import sans fenêtre et le format choisi.
+        {
+            CHECK_FALSE(ClipCreator::koraCutKeepProjectFormat());
+            pCore->currentDoc()->setDocumentProperty(QStringLiteral("koracut:format_choisi"), QStringLiteral("1"));
+            CHECK_FALSE(ClipCreator::koraCutKeepProjectFormat()); // à la souris, la question reste posée
+            qApp->setProperty("koracut_sans_fenetre", true);
+            CHECK(ClipCreator::koraCutKeepProjectFormat());
+            pCore->currentDoc()->setDocumentProperty(QStringLiteral("koracut:format_choisi"), QString());
+            CHECK_FALSE(ClipCreator::koraCutKeepProjectFormat()); // projet par défaut : le premier rush donne son format
+            qApp->setProperty("koracut_sans_fenetre", QVariant());
+        }
         // supprimer_piste : une piste vide part en une étape, et revient à l'annulation.
         {
             const int count = timeline->getTracksCount();

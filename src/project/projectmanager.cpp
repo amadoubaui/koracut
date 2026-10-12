@@ -374,6 +374,9 @@ void ProjectManager::newFileFromPlan(const KoraCutProjectPlan &plan)
             timeline->setTrackProperty(audio.at(i), QStringLiteral("kdenlive:track_name"), plan.audioTracks.at(i));
         }
     }
+    // Le format de ce projet a été choisi (fenêtre Nouveau projet, projet.nouveau de la porte) : on le note, pour
+    // qu'un rush importé par un agent ou par la porte ne le change pas sans rien dire (12 octobre 2026).
+    m_project->setDocumentProperty(QStringLiteral("koracut:format_choisi"), QStringLiteral("1"));
     // Le type de vidéo et la cible d'export, gardés dans le projet pour la suite (export préparé).
     if (!plan.typeId.isEmpty()) {
         m_project->setDocumentProperty(QStringLiteral("koracut:videotype"), plan.typeId);

@@ -321,6 +321,14 @@ QDomDocument ClipCreator::getXmlFromUrl(const QString &path)
     return xml;
 }
 
+bool ClipCreator::koraCutKeepProjectFormat()
+{
+    if (!qApp || !qApp->property("koracut_sans_fenetre").toBool() || !pCore || !pCore->currentDoc()) {
+        return false;
+    }
+    return pCore->currentDoc()->getDocumentProperty(QStringLiteral("koracut:format_choisi")) == QLatin1String("1");
+}
+
 QString ClipCreator::createClipFromFile(const QString &path, const QString &parentFolder, const std::shared_ptr<ProjectItemModel> &model, Fun &undo, Fun &redo,
                                         const std::function<void(const QString &)> &readyCallBack, const bool &updateShouldCheckProfile)
 {
@@ -334,7 +342,8 @@ QString ClipCreator::createClipFromFile(const QString &path, const QString &pare
 
     if (updateShouldCheckProfile) {
         pCore->bin()->shouldCheckProfile =
-            (KdenliveSettings::default_profile().isEmpty() || KdenliveSettings::checkfirstprojectclip()) && !pCore->bin()->hasUserClip();
+            (KdenliveSettings::default_profile().isEmpty() || KdenliveSettings::checkfirstprojectclip()) && !pCore->bin()->hasUserClip() &&
+            !ClipCreator::koraCutKeepProjectFormat();
     }
 
     bool res = model->requestAddBinClip(id, xml.documentElement(), parentFolder, undo, redo, readyCallBack);
@@ -431,7 +440,8 @@ const QString ClipCreator::createClipsFromList(const QList<QUrl> &list, bool che
     bool firstClip = topLevel;
     const QUuid uuid = model->uuid();
     pCore->bin()->shouldCheckProfile =
-        (KdenliveSettings::default_profile().isEmpty() || KdenliveSettings::checkfirstprojectclip()) && !pCore->bin()->hasUserClip();
+        (KdenliveSettings::default_profile().isEmpty() || KdenliveSettings::checkfirstprojectclip()) && !pCore->bin()->hasUserClip() &&
+            !ClipCreator::koraCutKeepProjectFormat();
     for (const QUrl &url : list) {
         if (!pCore->projectItemModel()->urlExists(url.toLocalFile()) || QFileInfo(url.toLocalFile()).isDir()) {
             cleanList << url;
