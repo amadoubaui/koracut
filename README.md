@@ -2,6 +2,8 @@
 
 # KoraCut
 
+*[English version](README.en.md)*
+
 KoraCut est une application de création multimédia de bureau : montage vidéo,
 étalonnage, audio, VFX, photo, illustration, motion design. Chaque module est
 pilotable par des agents IA, avec le modèle de langage de ton choix.

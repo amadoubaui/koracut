@@ -1,5 +1,7 @@
 # Contribuer à KoraCut
 
+*[English version](CONTRIBUTING.en.md)*
+
 Merci de t'intéresser à KoraCut. Le projet est jeune et développé par une petite équipe (PIXEWORK, Dakar) : toute aide compte, un signalement précis autant qu'un correctif.
 
 ## Signaler un défaut ou proposer une idée
