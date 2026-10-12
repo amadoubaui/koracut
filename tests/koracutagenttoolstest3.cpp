@@ -153,6 +153,54 @@ TEST_CASE("Outils d'agent, lot B : l'étalonnage", "[KoraCutAgentTools]")
         CHECK_FALSE(m.contains(QStringLiteral("bandes_noires_pourcent")));
     }
 
+    SECTION("Mesurer une zone : la moitié sombre, la moitié claire, la peau là où elle est")
+    {
+        // Moitié gauche sombre (40), moitié droite claire (200), un carré de peau en bas à droite (12 octobre 2026).
+        QImage split(480, 270, QImage::Format_RGB32);
+        for (int y = 0; y < 270; ++y) {
+            for (int x = 0; x < 480; ++x) {
+                split.setPixel(x, y, x < 240 ? qRgb(40, 40, 40) : qRgb(200, 200, 200));
+            }
+        }
+        for (int y = 170; y < 270; ++y) {
+            for (int x = 380; x < 480; ++x) {
+                split.setPixel(x, y, qRgb(200, 150, 120));
+            }
+        }
+        const auto lumaField = [](const QJsonObject &m, const QString &field) { return m.value(QStringLiteral("luma")).toObject().value(field).toInt(-1); };
+        QJsonObject whole = KoraCutAgentToolsPrivate::measureImageJson(split);
+        CHECK(lumaField(whole, QStringLiteral("p10")) == 40);
+        CHECK(lumaField(whole, QStringLiteral("p90")) == 200);
+        CHECK(luma(whole) > 100.);
+        CHECK(luma(whole) < 130.);
+        QJsonObject left = KoraCutAgentToolsPrivate::measureImageJson(split, QRectF(0., 0., 0.5, 1.));
+        CHECK(luma(left) == 40.);
+        CHECK(lumaField(left, QStringLiteral("mediane")) == 40);
+        CHECK_FALSE(left.value(QStringLiteral("peau")).toObject().value(QStringLiteral("detectee")).toBool());
+        QJsonObject right = KoraCutAgentToolsPrivate::measureImageJson(split, QRectF(0.5, 0., 0.5, 0.5));
+        CHECK(luma(right) == 200.);
+        // La peau : noyée dans le cadre entier (moins de 3 % seraient ignorés, ici 7,7 %), nette dans sa zone.
+        QJsonObject skin = KoraCutAgentToolsPrivate::measureImageJson(split, QRectF(0.8, 0.65, 0.2, 0.35)).value(QStringLiteral("peau")).toObject();
+        CHECK(skin.value(QStringLiteral("detectee")).toBool());
+        CHECK(skin.value(QStringLiteral("luma_mediane")).toInt() >= 157);
+        CHECK(skin.value(QStringLiteral("luma_mediane")).toInt() <= 160);
+        CHECK(skin.value(QStringLiteral("luma_p10")).toInt() == skin.value(QStringLiteral("luma_p90")).toInt());
+        CHECK(skin.value(QStringLiteral("saturation")).toDouble() > 0.35);
+        CHECK(skin.value(QStringLiteral("saturation")).toDouble() < 0.45);
+        // Par l'outil : une zone hors du cadre est refusée, une zone juste est rendue avec la mesure.
+        const int g = place(gray, 0);
+        CHECK(errorCode(call(timeline, QStringLiteral("mesurer_image"),
+                             {{QStringLiteral("clip_id"), g}, {QStringLiteral("zone"), QJsonObject{{QStringLiteral("x"), 0.6}, {QStringLiteral("y"), 0}, {QStringLiteral("largeur"), 0.5}, {QStringLiteral("hauteur"), 1}}}})) ==
+              QStringLiteral("entree_invalide"));
+        const QJsonObject zoned = call(timeline, QStringLiteral("mesurer_image"),
+                                       {{QStringLiteral("clip_id"), g}, {QStringLiteral("zone"), QJsonObject{{QStringLiteral("x"), 0.25}, {QStringLiteral("y"), 0.25}, {QStringLiteral("largeur"), 0.5}, {QStringLiteral("hauteur"), 0.5}}}});
+        INFO(dump(zoned));
+        REQUIRE(zoned.value(QStringLiteral("ok")).toBool());
+        CHECK(luma(zoned) > 110.);
+        CHECK(luma(zoned) < 145.);
+        CHECK(zoned.value(QStringLiteral("zone")).toObject().value(QStringLiteral("largeur")).toDouble() == 0.5);
+    }
+
     SECTION("Mesurer un gris, un rouge, hors du clip, un son")
     {
         const int g = place(gray, 0);

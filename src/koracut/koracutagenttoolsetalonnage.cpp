@@ -144,6 +144,14 @@ struct ImageMeasure
     bool skin = false;
     double skinHue = 0.;   // angle sur le vecteurscope, 0° à droite, sens antihoraire
     double skinDelta = 0.; // écart à la ligne de peau (123°), en valeur absolue
+    int lumaMedian = 0;    // la médiane et les centiles 10 et 90 : de quoi juger une zone, pas une moyenne
+    int lumaP10 = 0;
+    int lumaP90 = 0;
+    int skinMedian = 0;    // la luma de la peau seule (médiane, centiles 10 et 90) et sa saturation moyenne
+    int skinP10 = 0;
+    int skinP90 = 0;
+    double skinSaturation = 0.;
+    bool zoned = false;    // vrai : seule la zone demandée a été mesurée
     double bars = 0.;      // % du cadre en bandes noires, écartées de la mesure (0 : tout le cadre est mesuré)
     QRect area;            // la partie mesurée, dans l'image mesurée
 };
@@ -203,7 +211,9 @@ constexpr double kSkinLine = 123.; // la ligne I du vecteurscope, où tombent le
 
 // Les chiffres d'une image : luma Rec.709 sur 0 à 255, saturation HSV, dominante par canal, peau
 // cherchée autour de la ligne I du vecteurscope (plan U = 0,493 (B - Y), V = 0,877 (R - Y)).
-ImageMeasure measureImage(const QImage &source)
+// @p zone : une partie du cadre, en fractions de 0 à 1 (x, y du coin haut gauche, largeur, hauteur). Vide :
+// tout le cadre, bandes noires écartées.
+ImageMeasure measureImage(const QImage &source, const QRectF &zone = QRectF())
 {
     ImageMeasure m;
     if (source.isNull()) {
@@ -213,8 +223,18 @@ ImageMeasure measureImage(const QImage &source)
     if (image.width() <= 0 || image.height() <= 0) {
         return m;
     }
-    m.area = pictureArea(image);
-    m.bars = 100. * (1. - double(m.area.width()) * m.area.height() / (double(image.width()) * image.height()));
+    if (zone.isValid()) {
+        const QRect wanted(int(std::lround(zone.x() * image.width())), int(std::lround(zone.y() * image.height())),
+                           qMax(1, int(std::lround(zone.width() * image.width()))), qMax(1, int(std::lround(zone.height() * image.height()))));
+        m.area = wanted.intersected(image.rect());
+        if (m.area.isEmpty()) {
+            return m;
+        }
+        m.zoned = true;
+    } else {
+        m.area = pictureArea(image);
+        m.bars = 100. * (1. - double(m.area.width()) * m.area.height() / (double(image.width()) * image.height()));
+    }
     const double total = double(m.area.width()) * m.area.height();
     int histogram[256] = {0};
     double sumY = 0.;
@@ -227,6 +247,8 @@ ImageMeasure measureImage(const QImage &source)
     qint64 skinCount = 0;
     double skinSin = 0.;
     double skinCos = 0.;
+    int skinHistogram[256] = {0};
+    double skinSat = 0.;
     for (int y = m.area.top(); y <= m.area.bottom(); ++y) {
         const QRgb *line = reinterpret_cast<const QRgb *>(image.constScanLine(y));
         for (int x = m.area.left(); x <= m.area.right(); ++x) {
@@ -266,6 +288,8 @@ ImageMeasure measureImage(const QImage &source)
                 }
                 if (std::abs(delta) <= 30.) {
                     ++skinCount;
+                    ++skinHistogram[bin];
+                    skinSat += sat;
                     skinSin += std::sin(angle * M_PI / 180.);
                     skinCos += std::cos(angle * M_PI / 180.);
                 }
@@ -291,6 +315,20 @@ ImageMeasure measureImage(const QImage &source)
             break;
         }
     }
+    // Le centile d'un histogramme : la première valeur sous laquelle tombe cette part des pixels.
+    const auto centile = [](const int *bins, double count, double part) {
+        qint64 run = 0;
+        for (int i = 0; i < 256; ++i) {
+            run += bins[i];
+            if (run >= count * part) {
+                return i;
+            }
+        }
+        return 255;
+    };
+    m.lumaMedian = centile(histogram, total, 0.5);
+    m.lumaP10 = centile(histogram, total, 0.1);
+    m.lumaP90 = centile(histogram, total, 0.9);
     m.lumaMean = sumY / total;
     m.crushed = 100. * crushed / total;
     m.burned = 100. * burned / total;
@@ -304,6 +342,10 @@ ImageMeasure measureImage(const QImage &source)
     m.domB = meanB - gray;
     m.skin = skinCount >= total * 0.03;
     if (m.skin) {
+        m.skinMedian = centile(skinHistogram, double(skinCount), 0.5);
+        m.skinP10 = centile(skinHistogram, double(skinCount), 0.1);
+        m.skinP90 = centile(skinHistogram, double(skinCount), 0.9);
+        m.skinSaturation = skinSat / skinCount;
         double hue = std::atan2(skinSin, skinCos) * 180. / M_PI;
         if (hue < 0) {
             hue += 360.;
@@ -327,6 +369,9 @@ QJsonObject measureJson(const ImageMeasure &m)
     QJsonObject json{{QStringLiteral("luma"), QJsonObject{{QStringLiteral("min"), m.lumaMin},
                                                             {QStringLiteral("max"), m.lumaMax},
                                                             {QStringLiteral("moyenne"), round1(m.lumaMean)},
+                                                            {QStringLiteral("mediane"), m.lumaMedian},
+                                                            {QStringLiteral("p10"), m.lumaP10},
+                                                            {QStringLiteral("p90"), m.lumaP90},
                                                             {QStringLiteral("noirs_ecrases_pourcent"), round1(m.crushed)},
                                                             {QStringLiteral("blancs_brules_pourcent"), round1(m.burned)}}},
                        {QStringLiteral("saturation_moyenne"), std::round(m.saturation * 100.) / 100.},
@@ -334,6 +379,14 @@ QJsonObject measureJson(const ImageMeasure &m)
                        {QStringLiteral("peau"), QJsonObject{{QStringLiteral("detectee"), m.skin},
                                                             {QStringLiteral("teinte_degres"), round1(m.skinHue)},
                                                             {QStringLiteral("ecart_ligne_peau_degres"), round1(m.skinDelta)}}}};
+    if (m.skin) {
+        QJsonObject skin = json.value(QStringLiteral("peau")).toObject();
+        skin.insert(QStringLiteral("luma_mediane"), m.skinMedian);
+        skin.insert(QStringLiteral("luma_p10"), m.skinP10);
+        skin.insert(QStringLiteral("luma_p90"), m.skinP90);
+        skin.insert(QStringLiteral("saturation"), std::round(m.skinSaturation * 100.) / 100.);
+        json.insert(QStringLiteral("peau"), skin);
+    }
     if (m.bars > 0.) {
         // Le plan ne remplit pas le cadre : les chiffres sont ceux de l'image seule, bandes noires écartées.
         json.insert(QStringLiteral("bandes_noires_pourcent"), round1(m.bars));
@@ -344,9 +397,9 @@ QJsonObject measureJson(const ImageMeasure &m)
 } // namespace
 
 namespace KoraCutAgentToolsPrivate {
-QJsonObject measureImageJson(const QImage &image)
+QJsonObject measureImageJson(const QImage &image, const QRectF &zone)
 {
-    const ImageMeasure m = measureImage(image);
+    const ImageMeasure m = measureImage(image, zone);
     return m.ok ? measureJson(m) : QJsonObject();
 }
 } // namespace KoraCutAgentToolsPrivate
@@ -465,7 +518,7 @@ QImage clipFrame(const Timeline &timeline, int cid, int positionInClip, bool wit
 }
 
 // La mesure d'un clip à son milieu (ou à @p positionInClip), ou une erreur.
-ImageMeasure measureClip(const Timeline &timeline, int cid, int positionInClip, bool withEffects, QJsonObject &failure)
+ImageMeasure measureClip(const Timeline &timeline, int cid, int positionInClip, bool withEffects, QJsonObject &failure, const QRectF &zone = QRectF())
 {
     const int length = timeline->getClipPlaytime(cid);
     if (positionInClip < 0) {
@@ -476,7 +529,7 @@ ImageMeasure measureClip(const Timeline &timeline, int cid, int positionInClip, 
                         QStringLiteral("La position se compte depuis le début du clip, pas depuis le début de la timeline."));
         return {};
     }
-    const ImageMeasure m = measureImage(clipFrame(timeline, cid, positionInClip, withEffects));
+    const ImageMeasure m = measureImage(clipFrame(timeline, cid, positionInClip, withEffects), zone);
     if (!m.ok) {
         failure = error(QStringLiteral("non_disponible"), QStringLiteral("Aucune image n'a pu être tirée du clip %1.").arg(cid));
     }
@@ -657,9 +710,28 @@ QJsonObject mesurerImage(const Timeline &timeline, const Args &args)
     if (args.contains(QStringLiteral("position_dans_clip")) && position < 0) {
         return error(QStringLiteral("entree_invalide"), QStringLiteral("position_dans_clip est un nombre d'images depuis le début du clip."));
     }
+    // zone : une partie du cadre, en fractions de 0 à 1 (12 octobre 2026). Pour juger un étalonnage zone par
+    // zone (la plus sombre qui compte, le sujet, la plus claire) et chercher la peau là où est le visage.
+    QRectF zone;
+    QJsonObject zoneJson;
+    if (args.contains(QStringLiteral("zone"))) {
+        zoneJson = args.value(QStringLiteral("zone")).toObject();
+        const double x = zoneJson.value(QStringLiteral("x")).toDouble(-1.);
+        const double y = zoneJson.value(QStringLiteral("y")).toDouble(-1.);
+        const double w = zoneJson.value(QStringLiteral("largeur")).toDouble(-1.);
+        const double h = zoneJson.value(QStringLiteral("hauteur")).toDouble(-1.);
+        if (x < 0. || y < 0. || w <= 0. || h <= 0. || x + w > 1.0001 || y + h > 1.0001) {
+            return error(QStringLiteral("entree_invalide"), QStringLiteral("zone sort du cadre : x, y, largeur et hauteur sont des fractions du cadre, de 0 à 1."),
+                         QStringLiteral("Le quart haut gauche : { x: 0, y: 0, largeur: 0.5, hauteur: 0.5 }. Le centre : { x: 0.25, y: 0.25, largeur: 0.5, hauteur: 0.5 }."));
+        }
+        zone = QRectF(x, y, w, h);
+    }
     QJsonObject failure;
-    const ImageMeasure m = measureClip(timeline, cid, position, !args.value(QStringLiteral("sans_effets")).toBool(false), failure);
+    const ImageMeasure m = measureClip(timeline, cid, position, !args.value(QStringLiteral("sans_effets")).toBool(false), failure, zone);
     if (!m.ok) {
+        if (failure.isEmpty()) {
+            return error(QStringLiteral("entree_invalide"), QStringLiteral("zone est trop petite : elle ne couvre aucun pixel de l'image mesurée."));
+        }
         return failure;
     }
     const int measured = position < 0 ? timeline->getClipPlaytime(cid) / 2 : position;
@@ -667,6 +739,9 @@ QJsonObject mesurerImage(const Timeline &timeline, const Args &args)
     result.insert(QStringLiteral("ok"), true);
     result.insert(QStringLiteral("position"), time(timeline->getClipPosition(cid) + measured));
     result.insert(QStringLiteral("position_dans_clip"), measured);
+    if (zone.isValid()) {
+        result.insert(QStringLiteral("zone"), zoneJson);
+    }
     return result;
 }
 

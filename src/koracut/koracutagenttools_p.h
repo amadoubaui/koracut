@@ -13,6 +13,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "undohelper.hpp"
 
 #include <QImage>
+#include <QRectF>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QList>
@@ -102,7 +103,7 @@ bool isColourEffect(const QString &effectId);
 
 /** @brief Les chiffres de mesurer_image pour une image donnée (luma, saturation, dominante, peau), pour les
  * tests. Un plan plus petit que le cadre est mesuré sans ses bandes noires (bandes_noires_pourcent). */
-QJsonObject measureImageJson(const QImage &image);
+QJsonObject measureImageJson(const QImage &image, const QRectF &zone = QRectF());
 
 /** @brief Mesure la luma moyenne d'un plan avec un grade d'essai, sans toucher au projet (etal_signature,
  * 8 octobre 2026). La scène est copiée une seule fois ; chaque essai remplace, dans la copie, le graphe

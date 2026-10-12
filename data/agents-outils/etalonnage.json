@@ -1,7 +1,7 @@
 [
   {
     "name": "mesurer_image",
-    "description": "Mesure une image d'un clip, effets compris, sans rien modifier et sans rien envoyer hors de la machine. À appeler avant tout réglage et après chaque réglage : c'est le seul moyen de savoir ce qu'on a fait. Renvoie { ok, position {i, tc} (sur la timeline), position_dans_clip, luma: { min, max, moyenne, noirs_ecrases_pourcent, blancs_brules_pourcent } (échelle 0 à 255, Rec.709 ; min et max sont les percentiles 1 et 99, un pixel isolé ne compte pas), saturation_moyenne (0 à 1), dominante: { r, v, b } (écart de chaque canal à la moyenne, en points sur 255), peau: { detectee, teinte_degres, ecart_ligne_peau_degres } (angle sur le vecteurscope, ligne de peau à 123 degrés ; détection approximative : au moins 3 % de pixels de teinte et de chroma de peau). Repères : noirs entre 8 et 20, blancs sous 240, moins de 1 % de pixels écrasés ou brûlés, peau à moins de 5 degrés de la ligne de peau. Avec sans_effets, l'image source est mesurée par le même chemin (tous les filtres coupés), les deux mesures se comparent donc. Un plan plus petit que le cadre (plan vertical dans un projet horizontal) est mesuré sans ses bandes noires : la réponse porte alors bandes_noires_pourcent, la part du cadre écartée, et tous les chiffres sont ceux de l'image seule.",
+    "description": "Mesure une image d'un clip, effets compris, sans rien modifier et sans rien envoyer hors de la machine. À appeler avant tout réglage et après chaque réglage : c'est le seul moyen de savoir ce qu'on a fait. Renvoie { ok, position {i, tc} (sur la timeline), position_dans_clip, luma: { min, max, moyenne, mediane, p10, p90, noirs_ecrases_pourcent, blancs_brules_pourcent } (échelle 0 à 255, Rec.709 ; min et max sont les percentiles 1 et 99, un pixel isolé ne compte pas ; p10 et p90 disent où sont les ombres et les hautes lumières), saturation_moyenne (0 à 1), dominante: { r, v, b } (écart de chaque canal à la moyenne, en points sur 255), peau: { detectee, teinte_degres, ecart_ligne_peau_degres, et si elle est détectée luma_mediane, luma_p10, luma_p90, saturation } (angle sur le vecteurscope, ligne de peau à 123 degrés ; détection approximative : au moins 3 % de pixels de teinte et de chroma de peau). Repères : noirs entre 8 et 20, blancs sous 240, moins de 1 % de pixels écrasés ou brûlés, peau à moins de 5 degrés de la ligne de peau. Avec sans_effets, l'image source est mesurée par le même chemin (tous les filtres coupés), les deux mesures se comparent donc. Un plan plus petit que le cadre (plan vertical dans un projet horizontal) est mesuré sans ses bandes noires : la réponse porte alors bandes_noires_pourcent, la part du cadre écartée, et tous les chiffres sont ceux de l'image seule. Avec zone, seule cette partie du cadre est mesurée : c'est ainsi qu'on juge un étalonnage zone par zone (la zone la plus sombre qui compte, le sujet, la zone la plus claire) et qu'on cherche la peau là où est le visage, sans la confondre avec un mur ou du bois de la même teinte.",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -18,6 +18,39 @@
         "sans_effets": {
           "type": "boolean",
           "description": "true : mesure l'image source, avant étalonnage, pour comparer. Défaut : false."
+        },
+        "zone": {
+          "type": "object",
+          "description": "Une partie du cadre à mesurer, en fractions du cadre de 0 à 1 : x et y du coin haut gauche, largeur, hauteur. Le centre : { x: 0.25, y: 0.25, largeur: 0.5, hauteur: 0.5 }. Absent : tout le cadre.",
+          "properties": {
+            "x": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "y": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "largeur": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1
+            },
+            "hauteur": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "largeur",
+            "hauteur"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [

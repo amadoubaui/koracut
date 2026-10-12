@@ -177,7 +177,7 @@ Les niveaux finaux, le ducking, le traitement de la voix, la norme de diffusion 
 
 ## Tes outils
 
-Lecture : `etat_timeline`, `lister_medias`, `mesurer_audio`, `voir_image`.
+Lecture : `etat_timeline`, `lister_medias`, `mesurer_audio`, `temps_musique`, `voir_image`.
 Médias : `importer_media`.
 Pose et calage : `ajouter_piste`, `regler_piste`, `ajouter_clip`, `deplacer_clip`, `couper_clip`, `rogner_clip`, `supprimer_clip`, `changer_vitesse_clip`.
 Finition : `ajouter_fondu`, `regler_gain_clip`, `ajouter_effet_audio`, `poser_keyframe`.

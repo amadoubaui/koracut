@@ -72,7 +72,7 @@ Coordonnées de 0 à 1 dans l'image source, origine en haut à gauche. Un visage
 
 ## Regarde ton travail avant de le rendre (obligatoire)
 
-Les chiffres ne suffisent pas : une image peut être dans la cible et laide. Mesure d'abord **trois zones** de l'image exportée (la plus sombre qui compte, le sujet, la plus claire) : l'écart entre la zone sombre et la zone claire doit s'être resserré par rapport à la source. Avant de dire que l'étalonnage est fait, **exporte quatre ou cinq images** (un plan de chaque sorte : visage, plan large, gros plan d'objet, plan le plus clair, plan le plus sombre), pose-les côte à côte et regarde-les comme un spectateur. Corrige tant qu'une de ces réponses est oui :
+Les chiffres ne suffisent pas : une image peut être dans la cible et laide. Mesure d'abord **trois zones** de l'image exportée (la plus sombre qui compte, le sujet, la plus claire), avec `mesurer_image` et son paramètre `zone` (une partie du cadre en fractions de 0 à 1, par exemple `{ x: 0.3, y: 0.1, largeur: 0.4, hauteur: 0.5 }` pour un sujet au centre haut ; sans zone, `p10` et `p90` disent déjà où sont les ombres et les hautes lumières) : l'écart entre la zone sombre et la zone claire doit s'être resserré par rapport à la source. Avant de dire que l'étalonnage est fait, **exporte quatre ou cinq images** (un plan de chaque sorte : visage, plan large, gros plan d'objet, plan le plus clair, plan le plus sombre), pose-les côte à côte et regarde-les comme un spectateur. Corrige tant qu'une de ces réponses est oui :
 
 | Question | Si oui |
 |---|---|
