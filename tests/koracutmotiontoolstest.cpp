@@ -637,6 +637,19 @@ TEST_CASE("Outils Motion : deux séquences, noms libérés, fichiers fournis", "
             QString html = call(timeline2, QStringLiteral("motion_lire"), {{QStringLiteral("nom"), QStringLiteral("titre-s1")}}).value(QStringLiteral("html")).toString();
             REQUIRE(html.contains(QStringLiteral(" data-koracut-sequence=\"%1\"").arg(seq1)));
             html.remove(QStringLiteral(" data-koracut-sequence=\"%1\"").arg(seq1));
+            // Et, pour un élément seul, sa sorte, sa place et son style (12 octobre 2026) : sans eux il n'était plus
+            // reconnu, et son clip repartait à l'image 0 sur une piste neuve.
+            const int placeBefore = timeline->getClipPosition(cid1);
+            const int trackBefore = timeline->getClipTrackId(cid1);
+            QStringList lost;
+            for (const char *name : {"data-koracut-element", "data-koracut-start", "data-koracut-style"}) {
+                const QRegularExpression attribute(QStringLiteral(" %1=\"[^\"]*\"").arg(QLatin1String(name)));
+                if (attribute.match(html).hasMatch()) {
+                    lost << QLatin1String(name);
+                    html.remove(attribute);
+                }
+            }
+            REQUIRE(lost.contains(QStringLiteral("data-koracut-element")));
             html.replace(QStringLiteral("Pub une"), QStringLiteral("Pub réécrite"));
             r = call(timeline2, QStringLiteral("motion_ecrire"), {{QStringLiteral("nom"), QStringLiteral("titre-s1")}, {QStringLiteral("html"), html}});
             INFO(dumpJson(r));
@@ -647,6 +660,16 @@ TEST_CASE("Outils Motion : deux séquences, noms libérés, fichiers fournis", "
             CHECK(mirror.clipFor(QStringLiteral("titre-s1"), QStringLiteral("titre-s1")) == cid1);
             CHECK(clipsIn(timeline) == 1);
             CHECK(clipsIn(timeline2) == 2);
+            {
+                const QString written = call(timeline2, QStringLiteral("motion_lire"), {{QStringLiteral("nom"), QStringLiteral("titre-s1")}}).value(QStringLiteral("html")).toString();
+                for (const QString &name : std::as_const(lost)) {
+                    INFO(name.toStdString());
+                    CHECK(written.contains(QLatin1Char(' ') + name + QLatin1String("=\"")));
+                }
+                CHECK(written.contains(QStringLiteral("Pub réécrite")));
+                CHECK(timeline->getClipPosition(cid1) == placeBefore);
+                CHECK(timeline->getClipTrackId(cid1) == trackBefore);
+            }
 
             // piste_id est une piste de la séquence devant : refusée pour une composition d'une autre séquence.
             CHECK(errorCode(call(timeline2, QStringLiteral("motion_poser"),

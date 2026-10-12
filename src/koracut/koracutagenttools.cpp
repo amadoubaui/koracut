@@ -1444,16 +1444,34 @@ QJsonObject motionEcrire(const Timeline &timeline, const Args &args)
     if (QJsonObject e = copyMotionAssets(args, mirror->projectState(project).dir, copied); !e.isEmpty()) {
         return e;
     }
-    // Une composition ne change pas de séquence parce que le HTML réécrit a oublié data-koracut-sequence :
-    // la racine garde celle qu'elle avait.
+    // Ce que KoraCut a écrit sur la racine ne se perd pas parce que le HTML réécrit l'a oublié : la séquence où la
+    // composition est posée, et pour un élément seul sa sorte, sa place et son style. Sans eux (12 octobre 2026,
+    // relevé sur le projet ICONOA), l'élément n'était plus reconnu : son clip repartait à l'image 0 sur une piste
+    // neuve. Un attribut que le nouveau HTML donne lui-même n'est pas touché.
     QString html = args.value(QStringLiteral("html")).toString();
-    const QString sequenceBefore = sync->composition().sequence;
-    if (!sequenceBefore.isEmpty() && KoraCutMotion::analyse(html).sequence.isEmpty()) {
-        const QList<KoraCutMotion::Tag> tags = KoraCutMotion::tokenize(html);
-        for (const KoraCutMotion::Tag &t : tags) {
-            if (!t.closing && t.has(QStringLiteral("data-composition-id"))) {
-                html = KoraCutMotion::setAttribute(html, t, QStringLiteral("data-koracut-sequence"), sequenceBefore);
-                break;
+    {
+        static const QStringList kept{QStringLiteral("data-koracut-sequence"), QStringLiteral("data-koracut-element"), QStringLiteral("data-koracut-start"),
+                                      QStringLiteral("data-koracut-style")};
+        const auto rootOf = [](const QString &text, KoraCutMotion::Tag &root) {
+            const QList<KoraCutMotion::Tag> tags = KoraCutMotion::tokenize(text);
+            for (const KoraCutMotion::Tag &t : tags) {
+                if (!t.closing && t.has(QStringLiteral("data-composition-id"))) {
+                    root = t;
+                    return true;
+                }
+            }
+            return false;
+        };
+        KoraCutMotion::Tag oldRoot;
+        if (rootOf(sync->html(), oldRoot)) {
+            for (const QString &name : kept) {
+                const QString value = oldRoot.attr(name).trimmed();
+                KoraCutMotion::Tag newRoot;
+                // La racine est relue à chaque tour : poser un attribut déplace les suivants.
+                if (value.isEmpty() || !rootOf(html, newRoot) || newRoot.has(name)) {
+                    continue;
+                }
+                html = KoraCutMotion::setAttribute(html, newRoot, name, value);
             }
         }
     }
