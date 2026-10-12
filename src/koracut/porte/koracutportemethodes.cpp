@@ -1941,6 +1941,18 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
                     o.insert(QStringLiteral("chemin"), clip->url());
                     o.insert(QStringLiteral("nom"), clip->clipName());
                     o.insert(QStringLiteral("duree"), timeObject(int(clip->frameDuration())));
+                    // Un rush qui n'a pas le format du projet : on le dit, le projet garde le sien (12 octobre 2026).
+                    const QSize size = clip->frameSize();
+                    const double fps = clip->getOriginalFps();
+                    const auto &profile = pCore->getCurrentProfile();
+                    if (profile && !size.isEmpty() && clip->clipType() != ClipType::Audio) {
+                        const bool otherSize = size != QSize(profile->width(), profile->height());
+                        const bool otherFps = fps > 0 && qAbs(fps - profile->fps()) > 0.01 && clip->clipType() != ClipType::Image;
+                        if (otherSize || otherFps) {
+                            o.insert(QStringLiteral("format_different"),
+                                     QJsonObject{{QStringLiteral("largeur"), size.width()}, {QStringLiteral("hauteur"), size.height()}, {QStringLiteral("ips"), fps > 0 ? QJsonValue(fps) : QJsonValue()}});
+                        }
+                    }
                 }
                 ready->append(o);
                 if (wait && ready->size() >= expected) {
