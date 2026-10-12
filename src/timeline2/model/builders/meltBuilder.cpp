@@ -678,7 +678,9 @@ bool constructTrackFromMelt(const std::shared_ptr<TimelineItemModel> &timeline, 
             }
             // KoraCut (6 octobre 2026) : les marques des pistes Motion. Sans elles, le miroir ne reconnaissait plus ses
             // pistes à la réouverture et en créait de nouvelles à chaque fois (document 19, journal).
-            for (const char *key : {"kdenlive:koracut_motion", "kdenlive:koracut_motion_track", "kdenlive:koracut_motion_audio"}) {
+            // Et le rôle de la piste (12 octobre 2026) : « musique » donne leur couleur aux clips ; non relu, la
+            // musique reprenait la couleur des voix à chaque réouverture quand le nom de la piste ne le disait pas.
+            for (const char *key : {"kdenlive:koracut_motion", "kdenlive:koracut_motion_track", "kdenlive:koracut_motion_audio", "kdenlive:koracut_role"}) {
                 const QString mark = QString::fromUtf8(track.get(key));
                 if (!mark.isEmpty()) {
                     timeline->setTrackProperty(tid, QString::fromLatin1(key), mark);
