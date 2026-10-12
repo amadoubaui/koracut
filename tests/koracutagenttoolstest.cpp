@@ -281,6 +281,36 @@ TEST_CASE("Outils d'agent : monter une séquence", "[KoraCutAgentTools]")
                  {{QStringLiteral("media_id"), sound}, {QStringLiteral("piste_id"), a1}, {QStringLiteral("position"), 300}, {QStringLiteral("partie"), QStringLiteral("audio")},
                   {QStringLiteral("entree"), 0}, {QStringLiteral("sortie"), 10}});
         CHECK(r.value(QStringLiteral("ok")).toBool());
+        // Mode piste_libre : un second son au même endroit part sur une autre piste audio, créée s'il le faut,
+        // en une seule étape d'annulation ; avec image et son, le mode est refusé.
+        {
+            const int tracksBefore = timeline->getTracksCount();
+            const int stepsBefore = undoStack->index();
+            QJsonObject f = call(timeline, QStringLiteral("ajouter_clip"),
+                                 {{QStringLiteral("media_id"), sound}, {QStringLiteral("piste_id"), a1}, {QStringLiteral("position"), 300}, {QStringLiteral("partie"), QStringLiteral("audio")},
+                                  {QStringLiteral("mode"), QStringLiteral("piste_libre")}});
+            REQUIRE(f.value(QStringLiteral("ok")).toBool());
+            const int landed = f.value(QStringLiteral("piste_id")).toInt();
+            CHECK(landed != a1);
+            CHECK(timeline->isAudioTrack(landed));
+            CHECK(timeline->getClipPosition(f.value(QStringLiteral("clip_id")).toInt()) == 300);
+            CHECK(undoStack->index() == stepsBefore + 1);
+            CHECK(f.value(QStringLiteral("piste_creee")).toBool() == (timeline->getTracksCount() == tracksBefore + 1));
+            undoStack->undo();
+            CHECK(timeline->getTracksCount() == tracksBefore);
+            CHECK_FALSE(timeline->isClip(f.value(QStringLiteral("clip_id")).toInt()));
+            // À une place libre, piste_libre reste sur la piste demandée.
+            f = call(timeline, QStringLiteral("ajouter_clip"),
+                     {{QStringLiteral("media_id"), sound}, {QStringLiteral("piste_id"), a1}, {QStringLiteral("position"), 700}, {QStringLiteral("partie"), QStringLiteral("audio")},
+                      {QStringLiteral("mode"), QStringLiteral("piste_libre")}});
+            REQUIRE(f.value(QStringLiteral("ok")).toBool());
+            CHECK(f.value(QStringLiteral("piste_id")).toInt() == a1);
+            CHECK_FALSE(f.value(QStringLiteral("piste_creee")).toBool());
+            undoStack->undo();
+            CHECK(errorCode(call(timeline, QStringLiteral("ajouter_clip"),
+                                 {{QStringLiteral("media_id"), sound}, {QStringLiteral("piste_id"), a1}, {QStringLiteral("position"), 700}, {QStringLiteral("mode"), QStringLiteral("piste_libre")}})) ==
+                  QStringLiteral("entree_invalide"));
+        }
         // sortie sans entree : du début du média jusqu'à sortie, pas le média entier (relevé le 6 octobre 2026).
         r = call(timeline, QStringLiteral("ajouter_clip"),
                  {{QStringLiteral("media_id"), sound}, {QStringLiteral("piste_id"), a1}, {QStringLiteral("position"), 400}, {QStringLiteral("partie"), QStringLiteral("audio")},

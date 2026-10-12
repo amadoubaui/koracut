@@ -812,9 +812,10 @@ QJsonObject ajouterClip(const Timeline &timeline, const Args &args)
         return failure;
     }
     const QString mode = args.value(QStringLiteral("mode")).toString(QStringLiteral("libre"));
-    if (mode != QLatin1String("libre")) {
+    const bool freeTrack = mode == QLatin1String("piste_libre");
+    if (mode != QLatin1String("libre") && !freeTrack) {
         return error(QStringLiteral("non_disponible"), QStringLiteral("Les modes « ecraser » et « inserer » ne sont pas encore écrits."),
-                     QStringLiteral("Pose le clip en mode libre à une place vide."));
+                     QStringLiteral("Pose le clip en mode libre à une place vide, ou en mode piste_libre pour une seule partie."));
     }
     const QString part = args.value(QStringLiteral("partie")).toString(QStringLiteral("video_et_audio"));
     QString binId = mediaId;
@@ -862,9 +863,48 @@ QJsonObject ajouterClip(const Timeline &timeline, const Args &args)
         return error(QStringLiteral("mauvais_type_de_piste"), QStringLiteral("La partie « %1 » ne se pose pas sur la piste %2.").arg(part, trackLabel(timeline, tid)));
     }
     int newId = -1;
-    if (!timeline->requestClipInsertion(binId, tid, position, newId, true, true, false) || newId == -1) {
+    bool trackCreated = false;
+    if (freeTrack) {
+        // piste_libre (12 octobre 2026) : deux effets sonores qui se chevauchent ne se posent pas sur la même piste.
+        // On essaie piste_id, puis les autres pistes du même type dans l'ordre de l'écran, puis on en crée une.
+        // Une seule partie : avec image et son, il faudrait deux pistes libres à la fois.
+        if (part == QLatin1String("video_et_audio")) {
+            return error(QStringLiteral("entree_invalide"), QStringLiteral("Le mode piste_libre pose une seule partie."),
+                         QStringLiteral("Donne partie « audio » ou « video »."));
+        }
+        QList<int> candidates{tid};
+        for (int other : tracksOnScreen(timeline)) {
+            if (other != tid && timeline->isAudioTrack(other) == audioTrack && !timeline->trackIsLocked(other)) {
+                candidates << other;
+            }
+        }
+        Fun undo = []() { return true; };
+        Fun redo = []() { return true; };
+        for (int candidate : std::as_const(candidates)) {
+            Fun tryUndo = []() { return true; };
+            Fun tryRedo = []() { return true; };
+            int id = -1;
+            if (timeline->requestClipInsertion(binId, candidate, position, id, true, true, false, tryUndo, tryRedo) && id != -1) {
+                undo = tryUndo;
+                redo = tryRedo;
+                newId = id;
+                break;
+            }
+        }
+        if (newId == -1) {
+            int newTrack = -1;
+            const int trackPosition = audioTrack ? 0 : tracksOnScreen(timeline).size();
+            if (!timeline->requestTrackInsertion(trackPosition, newTrack, QString(), audioTrack, undo, redo) || newTrack == -1 ||
+                !timeline->requestClipInsertion(binId, newTrack, position, newId, true, true, false, undo, redo) || newId == -1) {
+                undo();
+                return error(QStringLiteral("place_occupee"), QStringLiteral("Aucune piste n'a pu recevoir le clip à %1, même une piste neuve.").arg(position));
+            }
+            trackCreated = true;
+        }
+        pCore->pushUndo(undo, redo, i18nc("@action undo text", "Insert clip on a free track"));
+    } else if (!timeline->requestClipInsertion(binId, tid, position, newId, true, true, false) || newId == -1) {
         return error(QStringLiteral("place_occupee"), QStringLiteral("Pas de place sur la piste %1 à %2 (ou sur sa piste associée pour le son).").arg(trackLabel(timeline, tid)).arg(position),
-                     QStringLiteral("Choisis une place libre, une autre piste, ou partie « video »."));
+                     QStringLiteral("Choisis une place libre, une autre piste, partie « video », ou mode piste_libre pour une seule partie."));
     }
     QJsonValue audioId = QJsonValue::Null;
     if (timeline->isInGroup(newId)) {
@@ -874,12 +914,16 @@ QJsonObject ajouterClip(const Timeline &timeline, const Args &args)
             }
         }
     }
-    return QJsonObject{{QStringLiteral("ok"), true},
+    QJsonObject placed{{QStringLiteral("ok"), true},
                        {QStringLiteral("clip_id"), newId},
                        {QStringLiteral("clip_audio_id"), audioId},
                        {QStringLiteral("piste_id"), timeline->getClipTrackId(newId)},
                        {QStringLiteral("position"), time(timeline->getClipPosition(newId))},
                        {QStringLiteral("duree"), time(timeline->getClipPlaytime(newId))}};
+    if (freeTrack) {
+        placed.insert(QStringLiteral("piste_creee"), trackCreated);
+    }
+    return placed;
 }
 
 // ---------------------------------------------------------------------------------------------
