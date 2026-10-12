@@ -624,7 +624,8 @@ QJsonArray toolDefinitions()
 }
 
 // Contrôle léger des paramètres d'un outil contre son schéma (25 septembre 2026) : un champ
-// inconnu ou un champ obligatoire absent, au premier niveau et dans les objets d'une liste. Sans
+// inconnu, un champ obligatoire absent ou une valeur hors de la liste permise (enum, depuis le
+// 12 octobre 2026), au premier niveau et dans les objets d'une liste. Sans
 // lui, un programme qui se trompe de nom de champ (« nouveau_nom » au lieu de « nom ») recevait
 // « ok » et un résultat qui ne faisait pas ce qu'il croyait. Rend un message vide si tout va bien.
 QString checkToolArgs(const QJsonObject &schema, const QJsonObject &args, const QString &where)
@@ -639,6 +640,17 @@ QString checkToolArgs(const QJsonObject &schema, const QJsonObject &args, const 
             return QStringLiteral("Champ inconnu « %1 »%2. Champs attendus : %3.").arg(it.key(), where, allowed.join(QStringLiteral(", ")));
         }
         const QJsonObject sub = props.value(it.key()).toObject();
+        // Une valeur hors de la liste permise (12 octobre 2026) : sans ce contrôle, un mode mal écrit arrivait
+        // jusqu'à l'outil, qui répondait à côté ou prenait son comportement par défaut. Seulement pour un texte :
+        // c'est là que les listes de valeurs servent.
+        const QJsonArray permitted = sub.value(QStringLiteral("enum")).toArray();
+        if (!permitted.isEmpty() && it.value().isString() && !permitted.contains(it.value())) {
+            QStringList names;
+            for (const QJsonValue &v : permitted) {
+                names << v.toString();
+            }
+            return QStringLiteral("Valeur « %1 » refusée pour « %2 »%3. Valeurs permises : %4.").arg(it.value().toString(), it.key(), where, names.join(QStringLiteral(", ")));
+        }
         const QJsonObject items = sub.value(QStringLiteral("items")).toObject();
         if (it.value().isArray() && items.value(QStringLiteral("type")).toString() == QLatin1String("object")) {
             const QJsonArray array = it.value().toArray();

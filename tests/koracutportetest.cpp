@@ -274,6 +274,19 @@ TEST_CASE("Porte : les méthodes sur un vrai projet", "[KoraCutPorte]")
         REQUIRE(porte.call(client, QStringLiteral("historique.refaire"), {}).ok());
         CHECK(clipCount(timeline, v1) == 2);
         CHECK(code(porte.call(client, QStringLiteral("timeline.outil"), {{QStringLiteral("nom"), QStringLiteral("faire_le_cafe")}})) == QStringLiteral("outil_inconnu"));
+        // Une valeur hors de la liste permise d'un champ est refusée avant l'outil, avec les valeurs acceptées.
+        {
+            const int steps = undoStack->count();
+            const KoraCutPorte::Reply wrong =
+                porte.call(client, QStringLiteral("timeline.outil"),
+                           {{QStringLiteral("nom"), QStringLiteral("ajouter_piste")}, {QStringLiteral("args"), QJsonObject{{QStringLiteral("type"), QStringLiteral("musique")}}}});
+            CHECK(code(wrong) == QStringLiteral("parametres_invalides"));
+            CHECK(undoStack->count() == steps);
+            const KoraCutPorte::Reply right =
+                porte.call(client, QStringLiteral("timeline.outil"),
+                           {{QStringLiteral("nom"), QStringLiteral("ajouter_piste")}, {QStringLiteral("args"), QJsonObject{{QStringLiteral("type"), QStringLiteral("audio")}}}});
+            CHECK(right.ok());
+        }
         CHECK(porte.call(client, QStringLiteral("timeline.outils"), {}).result.toArray().size() >= KoraCutAgentTools::implementedTools().size());
     }
 
