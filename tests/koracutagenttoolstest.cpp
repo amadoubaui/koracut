@@ -311,6 +311,9 @@ TEST_CASE("Outils d'agent : monter une séquence", "[KoraCutAgentTools]")
                                  {{QStringLiteral("media_id"), sound}, {QStringLiteral("piste_id"), a1}, {QStringLiteral("position"), 700}, {QStringLiteral("mode"), QStringLiteral("piste_libre")}})) ==
                   QStringLiteral("entree_invalide"));
         }
+        CHECK(errorCode(call(timeline, QStringLiteral("ajouter_clip"),
+                             {{QStringLiteral("media_id"), sound}, {QStringLiteral("piste_id"), a1}, {QStringLiteral("position"), 700}, {QStringLiteral("partie"), QStringLiteral("audio")},
+                              {QStringLiteral("mode"), QStringLiteral("ailleurs")}})) == QStringLiteral("entree_invalide"));
         // sortie sans entree : du début du média jusqu'à sortie, pas le média entier (relevé le 6 octobre 2026).
         r = call(timeline, QStringLiteral("ajouter_clip"),
                  {{QStringLiteral("media_id"), sound}, {QStringLiteral("piste_id"), a1}, {QStringLiteral("position"), 400}, {QStringLiteral("partie"), QStringLiteral("audio")},

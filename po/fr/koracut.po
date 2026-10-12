@@ -55831,3 +55831,9 @@ msgstr "Écrire « Monté avec KoraCut, koracut.org » dans les informations du 
 msgctxt "@info:tooltip"
 msgid "A line in the file's metadata (the comment field), never on the image. It helps people discover KoraCut. Uncheck it for a client who wants nothing of the kind."
 msgstr "Une ligne dans les métadonnées du fichier (le champ commentaire), jamais sur l'image. Elle aide les gens à découvrir KoraCut. Décoche-la pour un client qui n'en veut pas."
+
+#. KoraCut, 12 octobre 2026 : ajouter_clip en mode piste_libre.
+#: src/koracut/koracutagenttools.cpp
+msgctxt "@action undo text"
+msgid "Insert clip on a free track"
+msgstr "Poser le clip sur une piste libre"

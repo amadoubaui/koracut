@@ -813,6 +813,10 @@ QJsonObject ajouterClip(const Timeline &timeline, const Args &args)
     }
     const QString mode = args.value(QStringLiteral("mode")).toString(QStringLiteral("libre"));
     const bool freeTrack = mode == QLatin1String("piste_libre");
+    if (mode != QLatin1String("libre") && !freeTrack && mode != QLatin1String("ecraser") && mode != QLatin1String("inserer")) {
+        return error(QStringLiteral("entree_invalide"), QStringLiteral("mode « %1 » inconnu.").arg(mode),
+                     QStringLiteral("mode vaut « libre » ou « piste_libre » (« ecraser » et « inserer » ne sont pas encore écrits)."));
+    }
     if (mode != QLatin1String("libre") && !freeTrack) {
         return error(QStringLiteral("non_disponible"), QStringLiteral("Les modes « ecraser » et « inserer » ne sont pas encore écrits."),
                      QStringLiteral("Pose le clip en mode libre à une place vide, ou en mode piste_libre pour une seule partie."));
