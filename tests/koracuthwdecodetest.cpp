@@ -14,6 +14,7 @@
 #include "koracut/koracuthwdecode.h"
 
 #include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -171,7 +172,16 @@ TEST_CASE("Décodage matériel : un clip refusé fait retomber tout le projet en
     CHECK_FALSE(env.contains(QStringLiteral("MLT_AVFORMAT_HWACCEL")));
 
     // Le signal part une fois, avec la marque « déjà dans le projet » qui fait soigner les caches.
-    QCoreApplication::processEvents();
+    // Le signal est posté par le fil de l'essai juste après qu'il s'est retiré de la liste des essais en cours :
+    // waitForTrials peut donc rendre la main un instant avant lui. Un seul processEvents() le manquait parfois
+    // (une fois sur le Mac sous charge, une fois sous Windows, 12 octobre 2026) : on l'attend, deux secondes au plus.
+    {
+        QElapsedTimer waited;
+        waited.start();
+        while (refusedSeen.isEmpty() && waited.elapsed() < 2000) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        }
+    }
     REQUIRE(refusedSeen.size() == 1);
     CHECK(refusedSeen.first() == QLatin1String("/essai/sony.MP4"));
     CHECK(legacySeen.first());
