@@ -12,6 +12,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "definitions.h"
 #include "undohelper.hpp"
 
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QList>
@@ -98,6 +99,10 @@ void setParametersWithUndo(const std::shared_ptr<EffectItemModel> &effect, const
 /** @brief Les effets que copier_etalonnage et reinitialiser_etalonnage tiennent pour des effets de
  * couleur : ceux que posent les outils du Coloriste, plus ceux que la personne pose à la main. */
 bool isColourEffect(const QString &effectId);
+
+/** @brief Les chiffres de mesurer_image pour une image donnée (luma, saturation, dominante, peau), pour les
+ * tests. Un plan plus petit que le cadre est mesuré sans ses bandes noires (bandes_noires_pourcent). */
+QJsonObject measureImageJson(const QImage &image);
 
 /** @brief Mesure la luma moyenne d'un plan avec un grade d'essai, sans toucher au projet (etal_signature,
  * 8 octobre 2026). La scène est copiée une seule fois ; chaque essai remplace, dans la copie, le graphe

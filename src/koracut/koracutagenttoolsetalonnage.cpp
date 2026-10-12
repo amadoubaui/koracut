@@ -144,7 +144,60 @@ struct ImageMeasure
     bool skin = false;
     double skinHue = 0.;   // angle sur le vecteurscope, 0° à droite, sens antihoraire
     double skinDelta = 0.; // écart à la ligne de peau (123°), en valeur absolue
+    double bars = 0.;      // % du cadre en bandes noires, écartées de la mesure (0 : tout le cadre est mesuré)
+    QRect area;            // la partie mesurée, dans l'image mesurée
 };
+
+// Les bandes noires d'un plan plus petit que le cadre (plan vertical dans un projet horizontal) : des
+// rangées et des colonnes entières de noir sur les bords. Comptées dans la moyenne, elles la tirent vers
+// le bas et un étalonnage réglé dessus sort brûlé (making-of du 2 octobre 2026). On rend la partie de
+// l'image à mesurer : tout le cadre, sauf quand les bandes en couvrent au moins 5 % ; une image toute
+// noire (fondu) reste entière.
+QRect pictureArea(const QImage &image)
+{
+    const int w = image.width();
+    const int h = image.height();
+    const auto blackRow = [&](int y) {
+        const QRgb *line = reinterpret_cast<const QRgb *>(image.constScanLine(y));
+        for (int x = 0; x < w; ++x) {
+            if (qRed(line[x]) > 4 || qGreen(line[x]) > 4 || qBlue(line[x]) > 4) {
+                return false;
+            }
+        }
+        return true;
+    };
+    int top = 0;
+    while (top < h && blackRow(top)) {
+        ++top;
+    }
+    if (top >= h) {
+        return QRect(0, 0, w, h);
+    }
+    int bottom = h - 1;
+    while (bottom > top && blackRow(bottom)) {
+        --bottom;
+    }
+    const auto blackColumn = [&](int x) {
+        for (int y = top; y <= bottom; ++y) {
+            const QRgb px = reinterpret_cast<const QRgb *>(image.constScanLine(y))[x];
+            if (qRed(px) > 4 || qGreen(px) > 4 || qBlue(px) > 4) {
+                return false;
+            }
+        }
+        return true;
+    };
+    int left = 0;
+    while (left < w - 1 && blackColumn(left)) {
+        ++left;
+    }
+    int right = w - 1;
+    while (right > left && blackColumn(right)) {
+        --right;
+    }
+    const QRect area(left, top, right - left + 1, bottom - top + 1);
+    const double kept = double(area.width()) * area.height() / (double(w) * h);
+    return kept > 0.95 ? QRect(0, 0, w, h) : area;
+}
 
 constexpr double kSkinLine = 123.; // la ligne I du vecteurscope, où tombent les peaux
 
@@ -157,12 +210,12 @@ ImageMeasure measureImage(const QImage &source)
         return m;
     }
     const QImage image = source.convertToFormat(QImage::Format_RGB32);
-    const int w = image.width();
-    const int h = image.height();
-    const double total = double(w) * h;
-    if (total <= 0) {
+    if (image.width() <= 0 || image.height() <= 0) {
         return m;
     }
+    m.area = pictureArea(image);
+    m.bars = 100. * (1. - double(m.area.width()) * m.area.height() / (double(image.width()) * image.height()));
+    const double total = double(m.area.width()) * m.area.height();
     int histogram[256] = {0};
     double sumY = 0.;
     double sumR = 0.;
@@ -174,9 +227,9 @@ ImageMeasure measureImage(const QImage &source)
     qint64 skinCount = 0;
     double skinSin = 0.;
     double skinCos = 0.;
-    for (int y = 0; y < h; ++y) {
+    for (int y = m.area.top(); y <= m.area.bottom(); ++y) {
         const QRgb *line = reinterpret_cast<const QRgb *>(image.constScanLine(y));
-        for (int x = 0; x < w; ++x) {
+        for (int x = m.area.left(); x <= m.area.right(); ++x) {
             const int r = qRed(line[x]);
             const int g = qGreen(line[x]);
             const int b = qBlue(line[x]);
@@ -271,7 +324,7 @@ ImageMeasure measureImage(const QImage &source)
 
 QJsonObject measureJson(const ImageMeasure &m)
 {
-    return QJsonObject{{QStringLiteral("luma"), QJsonObject{{QStringLiteral("min"), m.lumaMin},
+    QJsonObject json{{QStringLiteral("luma"), QJsonObject{{QStringLiteral("min"), m.lumaMin},
                                                             {QStringLiteral("max"), m.lumaMax},
                                                             {QStringLiteral("moyenne"), round1(m.lumaMean)},
                                                             {QStringLiteral("noirs_ecrases_pourcent"), round1(m.crushed)},
@@ -281,8 +334,24 @@ QJsonObject measureJson(const ImageMeasure &m)
                        {QStringLiteral("peau"), QJsonObject{{QStringLiteral("detectee"), m.skin},
                                                             {QStringLiteral("teinte_degres"), round1(m.skinHue)},
                                                             {QStringLiteral("ecart_ligne_peau_degres"), round1(m.skinDelta)}}}};
+    if (m.bars > 0.) {
+        // Le plan ne remplit pas le cadre : les chiffres sont ceux de l'image seule, bandes noires écartées.
+        json.insert(QStringLiteral("bandes_noires_pourcent"), round1(m.bars));
+    }
+    return json;
 }
 
+} // namespace
+
+namespace KoraCutAgentToolsPrivate {
+QJsonObject measureImageJson(const QImage &image)
+{
+    const ImageMeasure m = measureImage(image);
+    return m.ok ? measureJson(m) : QJsonObject();
+}
+} // namespace KoraCutAgentToolsPrivate
+
+namespace {
 constexpr int kMeasureWidth = 480;
 
 // Coupe tous les filtres d'un service MLT (la copie ne sert qu'à la mesure).

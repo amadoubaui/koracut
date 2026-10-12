@@ -23,6 +23,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include "koracut/koracutagenttools_p.h"
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -106,6 +107,51 @@ TEST_CASE("Outils d'agent, lot B : l'étalonnage", "[KoraCutAgentTools]")
         REQUIRE(r.value(QStringLiteral("ok")).toBool());
         return r;
     };
+
+    SECTION("Un plan plus petit que le cadre se mesure sans ses bandes noires")
+    {
+        // Plan vertical dans un cadre horizontal (12 octobre 2026) : 480 x 270, image grise de 152 px au milieu.
+        QImage pillar(480, 270, QImage::Format_RGB32);
+        pillar.fill(Qt::black);
+        for (int y = 0; y < 270; ++y) {
+            for (int x = 164; x < 316; ++x) {
+                pillar.setPixel(x, y, qRgb(128, 128, 128));
+            }
+        }
+        QJsonObject m = KoraCutAgentToolsPrivate::measureImageJson(pillar);
+        CHECK(luma(m) > 127.);
+        CHECK(luma(m) < 129.);
+        CHECK(m.value(QStringLiteral("luma")).toObject().value(QStringLiteral("noirs_ecrases_pourcent")).toDouble() == 0.);
+        CHECK(m.value(QStringLiteral("bandes_noires_pourcent")).toDouble() > 68.);
+        CHECK(m.value(QStringLiteral("bandes_noires_pourcent")).toDouble() < 69.);
+        // Une image pleine : rien n'est écarté, même avec un coin noir.
+        QImage full(480, 270, QImage::Format_RGB32);
+        full.fill(qRgb(128, 128, 128));
+        for (int y = 0; y < 100; ++y) {
+            for (int x = 0; x < 100; ++x) {
+                full.setPixel(x, y, qRgb(0, 0, 0));
+            }
+        }
+        m = KoraCutAgentToolsPrivate::measureImageJson(full);
+        CHECK_FALSE(m.contains(QStringLiteral("bandes_noires_pourcent")));
+        CHECK(luma(m) < 125.);
+        // Une image toute noire (fondu) reste entière.
+        QImage black(480, 270, QImage::Format_RGB32);
+        black.fill(Qt::black);
+        m = KoraCutAgentToolsPrivate::measureImageJson(black);
+        CHECK_FALSE(m.contains(QStringLiteral("bandes_noires_pourcent")));
+        CHECK(m.value(QStringLiteral("luma")).toObject().value(QStringLiteral("noirs_ecrases_pourcent")).toDouble() == 100.);
+        // Une bande fine (moins de 5 % du cadre) n'est pas écartée.
+        QImage thin(480, 270, QImage::Format_RGB32);
+        thin.fill(qRgb(128, 128, 128));
+        for (int y = 0; y < 6; ++y) {
+            for (int x = 0; x < 480; ++x) {
+                thin.setPixel(x, y, qRgb(0, 0, 0));
+            }
+        }
+        m = KoraCutAgentToolsPrivate::measureImageJson(thin);
+        CHECK_FALSE(m.contains(QStringLiteral("bandes_noires_pourcent")));
+    }
 
     SECTION("Mesurer un gris, un rouge, hors du clip, un son")
     {
