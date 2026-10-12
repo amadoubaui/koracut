@@ -22,7 +22,9 @@ how we work in the meantime.
 
 ## Where the decisions live
 
-The project documents are in the parent folder, outside the source tree:
+The project documents are kept by the studio in the parent folder, outside the source tree.
+They are not published in this repository; they are listed here so that a contributor
+knows they exist and can ask for them:
 
 * `TACHES.md` is the task list. A finished task is deleted from it, not ticked.
 * `2 - Charte graphique KoraCut.md` holds the application design tokens.

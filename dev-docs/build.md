@@ -4,7 +4,7 @@
 
 KoraCut is primarily developed on GNU/Linux, but it can also be [built on Microsoft Windows and macOS using Craft](#build-craft).
 
-On macOS the studio's own procedure, with the pitfalls we hit, is in `Sources/BUILD.md` of the project folder.
+On macOS the studio builds with Craft, as described in the [Craft section](#build-craft) below.
 
 Currently supported GNU/Linux distributions are:
 
@@ -243,7 +243,7 @@ It is well suited for quickly setting up a working build environment or creating
 * For more instructions and tips on Craft see https://community.kde.org/Craft
 
 At the studio these commands are wrapped in `~/CraftRoot/koracut-build.sh` and
-`~/CraftRoot/koracut-run.sh`. Read `Sources/BUILD.md` before changing them.
+`~/CraftRoot/koracut-run.sh`, which are not part of this repository.
 
 ## Optional advanced development tools
 
