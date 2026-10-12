@@ -129,10 +129,12 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "koracut/ai/koracutaibridge.h"
 #include "koracut/ai/koracutaiconnectionspage.h"
 #include "koracut/koracutagentsession.h"
-#include "koracut/voix/koracutvoicerecord.h"
 #include "utils/machineprofile.h"
 #include <KUser>
 #endif
+// Hors du bloc des agents : la voix off au micro existe aussi dans la version libre (KORACUT_AGENTS=OFF),
+// qui ne compilait pas sans cet en-tête (vu le 12 octobre 2026).
+#include "koracut/voix/koracutvoicerecord.h"
 
 #ifdef USE_JOGSHUTTLE
 #include "jogshuttle/jogmanager.h"
