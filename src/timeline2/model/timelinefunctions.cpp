@@ -2893,6 +2893,13 @@ bool TimelineFunctions::pasteTimelineClips(const std::shared_ptr<TimelineItemMod
             timeline->m_allClips[newId]->m_producer->set("out", out);
         }
         timeline->m_allClips[newId]->setInOut(in, out);
+        // KoraCut (12 octobre 2026) : le clip collé reprend la couleur et le nom propres au clip copié.
+        if (prod.hasAttribute(QStringLiteral("koracut_color"))) {
+            timeline->m_allClips[newId]->setKoraCutColor(prod.attribute(QStringLiteral("koracut_color")));
+        }
+        if (prod.hasAttribute(QStringLiteral("koracut_clipname"))) {
+            timeline->m_allClips[newId]->setKoraCutName(prod.attribute(QStringLiteral("koracut_clipname")));
+        }
         int targetId = prod.attribute(QStringLiteral("id")).toInt();
         int targetPlaylist = prod.attribute(QStringLiteral("playlist")).toInt();
         if (targetPlaylist > 0) {

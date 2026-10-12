@@ -109,6 +109,18 @@ TEST_CASE("Couleur des pistes et des clips", "[KoraCutColors]")
     REQUIRE(trackInState(state, tid).value(QStringLiteral("coul")).toString() == QStringLiteral("orange"));
     REQUIRE(clipInState(state, cid1).value(QStringLiteral("coul")).toString() == QStringLiteral("violet"));
 
+    // Copier-coller : le clip collé garde la couleur du clip copié (12 octobre 2026).
+    {
+        const int track = timeline->getClipTrackId(cid1);
+        const QString copied = TimelineFunctions::copyClips(timeline, {cid1});
+        REQUIRE(TimelineFunctions::pasteClips(timeline, copied, track, 3000));
+        const int pasted = timeline->getClipByStartPosition(track, 3000);
+        REQUIRE(pasted > -1);
+        CHECK(TimelineFunctions::koraCutClipColor(timeline, pasted) == QStringLiteral("#7C5CFF"));
+        undoStack->undo();
+        REQUIRE(undoStack->index() == start + 2);
+    }
+
     // Les refus.
     REQUIRE(errorCode(call(timeline, QStringLiteral("couleur_clip"), {{QStringLiteral("clip_ids"), QJsonArray{cid1}}, {QStringLiteral("couleur"), QStringLiteral("fuchsia")}})) ==
             QStringLiteral("entree_invalide"));

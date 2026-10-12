@@ -1426,6 +1426,15 @@ QDomElement ClipModel::toXml(QDomDocument &document)
     }
     container.setAttribute(QStringLiteral("speed"), QString::number(m_speed, 'f'));
     container.setAttribute(QStringLiteral("audioStream"), getIntProperty(QStringLiteral("audio_index")));
+    // KoraCut (12 octobre 2026) : la couleur et le nom propres au clip suivent le copier-coller.
+    const QString koraCutOwnColor = QString::fromUtf8(m_producer->get("kdenlive:koracut_color"));
+    if (!koraCutOwnColor.isEmpty()) {
+        container.setAttribute(QStringLiteral("koracut_color"), koraCutOwnColor);
+    }
+    const QString koraCutOwnName = QString::fromUtf8(m_producer->get("kdenlive:koracut_clipname"));
+    if (!koraCutOwnName.isEmpty()) {
+        container.setAttribute(QStringLiteral("koracut_clipname"), koraCutOwnName);
+    }
     if (!qFuzzyCompare(m_speed, 1.)) {
         container.setAttribute(QStringLiteral("warp_pitch"), getIntProperty(QStringLiteral("warp_pitch")));
     }
