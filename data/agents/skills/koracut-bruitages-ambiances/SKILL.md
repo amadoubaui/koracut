@@ -47,7 +47,7 @@ description: "À lire avant de poser un bruitage (whoosh, pop, impact, riser) ou
 
 1. `etat_timeline` : repère les éléments d'habillage, les transitions, les coupes de scène.
 2. `lister_medias` avec la recherche `whoosh`, `pop`, `ambiance` : seulement des sons présents dans le chutier.
-3. Pose sur les pistes Ambiances et Bruitages, jamais sur Voix ou Musique (`ajouter_clip`, `partie: "audio"`).
+3. Pose sur les pistes Ambiances et Bruitages, jamais sur Voix ou Musique (`ajouter_clip`, `partie: "audio"`). Deux sons qui se chevauchent ne tiennent pas sur une même piste : ajoute `mode: "piste_libre"`, le second part sur une autre piste audio libre (créée s'il le faut), et la réponse te dit laquelle (`piste_id`, `piste_creee`). Regarde où il est allé : si c'est une piste Voix ou Musique, déplace-le.
 4. Fondus de 3 images au moins sur chaque bruitage coupé, 12 à 25 sur les ambiances.
 5. Le Mixeur règle l'équilibre final.
 

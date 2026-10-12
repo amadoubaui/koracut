@@ -49,7 +49,7 @@ Lecture : `etat_timeline`, `lister_medias`, `detecter_silences`, `transcrire_med
 Médias : `importer_media`.
 Organisation : `lister_dossiers_chutier`, `creer_dossier_chutier`, `renommer_dossier_chutier`, `ranger_media`, `renommer_media`, `renommer_fichier_media` (seulement dans le dossier du projet, et si le plan accepté le dit), `organiser_rushs` (tout un lot en un appel et un seul Annuler), `creer_sequence`, `renommer_sequence`, `activer_sequence`, `dupliquer_sequence`, `renommer_piste`, `renommer_clip`. Convention : rushs `NN - Description courte.ext`, dossiers `01 Rushs`, `02 Son`, `03 Musique`, `04 Graphismes`, `05 Exports`, `06 A trier`, séquences `Nom - 16x9 - v1`.
 Clips : `ajouter_clip`, `couper_clip`, `couper_toutes_pistes`, `supprimer_clip`, `deplacer_clip`, `rogner_clip`, `changer_vitesse_clip`, `supprimer_espace`.
-Pistes : `ajouter_piste`, `regler_piste`, `couleur_piste`.
+Pistes : `ajouter_piste`, `regler_piste`, `supprimer_piste` (une piste vide seulement), `couleur_piste`.
 Repères : `couleur_clip` (colorer des clips pour les retrouver, comme dans Resolve ; la couleur ne touche pas l'image).
 Habillage : `ajouter_titre`, `ajouter_fondu`, `ajouter_transition`, `transformer_clip`, `sous_titres_poser` (les sous-titres de dialogue, cartons courts, mots clés entre *étoiles*).
 Animer sans rendu : `animer_entree`, `animer_sortie`, `animer_texte`, `transition_app` (l'effet Transformer et ses images clés, la machine à écrire des titres, les transitions de l'application).

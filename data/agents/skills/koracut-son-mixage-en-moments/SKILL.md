@@ -61,7 +61,7 @@ Tu n'entends pas : choisis sur mesure et dis-le. Un son pique quand son énergie
 
 ## Où poser quoi
 
-Musique sur « Musique », effets en alternance sur « Bruitages et SFX 1 » et « 2 » (deux effets qui se chevauchent ne tiennent pas sur une piste), voix sur « Voix off ». Un effet par événement visible : entrée d'un titre (souffle court), apparition d'une étiquette (pop), changement de lieu (souffle qui monte), logo (carillon doux).
+Musique sur « Musique », effets en alternance sur « Bruitages et SFX 1 » et « 2 » (deux effets qui se chevauchent ne tiennent pas sur une piste ; `ajouter_clip` avec `mode: "piste_libre"` envoie le second sur une piste audio libre et te dit laquelle), voix sur « Voix off ». Un effet par événement visible : entrée d'un titre (souffle court), apparition d'une étiquette (pop), changement de lieu (souffle qui monte), logo (carillon doux).
 
 ## Critères de qualité
 
