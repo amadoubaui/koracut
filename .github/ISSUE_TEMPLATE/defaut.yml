@@ -1,0 +1,53 @@
+name: Signaler un défaut / Report a defect
+description: Quelque chose ne marche pas comme prévu. / Something does not work as expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci de prendre le temps de signaler ce défaut. Tu peux écrire en français ou en anglais.
+        Thank you for taking the time to report this. You can write in French or in English.
+  - type: dropdown
+    id: systeme
+    attributes:
+      label: Système / System
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version de KoraCut / KoraCut version
+      description: Menu Aide, À propos. / Help menu, About.
+      placeholder: "26.08.1, version du 5 octobre 2026"
+    validations:
+      required: true
+  - type: textarea
+    id: gestes
+    attributes:
+      label: Ce que tu as fait / What you did
+      description: Les gestes, dans l'ordre, pour qu'on puisse refaire la même chose. / The steps, in order, so that we can do the same.
+    validations:
+      required: true
+  - type: textarea
+    id: attendu
+    attributes:
+      label: Ce que tu attendais / What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: obtenu
+    attributes:
+      label: Ce qui s'est passé / What happened
+      description: Une capture d'écran ou un petit projet qui reproduit le défaut aide beaucoup. / A screenshot or a small project that reproduces the defect helps a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: materiel
+    attributes:
+      label: Ta machine, si le défaut touche la fluidité / Your machine, if it is about smoothness
+      description: Processeur, mémoire, carte graphique. / Processor, memory, graphics card.

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Écrire à l'équipe par le site / Write to the team through the website
+    url: https://koracut.org/contact
+    about: Pour une question qui n'est ni un défaut ni une idée. / For a question that is neither a defect nor an idea.

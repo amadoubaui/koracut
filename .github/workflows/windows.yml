@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
   push:
     branches: [koracut]
-    paths-ignore: ['**.md', 'po/**']
+    paths-ignore: ['**.md', 'po/**', '.github/ISSUE_TEMPLATE/**']
 
 concurrency:
   group: windows-${{ github.ref }}

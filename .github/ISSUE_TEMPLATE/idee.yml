@@ -1,0 +1,29 @@
+name: Proposer une idée / Suggest an idea
+description: Une fonction qui manque, un geste à simplifier. / A missing feature, a gesture to simplify.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: besoin
+    attributes:
+      label: Ce que tu veux faire / What you want to do
+      description: Le montage ou le geste concret, plutôt que la solution. / The actual edit or gesture, rather than the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: aujourdhui
+    attributes:
+      label: Comment tu fais aujourd'hui / How you do it today
+      description: Dans KoraCut ou dans un autre logiciel. / In KoraCut or in another application.
+  - type: dropdown
+    id: module
+    attributes:
+      label: Module
+      options:
+        - Montage / Editing
+        - Étalonnage / Color grading
+        - Audio
+        - VFX
+        - Motion design
+        - Export
+        - Agents IA / AI agents
+        - Autre / Other
