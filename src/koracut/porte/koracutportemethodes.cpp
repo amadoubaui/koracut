@@ -1580,6 +1580,88 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
             return Reply::value(QJsonObject{{QStringLiteral("chemin"), path}});
         },
         true);
+    // projet.format (12 octobre 2026, relevé au montage du 2 octobre) : changer la taille ou la cadence du projet
+    // ouvert sans passer par la fenêtre des réglages du projet. La taille se change à tout moment ; la cadence
+    // seulement tant qu'aucune séquence n'a de clip (la changer déplacerait chaque coupe).
+    porte->registerMethod(
+        QStringLiteral("projet.format"),
+        QStringLiteral("Change le format du projet ouvert : taille de l'image, images par seconde. Ce qui n'est pas donné reste tel quel. La cadence ne se change que sur un projet sans clip dans ses séquences."),
+        {p(QStringLiteral("largeur"), QStringLiteral("integer"), QStringLiteral("Largeur de l'image, en pixels (avec hauteur).")),
+         p(QStringLiteral("hauteur"), QStringLiteral("integer"), QStringLiteral("Hauteur de l'image, en pixels (avec largeur).")),
+         p(QStringLiteral("ips"), QStringLiteral("number"), QStringLiteral("Images par seconde : 24, 25, 30, 50, 60, ou 23.976, 29.97, 59.94."))},
+        [porte, window](const Call &call) {
+            if (!window) {
+                return noWindow();
+            }
+            KdenliveDoc *doc = pCore->currentDoc();
+            const auto &current = pCore->getCurrentProfile();
+            if (!doc || !current) {
+                return Reply::fail(QStringLiteral("etat_invalide"), QStringLiteral("Aucun projet ouvert."));
+            }
+            const bool hasWidth = call.params.contains(QStringLiteral("largeur"));
+            const bool hasHeight = call.params.contains(QStringLiteral("hauteur"));
+            const bool hasRate = call.params.contains(QStringLiteral("ips"));
+            if (hasWidth != hasHeight || (!hasWidth && !hasRate)) {
+                return Reply::fail(QStringLiteral("parametres_invalides"), QStringLiteral("Donne largeur et hauteur ensemble, ou ips, ou les trois."));
+            }
+            KoraCutProjectPlan wanted;
+            wanted.frame = QSize(current->width(), current->height());
+            if (current->frame_rate_den() > 1) {
+                wanted.setRate(double(current->frame_rate_num()) / current->frame_rate_den());
+            } else {
+                wanted.setRate(current->frame_rate_num());
+            }
+            if (hasWidth) {
+                wanted.frame = QSize(call.params.value(QStringLiteral("largeur")).toInt(), call.params.value(QStringLiteral("hauteur")).toInt());
+                if (wanted.frame.width() < 16 || wanted.frame.height() < 16 || wanted.frame.width() > 16384 || wanted.frame.height() > 16384) {
+                    return Reply::fail(QStringLiteral("parametres_invalides"), QStringLiteral("Taille illisible : %1 × %2.").arg(wanted.frame.width()).arg(wanted.frame.height()),
+                                       QStringLiteral("largeur et hauteur entre 16 et 16384."));
+                }
+                if (wanted.frame.width() % 2 != 0 || wanted.frame.height() % 2 != 0) {
+                    return Reply::fail(QStringLiteral("parametres_invalides"), QStringLiteral("largeur et hauteur doivent être paires (les encodeurs le demandent)."));
+                }
+            }
+            const double rateBefore = double(current->frame_rate_num()) / current->frame_rate_den();
+            if (hasRate) {
+                const QJsonValue ips = call.params.value(QStringLiteral("ips"));
+                if (!wanted.setRate(ips.isString() ? ips.toString().replace(QLatin1Char(','), QLatin1Char('.')).toDouble() : ips.toDouble())) {
+                    return Reply::fail(QStringLiteral("parametres_invalides"), QStringLiteral("Images par seconde illisibles : « %1 ».").arg(ips.toVariant().toString()),
+                                       QStringLiteral("ips est un nombre : 24, 25, 30, 50, 60, ou 23.976, 29.97, 59.94."));
+                }
+            }
+            const auto profileJson = []() {
+                const auto &now = pCore->getCurrentProfile();
+                return QJsonObject{{QStringLiteral("largeur"), now->width()}, {QStringLiteral("hauteur"), now->height()}, {QStringLiteral("ips"), now->fps()}};
+            };
+            if (qAbs(wanted.rate() - rateBefore) > 0.0005) {
+                int clips = 0;
+                for (const QUuid &uuid : doc->getTimelinesUuids()) {
+                    if (auto tl = doc->getTimeline(uuid, true)) {
+                        clips += tl->getClipsCount();
+                    }
+                }
+                if (clips > 0) {
+                    return Reply::fail(QStringLiteral("etat_invalide"),
+                                       QStringLiteral("La cadence ne se change pas sur un projet qui a déjà %1 clip(s) dans ses séquences : chaque coupe changerait de place.").arg(clips),
+                                       QStringLiteral("Change seulement la taille (largeur, hauteur), ou crée un projet neuf à la bonne cadence avant de monter."));
+                }
+            }
+            const QString path = ProjectManager::koraCutProfileFor(wanted);
+            if (path.isEmpty()) {
+                return Reply::fail(QStringLiteral("ecriture_impossible"), QStringLiteral("Le profil %1 × %2 n'a pas pu être créé.").arg(wanted.frame.width()).arg(wanted.frame.height()));
+            }
+            if (path == pCore->getCurrentProfilePath()) {
+                return Reply::value(QJsonObject{{QStringLiteral("profil"), profileJson()}, {QStringLiteral("inchange"), true}});
+            }
+            // slotSwitchProfile est le slot du bouton « Basculer » du chutier : même chemin qu'à la souris.
+            if (!QMetaObject::invokeMethod(doc, "slotSwitchProfile", Qt::DirectConnection, Q_ARG(QString, path), Q_ARG(bool, true))) {
+                return Reply::fail(QStringLiteral("etat_invalide"), QStringLiteral("Le format n'a pas pu être changé."));
+            }
+            // Un format demandé est un format choisi : un rush importé ensuite ne le change pas.
+            doc->setDocumentProperty(QStringLiteral("koracut:format_choisi"), QStringLiteral("1"));
+            porte->publish(QStringLiteral("projet"), QJsonObject{{QStringLiteral("quoi"), QStringLiteral("format")}, {QStringLiteral("profil"), profileJson()}});
+            return Reply::value(QJsonObject{{QStringLiteral("profil"), profileJson()}, {QStringLiteral("inchange"), false}});
+        });
     porte->registerMethod(QStringLiteral("projet.enregistrer"), QStringLiteral("Enregistre le projet (avec chemin : enregistre sous)."),
                           {p(QStringLiteral("chemin"), QStringLiteral("string"), QStringLiteral("Fichier .koracut (absolu, ~, ou relatif au dossier du projet), facultatif si le projet en a déjà un."))},
                           [porte, window, ctx](const Call &call) {
