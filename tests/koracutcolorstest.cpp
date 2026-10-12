@@ -112,13 +112,21 @@ TEST_CASE("Couleur des pistes et des clips", "[KoraCutColors]")
     // Copier-coller : le clip collé garde la couleur du clip copié (12 octobre 2026).
     {
         const int track = timeline->getClipTrackId(cid1);
+        // Le nom propre au clip suit aussi ; il est posé hors de la pile d'annulation, puis retiré.
+        Fun nameUndo = []() { return true; };
+        Fun nameRedo = []() { return true; };
+        REQUIRE(TimelineFunctions::koraCutSetClipName(timeline, cid1, QStringLiteral("Plan d'ouverture"), nameUndo, nameRedo));
+        REQUIRE(timeline->getClipName(cid1) == QStringLiteral("Plan d'ouverture"));
         const QString copied = TimelineFunctions::copyClips(timeline, {cid1});
         REQUIRE(TimelineFunctions::pasteClips(timeline, copied, track, 3000));
         const int pasted = timeline->getClipByStartPosition(track, 3000);
         REQUIRE(pasted > -1);
         CHECK(TimelineFunctions::koraCutClipColor(timeline, pasted) == QStringLiteral("#7C5CFF"));
+        CHECK(timeline->getClipName(pasted) == QStringLiteral("Plan d'ouverture"));
         undoStack->undo();
         REQUIRE(undoStack->index() == start + 2);
+        nameUndo();
+        REQUIRE(timeline->getClipName(cid1) != QStringLiteral("Plan d'ouverture"));
     }
 
     // Les refus.
