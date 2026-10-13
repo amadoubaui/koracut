@@ -329,6 +329,9 @@ TEST_CASE("Outils d'agent, lot A : titre, transition, effets, images clés, tran
         REQUIRE(r.value(QStringLiteral("ok")).toBool());
         CHECK(r.value(QStringLiteral("l")).toInt() == 256);
         CHECK(QFileInfo::exists(r.value(QStringLiteral("chemin")).toString()));
+        // La vignette porte la séquence dans son nom : deux séquences, deux images pour la même position.
+        CHECK(QFileInfo(r.value(QStringLiteral("chemin")).toString()).fileName() ==
+              QStringLiteral("timeline-%1-5.png").arg(timeline->uuid().toString(QUuid::WithoutBraces).left(8)));
         r = call(timeline, QStringLiteral("voir_image"), {{QStringLiteral("position"), 3}, {QStringLiteral("media_id"), red}});
         INFO(dump(r));
         REQUIRE(r.value(QStringLiteral("ok")).toBool());

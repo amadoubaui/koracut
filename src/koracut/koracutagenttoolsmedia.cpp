@@ -1407,7 +1407,17 @@ QJsonObject voirImage(const Timeline &timeline, const Args &args)
         projectWidth = profile->width();
         projectHeight = profile->height();
     }
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QStringLiteral("/vignettes");
+    // Les vignettes vont dans le cache du projet (13 octobre 2026) : rangées au même endroit pour toutes les
+    // KoraCut ouvertes, « media-4-3.png » ou « timeline-100.png » d'un projet écrasait celle d'un autre, et un
+    // agent pouvait regarder l'image d'un autre montage. Elles partent aussi avec le cache du projet.
+    QString dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QStringLiteral("/vignettes");
+    if (pCore->currentDoc()) {
+        bool ok = false;
+        const QDir base = pCore->currentDoc()->getCacheDir(CacheBase, &ok);
+        if (ok) {
+            dir = base.absoluteFilePath(QStringLiteral("vignettes"));
+        }
+    }
     QDir().mkpath(dir);
     QImage image;
     QString path;
@@ -1455,7 +1465,8 @@ QJsonObject voirImage(const Timeline &timeline, const Args &args)
         if (producer.is_valid()) {
             image = KThumb::getFrame(producer, position, width, std::max(1, width * projectHeight / projectWidth));
         }
-        path = QStringLiteral("%1/timeline-%2.png").arg(dir).arg(position);
+        // Une image par séquence : la même position n'est pas la même image dans deux séquences du projet.
+        path = QStringLiteral("%1/timeline-%2-%3.png").arg(dir, timeline->uuid().toString(QUuid::WithoutBraces).left(8)).arg(position);
     }
     if (image.isNull() || !image.save(path, "PNG")) {
         return error(QStringLiteral("non_disponible"), QStringLiteral("Aucune image n'a pu être tirée à cette position."));
