@@ -874,7 +874,16 @@ bool KoraCutMotionMirror::insertClip(const Entry &entry, const KoraCutMotion::El
     const int position = frames(element.start, fps());
     const int tid = entry.sync->composition().isElement() ? elementTrack(entry.name, position, length, undo, redo)
                                                           : ensureTrack(entry, audio ? 0 : element.trackIndex, audio, undo, redo);
+    // Un refus est gardé (placementRefusals) : sans cela, l'appelant ne sait pas qu'un élément rendu est
+    // resté hors de la timeline (deux cartons qui se chevauchent d'une image, 12 octobre 2026).
+    const QString project = entry.name;
+    auto refuse = [this, project, element, position, length](int trackId, const QString &reason, int blockingClip) {
+        if (m_entries.contains(project)) {
+            m_entries[project].refused.insert(element.id, PlacementRefusal{element.id, trackId, position, length, reason, blockingClip});
+        }
+    };
     if (tid < 0) {
+        refuse(-1, QStringLiteral("piste_indisponible"), -1);
         return false;
     }
     int cid = -1;
@@ -883,8 +892,21 @@ bool KoraCutMotionMirror::insertClip(const Entry &entry, const KoraCutMotion::El
     // « V12/in/out » : la partie vidéo seule du clip 12 du chutier, « A12/… » sa partie audio seule.
     const QString spec = QStringLiteral("%1%2/%3/%4").arg(audio ? QStringLiteral("A") : QStringLiteral("V"), binId).arg(in).arg(in + length - 1);
     if (!tl->requestClipInsertion(spec, tid, position, cid, false, true, false, localUndo, localRedo)) {
-        // La place est prise (un autre clip déplacé à la main) : rien n'est posé.
+        // La place est prise (un autre clip déplacé à la main, ou un élément voisin de la même piste) :
+        // rien n'est posé.
+        int blocking = -1;
+        // La fin est exclue par getItemsInRange : position + length couvre la dernière image du clip.
+        const auto items = tl->getItemsInRange(tid, position, position + length, false);
+        for (int id : items) {
+            if (tl->isClip(id) && (blocking < 0 || tl->getClipPosition(id) < tl->getClipPosition(blocking))) {
+                blocking = id;
+            }
+        }
+        refuse(tid, blocking >= 0 ? QStringLiteral("place_occupee") : tl->trackIsLocked(tid) ? QStringLiteral("piste_verrouillee") : QStringLiteral("pose_refusee"), blocking);
         return false;
+    }
+    if (m_entries.contains(project)) {
+        m_entries[project].refused.remove(element.id);
     }
     if (!audio) {
         // Posé sans étape d'annulation à lui : le modèle ne prévient pas le rendu d'aperçu, et un morceau
@@ -1003,6 +1025,8 @@ bool KoraCutMotionMirror::applyFromFile(const QString &name, bool logUndo, const
         changed = changed || tl->getTracksCount() != before;
     }
 
+    // Les refus de pose se refont à chaque mise en accord : seuls ceux d'aujourd'hui comptent.
+    entry.refused.clear();
     QSet<QString> ids;
     for (const Element &e : comp.elements) {
         ids.insert(e.id);
@@ -1757,6 +1781,22 @@ bool KoraCutMotionMirror::place(const QString &project, int trackId, double atSe
     }
     Q_EMIT elementsChanged(project);
     return changed;
+}
+
+QList<KoraCutMotionMirror::PlacementRefusal> KoraCutMotionMirror::placementRefusals(const QString &project) const
+{
+    QList<PlacementRefusal> list;
+    if (!m_entries.contains(project)) {
+        return list;
+    }
+    const Entry &entry = m_entries[project];
+    // Dans l'ordre du fichier, et seulement ce qui est encore vrai : l'élément existe et n'a pas de clip.
+    for (const KoraCutMotion::Element &e : entry.sync->composition().elements) {
+        if (entry.refused.contains(e.id) && clipFor(project, e.id) < 0) {
+            list.append(entry.refused.value(e.id));
+        }
+    }
+    return list;
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -1839,19 +1839,51 @@ QJsonObject motionPoser(const Timeline &timeline, const Args &args)
     QJsonObject result = projectJson(timeline, mirror, project);
     result.insert(QStringLiteral("ok"), true);
     result.insert(QStringLiteral("change"), changed);
+    // Les éléments rendus que la timeline a refusés : leur place est prise sur leur piste (deux éléments de
+    // la même piste qui se recouvrent, même d'une image, ou un autre clip déjà là). Dits un par un.
+    QJsonArray refused;
+    QSet<QString> refusedIds;
+    QStringList refusedNames;
+    for (const KoraCutMotionMirror::PlacementRefusal &f : mirror->placementRefusals(project)) {
+        QJsonObject o{{QStringLiteral("element"), f.elementId}, {QStringLiteral("position"), f.position}, {QStringLiteral("duree"), f.length}, {QStringLiteral("raison"), f.reason}};
+        if (f.trackId >= 0 && own->isTrack(f.trackId)) {
+            o.insert(QStringLiteral("piste_id"), f.trackId);
+            o.insert(QStringLiteral("piste"), trackLabel(own, f.trackId));
+        }
+        if (f.blockingClip >= 0 && own->isClip(f.blockingClip)) {
+            o.insert(QStringLiteral("occupe_par"), QJsonObject{{QStringLiteral("clip_id"), f.blockingClip},
+                                                                {QStringLiteral("pos"), own->getClipPosition(f.blockingClip)},
+                                                                {QStringLiteral("len"), own->getClipPlaytime(f.blockingClip)}});
+        }
+        refused.append(o);
+        refusedIds.insert(f.elementId);
+        refusedNames << f.elementId;
+    }
     int placed = 0;
     int waiting = 0;
     for (const KoraCutMotionMirror::ElementState &e : mirror->elements(project)) {
         if (e.clipId >= 0) {
             ++placed;
+        } else if (refusedIds.contains(e.id)) {
+            continue;
         } else if (e.kind != QLatin1String("audio")) {
             ++waiting;
         }
     }
     result.insert(QStringLiteral("poses"), placed);
     result.insert(QStringLiteral("sans_clip"), waiting);
+    QStringList remarks;
+    if (!refused.isEmpty()) {
+        result.insert(QStringLiteral("non_poses"), refused);
+        remarks << QStringLiteral("%1 élément(s) rendu(s) n'ont PAS été posés (%2) : voir non_poses. Libère la place, ou change data-start, data-duration ou data-track-index dans le HTML, puis rappelle motion_poser.")
+                       .arg(refused.size())
+                       .arg(refusedNames.join(QStringLiteral(", ")));
+    }
     if (waiting > 0) {
-        result.insert(QStringLiteral("remarque"), QStringLiteral("%1 élément(s) n'ont pas de clip : leur rendu n'est pas prêt (motion_rendre) ou a échoué (motion_verifier).").arg(waiting));
+        remarks << QStringLiteral("%1 élément(s) n'ont pas de clip : leur rendu n'est pas prêt (motion_rendre) ou a échoué (motion_verifier).").arg(waiting);
+    }
+    if (!remarks.isEmpty()) {
+        result.insert(QStringLiteral("remarque"), remarks.join(QLatin1Char(' ')));
     }
     return result;
 }

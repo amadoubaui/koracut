@@ -28,6 +28,7 @@
 #include <QTemporaryDir>
 #include <QTimer>
 
+#include <algorithm>
 #include <cmath>
 
 // Les outils motion_* des agents (document 19, lot 3), sur un miroir réel et un rendu simulé : sans
@@ -443,6 +444,91 @@ TEST_CASE("Outils Motion : composition, éléments, rendu simulé, pose", "[Kora
             CHECK(timeline->getTrackProperty(ordinary, QStringLiteral("kdenlive:koracut_motion")).toString() == QStringLiteral("bandeau-essai"));
             CHECK(errorCode(call(timeline, QStringLiteral("motion_poser"), {{QStringLiteral("nom"), QStringLiteral("bandeau-essai")}, {QStringLiteral("piste_id"), timeline->getTracksIds(true).first()}})) ==
                   QStringLiteral("mauvais_type_de_piste"));
+        }
+
+        SECTION("motion_poser dit quel élément n'a pas pu être posé : deux cartons de la même piste qui se chevauchent d'une image")
+        {
+            // Deux cartons de 2 s sur la même piste ; le second commence une image avant la fin du premier.
+            const QString name = QStringLiteral("bandeau-essai");
+            const int length = int(std::lround(2 * fps));
+            const double secondStart = (length - 1) / fps;
+            const QString html = QStringLiteral(R"(<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<script src="assets/gsap.min.js"></script>
+<style>
+  body { margin: 0; background: transparent; }
+  #root { position: relative; width: 1080px; height: 1920px; overflow: hidden; }
+  .clip { position: absolute; inset: 0; }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="bandeau-essai" data-start="0" data-duration="6" data-fps="25" data-width="1080" data-height="1920">
+  <section id="carton-1" class="clip" data-start="0" data-duration="2" data-track-index="1"><h1>Un</h1></section>
+  <section id="carton-2" class="clip" data-start="%1" data-duration="2" data-track-index="1"><h1>Deux</h1></section>
+</div>
+<script>
+  window.__timelines = window.__timelines || {};
+  window.__timelines["bandeau-essai"] = gsap.timeline({ paused: true });
+</script>
+</body>
+</html>
+)").arg(secondStart);
+            r = call(timeline, QStringLiteral("motion_ecrire"), {{QStringLiteral("nom"), name}, {QStringLiteral("html"), html}});
+            INFO(QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString());
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            REQUIRE(r.value(QStringLiteral("elements")).toArray().size() == 2);
+            // Les deux rendus sont finis et chargés dans le chutier : le premier arrivé a pris la place.
+            REQUIRE(waitFor(
+                [&]() {
+                    const auto states = mirror.elements(name);
+                    return states.size() == 2 && std::all_of(states.cbegin(), states.cend(), [](const KoraCutMotionMirror::ElementState &e) {
+                               return !e.pending && !e.renderPath.isEmpty() && !e.binId.isEmpty();
+                           });
+                },
+                20000));
+            mirror.renderer()->waitForIdle(20000);
+            waitMs(800);
+
+            r = call(timeline, QStringLiteral("motion_poser"), {{QStringLiteral("nom"), name}});
+            INFO(QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString());
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            const int first = mirror.clipFor(name, QStringLiteral("carton-1"));
+            const int second = mirror.clipFor(name, QStringLiteral("carton-2"));
+            // Un seul des deux est dans la timeline, et le compte le dit.
+            REQUIRE((first >= 0) != (second >= 0));
+            CHECK(r.value(QStringLiteral("poses")).toInt() == 1);
+            // L'autre est nommé, avec sa piste, sa place en images, la raison et le clip qui tient la place.
+            // Ce n'est pas un rendu en attente : sans_clip ne le compte pas.
+            const QJsonArray refused = r.value(QStringLiteral("non_poses")).toArray();
+            REQUIRE(refused.size() == 1);
+            const QJsonObject lost = refused.first().toObject();
+            const int placedClip = first >= 0 ? first : second;
+            CHECK(lost.value(QStringLiteral("element")).toString() == (first >= 0 ? QStringLiteral("carton-2") : QStringLiteral("carton-1")));
+            CHECK(lost.value(QStringLiteral("raison")).toString() == QStringLiteral("place_occupee"));
+            CHECK(lost.value(QStringLiteral("position")).toInt() == (first >= 0 ? length - 1 : 0));
+            CHECK(lost.value(QStringLiteral("duree")).toInt() == length);
+            CHECK(lost.value(QStringLiteral("piste_id")).toInt(-1) == timeline->getClipTrackId(placedClip));
+            CHECK(!lost.value(QStringLiteral("piste")).toString().isEmpty());
+            CHECK(lost.value(QStringLiteral("occupe_par")).toObject().value(QStringLiteral("clip_id")).toInt(-1) == placedClip);
+            CHECK(r.value(QStringLiteral("sans_clip")).toInt() == 0);
+            CHECK(r.value(QStringLiteral("remarque")).toString().contains(lost.value(QStringLiteral("element")).toString()));
+
+            // Le chevauchement levé (le second carton commence quand le premier finit) : tout est posé,
+            // et la réponse ne garde rien de l'ancien refus.
+            r = call(timeline, QStringLiteral("motion_element"), {{QStringLiteral("nom"), name}, {QStringLiteral("id"), QStringLiteral("carton-2")}, {QStringLiteral("debut"), 2.0}});
+            INFO(QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString());
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            mirror.renderer()->waitForIdle(20000);
+            waitMs(800);
+            r = call(timeline, QStringLiteral("motion_poser"), {{QStringLiteral("nom"), name}});
+            INFO(QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString());
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            CHECK(r.value(QStringLiteral("poses")).toInt() == 2);
+            CHECK_FALSE(r.contains(QStringLiteral("non_poses")));
+            CHECK(mirror.clipFor(name, QStringLiteral("carton-1")) >= 0);
+            CHECK(mirror.clipFor(name, QStringLiteral("carton-2")) >= 0);
         }
     }
 

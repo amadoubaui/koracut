@@ -84,6 +84,17 @@ public:
         double cut = -1.;  ///< transition : la coupe suivie, en secondes
     };
 
+    /** Un élément dont le rendu est prêt mais dont le clip n'a pas pu être posé : où il devait aller, pourquoi. */
+    struct PlacementRefusal
+    {
+        QString elementId;
+        int trackId = -1;      ///< la piste visée, -1 si aucune n'a pu être trouvée ou créée
+        int position = 0;      ///< en images
+        int length = 0;        ///< en images
+        QString reason;        ///< place_occupee, piste_verrouillee, piste_indisponible, pose_refusee
+        int blockingClip = -1; ///< place_occupee : le premier clip qui tient la place
+    };
+
     /** @brief Le projet KoraCut courant et sa timeline. Relit les projets Motion du dossier. */
     void setDocument(KdenliveDoc *doc, const std::shared_ptr<TimelineItemModel> &timeline);
     /** @brief La séquence active a changé. Chaque composition vit dans une séquence (data-koracut-sequence ;
@@ -144,6 +155,9 @@ public:
      * n'en est pas déjà une). @p atSeconds >= 0 : le premier élément (début absolu) est amené à cette
      * seconde, les autres suivent d'autant. Une étape. @return vrai si quelque chose a bougé. */
     bool place(const QString &project, int trackId = -1, double atSeconds = -1., QString *error = nullptr);
+    /** @brief Les éléments de cette composition que la dernière mise en accord n'a pas pu poser (place
+     * prise sur leur piste, piste verrouillée). Vide quand tout ce qui est rendu est posé. */
+    QList<PlacementRefusal> placementRefusals(const QString &project) const;
 
     // Lot 5 du document 19 : un élément = une composition, posée comme un seul clip.
     /** @brief Où poser une composition d'un seul élément qui vient d'être créée : la piste voulue (-1 : la
@@ -203,6 +217,7 @@ private:
         QSet<QString> failed;
         QMap<QString, int> progress;
         QSet<QString> placed;                  ///< les éléments qui ont eu un clip dans la timeline
+        QMap<QString, PlacementRefusal> refused; ///< les éléments dont la pose a été refusée (place prise…)
         QMap<QString, RemovedElement> removed; ///< retirés du HTML après la suppression de leur clip
         int homeTrack = -1;                    ///< composition d'un seul élément : la piste où poser son clip
         int cutBefore = -1;                    ///< transition : le plan qui finit à la coupe
