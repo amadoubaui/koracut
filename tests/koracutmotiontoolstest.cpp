@@ -479,6 +479,20 @@ TEST_CASE("Outils Motion : composition, éléments, rendu simulé, pose", "[Kora
             INFO(QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString());
             REQUIRE(r.value(QStringLiteral("ok")).toBool());
             REQUIRE(r.value(QStringLiteral("elements")).toArray().size() == 2);
+            // motion_rendre attend la fin des rendus ET la pose : sa réponse dit déjà lequel n'a pas pu l'être,
+            // sans autre attente ; motion_lister le dit aussi, dans la fiche de la composition.
+            r = call(timeline, QStringLiteral("motion_rendre"), {{QStringLiteral("nom"), name}});
+            INFO(QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString());
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            CHECK(r.value(QStringLiteral("termine")).toBool());
+            REQUIRE(r.value(QStringLiteral("non_poses")).toArray().size() == 1);
+            CHECK(r.value(QStringLiteral("non_poses")).toArray().first().toObject().value(QStringLiteral("raison")).toString() == QStringLiteral("place_occupee"));
+            CHECK_FALSE(r.contains(QStringLiteral("non_deplaces")));
+            {
+                const QJsonObject listed = firstComposition(call(timeline, QStringLiteral("motion_lister"), {}));
+                INFO(QJsonDocument(listed).toJson(QJsonDocument::Compact).toStdString());
+                CHECK(listed.value(QStringLiteral("non_poses")).toArray() == r.value(QStringLiteral("non_poses")).toArray());
+            }
             // Les deux rendus sont finis et chargés dans le chutier : le premier arrivé a pris la place.
             REQUIRE(waitFor(
                 [&]() {
@@ -529,6 +543,89 @@ TEST_CASE("Outils Motion : composition, éléments, rendu simulé, pose", "[Kora
             CHECK_FALSE(r.contains(QStringLiteral("non_poses")));
             CHECK(mirror.clipFor(name, QStringLiteral("carton-1")) >= 0);
             CHECK(mirror.clipFor(name, QStringLiteral("carton-2")) >= 0);
+            CHECK_FALSE(firstComposition(call(timeline, QStringLiteral("motion_lister"), {})).contains(QStringLiteral("non_poses")));
+        }
+
+        SECTION("Un clip déjà posé qui ne peut pas être déplacé : non_deplaces dit où il est resté (position de motion_poser, début du HTML)")
+        {
+            const QString name = QStringLiteral("bandeau-essai");
+            const int cid = mirror.clipFor(name, QStringLiteral("titre-1"));
+            REQUIRE(cid >= 0);
+            const int tid = timeline->getClipTrackId(cid);
+            const int length = timeline->getClipPlaytime(cid);
+            REQUIRE(timeline->getClipPosition(cid) == 0);
+            // Un autre clip sur la piste de la composition, là où le titre devrait arriver.
+            const QString red = KdenliveTests::createProducer(pCore->getProjectProfile(), "red", binModel, 20, true);
+            int obstacle = -1;
+            REQUIRE(timeline->requestClipInsertion(red, tid, length + 50, obstacle));
+            waitMs(500);
+
+            // 1. motion_poser avec position : le décalage n'a pas lieu, et l'outil le dit.
+            r = call(timeline, QStringLiteral("motion_poser"), {{QStringLiteral("nom"), name}, {QStringLiteral("position"), length}});
+            INFO(QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString());
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            CHECK(timeline->getClipPosition(cid) == 0);
+            CHECK(r.value(QStringLiteral("poses")).toInt() == 1);
+            CHECK_FALSE(r.value(QStringLiteral("change")).toBool(true));
+            REQUIRE(r.contains(QStringLiteral("position_appliquee")));
+            CHECK_FALSE(r.value(QStringLiteral("position_appliquee")).toBool(true));
+            CHECK_FALSE(r.contains(QStringLiteral("non_poses")));
+            QJsonArray stuck = r.value(QStringLiteral("non_deplaces")).toArray();
+            REQUIRE(stuck.size() == 1);
+            QJsonObject kept = stuck.first().toObject();
+            CHECK(kept.value(QStringLiteral("element")).toString() == QStringLiteral("titre-1"));
+            CHECK(kept.value(QStringLiteral("clip_id")).toInt(-1) == cid);
+            CHECK(kept.value(QStringLiteral("position")).toInt(-1) == length);
+            CHECK(kept.value(QStringLiteral("duree")).toInt() == length);
+            CHECK(kept.value(QStringLiteral("piste_id")).toInt(-1) == tid);
+            CHECK(kept.value(QStringLiteral("raison")).toString() == QStringLiteral("place_occupee"));
+            CHECK(kept.value(QStringLiteral("occupe_par")).toObject().value(QStringLiteral("clip_id")).toInt(-1) == obstacle);
+            CHECK(kept.value(QStringLiteral("reste_a")).toObject().value(QStringLiteral("pos")).toInt(-1) == 0);
+            CHECK(kept.value(QStringLiteral("reste_a")).toObject().value(QStringLiteral("piste_id")).toInt(-1) == tid);
+            CHECK(r.value(QStringLiteral("remarque")).toString().contains(QStringLiteral("titre-1")));
+            // motion_lister le dit aussi.
+            CHECK(firstComposition(call(timeline, QStringLiteral("motion_lister"), {})).value(QStringLiteral("non_deplaces")).toArray() == stuck);
+            // Sans position, rien n'est demandé : rien à signaler.
+            r = call(timeline, QStringLiteral("motion_poser"), {{QStringLiteral("nom"), name}});
+            INFO(QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString());
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            CHECK_FALSE(r.contains(QStringLiteral("non_deplaces")));
+            CHECK_FALSE(r.contains(QStringLiteral("position_appliquee")));
+
+            // 2. Le début écrit dans le HTML mène à la même place prise : le clip reste, la fiche le dit.
+            r = call(timeline, QStringLiteral("motion_element"), {{QStringLiteral("nom"), name}, {QStringLiteral("id"), QStringLiteral("titre-1")}, {QStringLiteral("debut"), length / fps}});
+            INFO(QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString());
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            CHECK(timeline->getClipPosition(cid) == 0);
+            const QJsonObject listed = firstComposition(call(timeline, QStringLiteral("motion_lister"), {}));
+            INFO(QJsonDocument(listed).toJson(QJsonDocument::Compact).toStdString());
+            stuck = listed.value(QStringLiteral("non_deplaces")).toArray();
+            REQUIRE(stuck.size() == 1);
+            kept = stuck.first().toObject();
+            CHECK(kept.value(QStringLiteral("element")).toString() == QStringLiteral("titre-1"));
+            CHECK(kept.value(QStringLiteral("position")).toInt(-1) == length);
+            CHECK(kept.value(QStringLiteral("raison")).toString() == QStringLiteral("place_occupee"));
+            CHECK(kept.value(QStringLiteral("reste_a")).toObject().value(QStringLiteral("pos")).toInt(-1) == 0);
+            r = call(timeline, QStringLiteral("motion_poser"), {{QStringLiteral("nom"), name}});
+            INFO(QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString());
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            CHECK(r.value(QStringLiteral("non_deplaces")).toArray() == stuck);
+            CHECK(r.value(QStringLiteral("remarque")).toString().contains(QStringLiteral("titre-1")));
+
+            // La place libérée : la timeline a changé, le fichier reprend la place réelle du clip (début 0),
+            // l'ancienne demande est oubliée et plus rien n'est signalé. Le début redonné, le clip y va.
+            REQUIRE(timeline->requestItemDeletion(obstacle, false));
+            r = call(timeline, QStringLiteral("motion_poser"), {{QStringLiteral("nom"), name}});
+            INFO(QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString());
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            CHECK_FALSE(r.contains(QStringLiteral("non_deplaces")));
+            CHECK(timeline->getClipPosition(cid) == 0);
+            CHECK(elementOf(r, QStringLiteral("titre-1")).value(QStringLiteral("debut")).toDouble() == Approx(0.0));
+            r = call(timeline, QStringLiteral("motion_element"), {{QStringLiteral("nom"), name}, {QStringLiteral("id"), QStringLiteral("titre-1")}, {QStringLiteral("debut"), length / fps}});
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            CHECK(timeline->getClipPosition(cid) == length);
+            waitMs(500);
+            CHECK_FALSE(firstComposition(call(timeline, QStringLiteral("motion_lister"), {})).contains(QStringLiteral("non_deplaces")));
         }
     }
 
@@ -850,6 +947,33 @@ TEST_CASE("Outils Motion : deux séquences, noms libérés, fichiers fournis", "
             r = call(timeline, QStringLiteral("motion_creer"), {{QStringLiteral("nom"), QStringLiteral("a-la-main")}});
             INFO(dumpJson(r));
             CHECK(r.value(QStringLiteral("ok")).toBool());
+        }
+
+        SECTION("Un élément seul dont la dernière image tombe sur le début d'un autre va sur une autre piste")
+        {
+            // « debut » tient les images 39 à 78 de la piste « Animations ».
+            QJsonObject r = call(timeline, QStringLiteral("motion_element_seul"),
+                                 {{QStringLiteral("nom"), QStringLiteral("debut")}, {QStringLiteral("sorte"), QStringLiteral("titre")}, {QStringLiteral("texte"), QStringLiteral("Un")},
+                                  {QStringLiteral("position"), 39}, {QStringLiteral("duree"), 40}});
+            INFO(dumpJson(r));
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            REQUIRE(r.contains(QStringLiteral("clip_id")));
+            const int firstTrack = r.value(QStringLiteral("piste_id")).toInt(-1);
+            // « avant » demande les images 0 à 39 : sa dernière image est la première de « debut ». La piste
+            // n'est pas libre : il lui faut une autre piste, et son clip est posé.
+            r = call(timeline, QStringLiteral("motion_element_seul"),
+                     {{QStringLiteral("nom"), QStringLiteral("avant")}, {QStringLiteral("sorte"), QStringLiteral("titre")}, {QStringLiteral("texte"), QStringLiteral("Deux")},
+                      {QStringLiteral("position"), 0}, {QStringLiteral("duree"), 40}});
+            INFO(dumpJson(r));
+            mirror.renderer()->waitForIdle(20000);
+            waitMs(900);
+            const int second = mirror.clipFor(QStringLiteral("avant"), QStringLiteral("avant"));
+            INFO(dumpJson(compositionOf(call(timeline, QStringLiteral("motion_lister"), {}), QStringLiteral("avant"))));
+            REQUIRE(second >= 0);
+            CHECK(timeline->getClipPosition(second) == 0);
+            CHECK(timeline->getClipPlaytime(second) == 40);
+            CHECK(timeline->getClipTrackId(second) != firstTrack);
+            CHECK(mirror.placementRefusals(QStringLiteral("avant")).isEmpty());
         }
     } else {
         WARN("ffmpeg introuvable : les séquences et l'annulation ne sont pas vérifiées (elles demandent un rendu).");

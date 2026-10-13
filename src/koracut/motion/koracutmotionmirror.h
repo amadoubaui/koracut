@@ -84,15 +84,20 @@ public:
         double cut = -1.;  ///< transition : la coupe suivie, en secondes
     };
 
-    /** Un élément dont le rendu est prêt mais dont le clip n'a pas pu être posé : où il devait aller, pourquoi. */
+    /** Un élément dont le rendu est prêt mais dont le clip n'a pas pu être posé : où il devait aller, pourquoi.
+     * Ou (clipId >= 0) un clip déjà posé qui n'a pas pu être déplacé là où le fichier ou motion_poser le
+     * demandait : il est resté à stayedTrack / stayedPosition. */
     struct PlacementRefusal
     {
         QString elementId;
         int trackId = -1;      ///< la piste visée, -1 si aucune n'a pu être trouvée ou créée
         int position = 0;      ///< en images
         int length = 0;        ///< en images
-        QString reason;        ///< place_occupee, piste_verrouillee, piste_indisponible, pose_refusee
+        QString reason;        ///< place_occupee, piste_verrouillee, piste_indisponible, pose_refusee, deplacement_refuse
         int blockingClip = -1; ///< place_occupee : le premier clip qui tient la place
+        int clipId = -1;       ///< un déplacement refusé : le clip de l'élément, resté où il était
+        int stayedTrack = -1;
+        int stayedPosition = -1;
     };
 
     /** @brief Le projet KoraCut courant et sa timeline. Relit les projets Motion du dossier. */
@@ -158,6 +163,9 @@ public:
     /** @brief Les éléments de cette composition que la dernière mise en accord n'a pas pu poser (place
      * prise sur leur piste, piste verrouillée). Vide quand tout ce qui est rendu est posé. */
     QList<PlacementRefusal> placementRefusals(const QString &project) const;
+    /** @brief Après un rendu : laisse au chutier le temps de charger les rendus prêts, jusqu'à ce que chaque
+     * élément rendu ait son clip ou son refus (au plus @p ms). @return vrai si plus rien n'est en suspens. */
+    bool waitForPlacement(const QString &project, int ms);
 
     // Lot 5 du document 19 : un élément = une composition, posée comme un seul clip.
     /** @brief Où poser une composition d'un seul élément qui vient d'être créée : la piste voulue (-1 : la

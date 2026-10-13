@@ -864,6 +864,34 @@ QString KoraCutMotionMirror::ensureFolder(Fun &undo, Fun &redo)
     return QStringLiteral("-1");
 }
 
+namespace {
+/** Un clip déjà posé qui n'a pas pu aller à @p position sur @p tid : ce qui tient la place, où il est resté. */
+KoraCutMotionMirror::PlacementRefusal moveRefusal(const std::shared_ptr<TimelineItemModel> &tl, const QString &elementId, int cid, int tid, int position)
+{
+    KoraCutMotionMirror::PlacementRefusal r;
+    r.elementId = elementId;
+    r.trackId = tid;
+    r.position = position;
+    r.length = tl->getClipPlaytime(cid);
+    r.clipId = cid;
+    r.stayedTrack = tl->getClipTrackId(cid);
+    r.stayedPosition = tl->getClipPosition(cid);
+    if (tl->isTrack(tid)) {
+        // La fin est exclue par getItemsInRange.
+        const auto items = tl->getItemsInRange(tid, position, position + r.length, false);
+        for (int id : items) {
+            if (id != cid && tl->isClip(id) && (r.blockingClip < 0 || tl->getClipPosition(id) < tl->getClipPosition(r.blockingClip))) {
+                r.blockingClip = id;
+            }
+        }
+    }
+    r.reason = r.blockingClip >= 0                                               ? QStringLiteral("place_occupee")
+               : tl->isTrack(tid) && (tl->trackIsLocked(tid) || tl->trackIsLocked(r.stayedTrack)) ? QStringLiteral("piste_verrouillee")
+                                                                                 : QStringLiteral("deplacement_refuse");
+    return r;
+}
+} // namespace
+
 bool KoraCutMotionMirror::insertClip(const Entry &entry, const KoraCutMotion::Element &element, const QString &binId, int in, int length, Fun &undo, Fun &redo)
 {
     auto tl = timelineOf(entry.sync->composition().sequence);
@@ -1058,9 +1086,12 @@ bool KoraCutMotionMirror::applyFromFile(const QString &name, bool logUndo, const
                 changed = true;
             }
             if (tl->getClipPosition(cid) != wantedPosition || (wantedTrack >= 0 && tid != wantedTrack)) {
-                if (tl->requestClipMove(cid, wantedTrack >= 0 ? wantedTrack : tid, wantedPosition, true, true, true, true, *undo, *redo) ==
-                    TimelineModel::MoveSuccess) {
+                const int targetTrack = wantedTrack >= 0 ? wantedTrack : tid;
+                if (tl->requestClipMove(cid, targetTrack, wantedPosition, true, true, true, true, *undo, *redo) == TimelineModel::MoveSuccess) {
                     changed = true;
+                } else {
+                    // Le clip reste où il était : gardé comme un refus, pour que les outils le disent.
+                    entry.refused.insert(e.id, moveRefusal(tl, e.id, cid, targetTrack, wantedPosition));
                 }
             }
             if (audio) {
@@ -1767,13 +1798,23 @@ bool KoraCutMotionMirror::place(const QString &project, int trackId, double atSe
         if (delta != 0) {
             std::sort(moves.begin(), moves.end(), [delta](const auto &a, const auto &b) { return delta > 0 ? a.second > b.second : a.second < b.second; });
             m_applying = true;
+            QList<PlacementRefusal> stuck;
             for (const auto &[cid, pos] : std::as_const(moves)) {
                 if (tl->requestClipMove(cid, tl->getClipTrackId(cid), pos + delta, true, true, true, true, undo, redo) == TimelineModel::MoveSuccess) {
                     changed = true;
+                } else {
+                    stuck << moveRefusal(tl, clipInfoIn(tl, cid).elementId, cid, tl->getClipTrackId(cid), pos + delta);
                 }
             }
             m_applying = false;
             reconcileSequence(sequenceOf(project));
+            // Après la mise en accord (elle refait la liste des refus) : les clips que le décalage n'a pas pu
+            // emmener sont restés à leur place, et le fichier aussi.
+            if (m_entries.contains(project)) {
+                for (const PlacementRefusal &r : std::as_const(stuck)) {
+                    m_entries[project].refused.insert(r.elementId, r);
+                }
+            }
         }
     }
     if (changed) {
@@ -1790,13 +1831,53 @@ QList<KoraCutMotionMirror::PlacementRefusal> KoraCutMotionMirror::placementRefus
         return list;
     }
     const Entry &entry = m_entries[project];
-    // Dans l'ordre du fichier, et seulement ce qui est encore vrai : l'élément existe et n'a pas de clip.
+    // Dans l'ordre du fichier, et seulement ce qui est encore vrai : l'élément existe et n'a pas de clip,
+    // ou (déplacement refusé) son clip est toujours là où il était resté.
+    auto tl = timelineFor(project);
     for (const KoraCutMotion::Element &e : entry.sync->composition().elements) {
-        if (entry.refused.contains(e.id) && clipFor(project, e.id) < 0) {
-            list.append(entry.refused.value(e.id));
+        if (!entry.refused.contains(e.id)) {
+            continue;
+        }
+        const PlacementRefusal r = entry.refused.value(e.id);
+        const int cid = clipFor(project, e.id);
+        if (r.clipId < 0 ? cid < 0 : (tl && cid == r.clipId && tl->getClipTrackId(cid) == r.stayedTrack && tl->getClipPosition(cid) == r.stayedPosition)) {
+            list.append(r);
         }
     }
     return list;
+}
+
+bool KoraCutMotionMirror::waitForPlacement(const QString &project, int ms)
+{
+    // Un rendu fini n'est pas encore un clip posé : le chutier charge le fichier, puis le clip est posé ou
+    // refusé. Sans séquence ouverte, rien ne sera posé : on n'attend pas.
+    const auto unsettled = [this, &project]() {
+        if (!m_entries.contains(project) || !timelineFor(project)) {
+            return false;
+        }
+        const Entry &entry = m_entries[project];
+        const KoraCutMotion::Composition &comp = entry.sync->composition();
+        if (comp.isElement() && comp.retired) {
+            return false;
+        }
+        for (const KoraCutMotion::Element &e : comp.elements) {
+            if (e.kind == KoraCutMotion::Kind::Audio || !e.startResolved || entry.failed.contains(e.id) || entry.refused.contains(e.id) || clipFor(project, e.id) >= 0) {
+                continue;
+            }
+            if (!m_renderer->isPending(project, e.id) && QFileInfo(renderOutput(entry, e)).size() > 0) {
+                return true;
+            }
+        }
+        return false;
+    };
+    QElapsedTimer timer;
+    timer.start();
+    bool waiting = unsettled();
+    while (waiting && timer.elapsed() < ms) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        waiting = unsettled();
+    }
+    return !waiting;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1856,7 +1937,9 @@ int KoraCutMotionMirror::elementTrack(const QString &project, int position, int 
         if (!tl->isTrack(tid) || tl->isAudioTrack(tid) || tl->trackIsLocked(tid)) {
             return false;
         }
-        for (int id : tl->getItemsInRange(tid, position, position + std::max(1, length) - 1, false)) {
+        // La fin est exclue par getItemsInRange : avec « - 1 », un clip qui commençait sur la dernière image
+        // de l'élément n'était pas vu, la piste passait pour libre et la pose échouait (13 octobre 2026).
+        for (int id : tl->getItemsInRange(tid, position, position + std::max(1, length), false)) {
             if (tl->isClip(id)) {
                 return false;
             }
