@@ -148,6 +148,20 @@ QJsonObject silentAppError()
                        {QStringLiteral("conseil"), QStringLiteral("Réessaie dans un instant. Si elle ne répond toujours pas, dis-le à la personne : c'est à elle de décider de la fermer.")}};
 }
 
+// Une commande partie sans réponse : la connexion est tombée (KoraCut a quitté ou s'est arrêtée net), ou
+// elle tient toujours et l'application n'a rien dit de tout le délai (figée, ou un calcul très long).
+QJsonObject noAnswerError(const QLocalSocket &socket, int seconds)
+{
+    if (socket.state() != QLocalSocket::ConnectedState) {
+        return QJsonObject{{QStringLiteral("code"), QStringLiteral("porte_fermee")},
+                           {QStringLiteral("message"), QStringLiteral("La connexion à KoraCut s'est fermée avant la réponse : l'application a quitté ou s'est arrêtée net.")},
+                           {QStringLiteral("conseil"), QStringLiteral("Vérifie qu'elle tourne encore (app ping). La commande a pu être faite ou non : relis l'état avant de la rejouer.")}};
+    }
+    return QJsonObject{{QStringLiteral("code"), QStringLiteral("sans_reponse")},
+                       {QStringLiteral("message"), QStringLiteral("KoraCut n'a pas répondu en %1 secondes : la commande est peut-être encore en cours, ou l'application est figée.").arg(seconds)},
+                       {QStringLiteral("conseil"), QStringLiteral("Ne rejoue pas la commande tout de suite : essaie app ping, puis relis l'état pour voir si elle a été faite.")}};
+}
+
 // Une requête, une réponse : la première ligne dont l'id correspond ; les événements passent en sortie.
 bool exchange(QLocalSocket &socket, const QJsonObject &request, QJsonObject &response, bool printEvents, int timeoutMs)
 {
@@ -330,6 +344,8 @@ private:
             const QJsonObject request{{QStringLiteral("id"), ++m_id}, {QStringLiteral("method"), method}, {QStringLiteral("params"), params}};
             QJsonObject response;
             bool answered = false;
+            QElapsedTimer sentAt;
+            sentAt.start();
             while (true) {
                 answered = exchange(m_socket, request, response, false, 120000);
                 const bool busy = answered && response.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString() == QLatin1String("occupe");
@@ -339,8 +355,17 @@ private:
                 QThread::msleep(500);
             }
             if (!answered) {
+                // On ne renvoie la commande que si la prise était déjà morte au moment d'écrire (une KoraCut
+                // relancée entre deux appels) : elle n'a alors pas pu partir. Après une attente, ou une
+                // connexion tombée en route, la commande a pu être exécutée : la rejouer la ferait deux fois.
+                const bool neverSent = m_socket.state() != QLocalSocket::ConnectedState && sentAt.elapsed() < 1000;
+                if (neverSent && attempt == 0) {
+                    m_socket.abort();
+                    continue;
+                }
+                error = noAnswerError(m_socket, 120);
                 m_socket.abort();
-                continue;
+                return false;
             }
             if (response.contains(QStringLiteral("error"))) {
                 error = response.value(QStringLiteral("error")).toObject();
@@ -736,7 +761,7 @@ int main(int argc, char *argv[])
     busySince.start();
     while (true) {
         if (!exchange(socket, req, reply, follow, 120000)) {
-            fprintf(stderr, "%s\n", QJsonDocument(QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), QStringLiteral("porte_fermee")}, {QStringLiteral("message"), QStringLiteral("KoraCut n'a pas répondu.")}}}}).toJson(QJsonDocument::Compact).constData());
+            fprintf(stderr, "%s\n", QJsonDocument(QJsonObject{{QStringLiteral("error"), noAnswerError(socket, 120)}}).toJson(QJsonDocument::Compact).constData());
             return 2;
         }
         const bool busy = reply.value(QStringLiteral("error")).toObject().value(QStringLiteral("code")).toString() == QLatin1String("occupe");
