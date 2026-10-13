@@ -43,6 +43,10 @@ void registerAll(KoraCutPorte *porte, const KoraCutPorteContext &context);
  *  Agents in-app/outils, fichiers json, quand la ressource est là, sinon la courte liste de repli). */
 QSet<QString> confirmationTools();
 
+/** @brief Vrai si fermer KoraCut maintenant perdrait ou écrirait quelque chose : projet modifié, rendu en attente ou
+ *  en cours. `app.quitter` demande alors toujours l'accord, même à un programme de confiance. */
+bool quitHasSomethingToLose(MainWindow *window);
+
 /** @brief Vrai si @p path est dans @p folder (ou @p folder lui-même), liens symboliques résolus. */
 bool isInsideFolder(const QString &folder, const QString &path);
 

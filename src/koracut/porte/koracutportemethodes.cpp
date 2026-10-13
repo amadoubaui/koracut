@@ -687,6 +687,33 @@ QString checkToolCall(const QString &name, const QJsonObject &args)
 
 // ---------------------------------------------------------------------------------------------
 
+bool KoraCutPorteMethodes::quitHasSomethingToLose(MainWindow *window)
+{
+    if (pCore && pCore->currentDoc() && pCore->currentDoc()->isModified()) {
+        return true;
+    }
+    // Les deux files de rendu n'ont pas les mêmes mots (« attente » pour l'une, « en_attente » pour l'autre).
+    const auto running = [](const QString &state) {
+        return state == QLatin1String("attente") || state == QLatin1String("en_attente") || state == QLatin1String("demarrage") || state == QLatin1String("en_cours");
+    };
+    if (window) {
+        if (RenderWidget *rw = window->koraCutRenderWidget(false)) {
+            const QJsonArray jobs = rw->koraCutJobs();
+            for (const QJsonValue &j : jobs) {
+                if (running(j.toObject().value(QStringLiteral("etat")).toString())) {
+                    return true;
+                }
+            }
+        }
+    }
+    for (const auto &j : KoraCutExportQueue::self().jobs()) {
+        if (running(j->state)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool KoraCutPorteMethodes::isInsideFolder(const QString &folder, const QString &path)
 {
     if (folder.isEmpty() || path.isEmpty()) {
@@ -782,11 +809,15 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
         return Reply::value(QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("heure"), QDateTime::currentDateTime().toString(Qt::ISODate)}});
     });
     porte->registerMethod(
-        QStringLiteral("app.quitter"), QStringLiteral("Ferme KoraCut (à confirmation, toujours)."),
+        QStringLiteral("app.quitter"),
+        QStringLiteral("Ferme KoraCut (à confirmation ; un programme de confiance passe sans question quand rien n'est à perdre : projet non modifié, aucun rendu en cours)."),
         {p(QStringLiteral("enregistrer"), QStringLiteral("boolean"), QStringLiteral("Enregistrer le projet avant, défaut true."))},
         [porte, window](const Call &call) {
             Reply gate;
-            if (porte->needsConfirmation(call, QStringLiteral("quitter KoraCut"), true, gate)) {
+            // Quitter demande toujours quand il y a quelque chose à perdre ou à écrire. Sinon, la confiance déjà
+            // accordée par la personne (case de la Console, KORACUT_PORTE_CONFIANCE) suffit : fermer une instance
+            // d'essai intacte n'a pas à attendre quelqu'un devant l'écran.
+            if (porte->needsConfirmation(call, QStringLiteral("quitter KoraCut"), KoraCutPorteMethodes::quitHasSomethingToLose(window), gate)) {
                 return gate;
             }
             if (!window) {

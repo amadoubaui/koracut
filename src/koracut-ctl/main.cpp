@@ -140,6 +140,14 @@ void printJson(FILE *stream, const QJsonValue &v, bool compact)
     fflush(stream);
 }
 
+// KoraCut a pris la connexion mais ne répond pas à porte.ouvrir.
+QJsonObject silentAppError()
+{
+    return QJsonObject{{QStringLiteral("code"), QStringLiteral("sans_reponse")},
+                       {QStringLiteral("message"), QStringLiteral("KoraCut est ouverte mais ne répond pas (rien en 5 secondes) : l'application est figée ou tenue par un long calcul.")},
+                       {QStringLiteral("conseil"), QStringLiteral("Réessaie dans un instant. Si elle ne répond toujours pas, dis-le à la personne : c'est à elle de décider de la fermer.")}};
+}
+
 // Une requête, une réponse : la première ligne dont l'id correspond ; les événements passent en sortie.
 bool exchange(QLocalSocket &socket, const QJsonObject &request, QJsonObject &response, bool printEvents, int timeoutMs)
 {
@@ -297,8 +305,9 @@ private:
                                {QStringLiteral("method"), QStringLiteral("porte.ouvrir")},
                                {QStringLiteral("params"),
                                 QJsonObject{{QStringLiteral("jeton"), porte.value(QStringLiteral("jeton")).toString()}, {QStringLiteral("client"), QStringLiteral("koracut-mcp %1").arg(QString::fromLatin1(kVersion))}}}};
-        if (!exchange(m_socket, open, response, false, 5000) || response.contains(QStringLiteral("error"))) {
-            why = QStringLiteral("KoraCut a refusé l'ouverture de la porte.");
+        const bool answered = exchange(m_socket, open, response, false, 5000);
+        if (!answered || response.contains(QStringLiteral("error"))) {
+            why = answered ? QStringLiteral("KoraCut a refusé l'ouverture de la porte.") : silentAppError().value(QStringLiteral("message")).toString();
             m_socket.abort();
             return false;
         }
@@ -666,8 +675,14 @@ int main(int argc, char *argv[])
     const QJsonObject open{{QStringLiteral("id"), 0},
                            {QStringLiteral("method"), QStringLiteral("porte.ouvrir")},
                            {QStringLiteral("params"), QJsonObject{{QStringLiteral("jeton"), porte.value(QStringLiteral("jeton")).toString()}, {QStringLiteral("client"), QStringLiteral("koracut-ctl %1").arg(QString::fromLatin1(kVersion))}}}};
-    if (!exchange(socket, open, reply, false, 5000) || reply.contains(QStringLiteral("error"))) {
-        printJson(stderr, reply.contains(QStringLiteral("error")) ? reply : QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), QStringLiteral("jeton_refuse")}, {QStringLiteral("message"), QStringLiteral("KoraCut a refusé l'ouverture.")}}}}, true);
+    if (!exchange(socket, open, reply, false, 5000)) {
+        // La prise s'est ouverte (c'est le système qui l'accepte) mais KoraCut ne dit rien : ce n'est pas un refus du jeton,
+        // c'est une application qui ne tourne plus sa boucle (figée, ou tenue par un long calcul).
+        printJson(stderr, QJsonObject{{QStringLiteral("error"), silentAppError()}}, true);
+        return 2;
+    }
+    if (reply.contains(QStringLiteral("error"))) {
+        printJson(stderr, reply, true);
         return 2;
     }
 

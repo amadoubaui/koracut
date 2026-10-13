@@ -411,8 +411,18 @@ TEST_CASE("Porte : les méthodes sur un vrai projet", "[KoraCutPorte]")
         const KoraCutPorte::Reply trusted = porte.call(client, QStringLiteral("timeline.outil"), {{QStringLiteral("nom"), QStringLiteral("supprimer_clip")}, {QStringLiteral("args"), QJsonObject{{QStringLiteral("clip_ids"), QJsonArray{c3}}}}});
         CHECK(trusted.ok());
         CHECK(clipCount(timeline, v1) == 0);
-        // Quitter demande toujours, même en confiance.
+        // Quitter demande toujours quand le projet est modifié, même en confiance.
+        REQUIRE(pCore->currentDoc());
+        pCore->currentDoc()->setModified(true);
         CHECK(code(porte.call(client, QStringLiteral("app.quitter"), {})) == QStringLiteral("confirmation_requise"));
+        // Rien à perdre : le client de confiance passe (ici jusqu'à « il faut la fenêtre », le test n'en a pas),
+        // un inconnu attend toujours l'accord.
+        pCore->currentDoc()->setModified(false);
+        CHECK(code(porte.call(client, QStringLiteral("app.quitter"), {})) == QStringLiteral("non_disponible"));
+        const KoraCutPorte::Reply stranger = porte.call(QStringLiteral("Inconnu 1.0"), QStringLiteral("app.quitter"), {});
+        CHECK(code(stranger) == QStringLiteral("confirmation_requise"));
+        porte.answerConfirmation(stranger.error.value(QStringLiteral("demande_id")).toString(), false);
+        pCore->currentDoc()->setModified(true);
 
         // KORACUT_PORTE_CONFIANCE : la personne qui lance KoraCut accorde la confiance d'avance, par débuts de
         // noms de clients. Un autre programme, sans la variable, attend toujours l'accord.
@@ -436,10 +446,16 @@ TEST_CASE("Porte : les méthodes sur un vrai projet", "[KoraCutPorte]")
         qputenv("KORACUT_PORTE_CONFIANCE", "koracut-ctl, robot");
         CHECK(removal().ok()); // un début de nom, sans tenir compte des majuscules
         CHECK(clipCount(timeline, v1) == 0);
-        // Quitter (et écraser un fichier) demandent toujours, même avec « * ».
+        // Quitter un projet modifié (et écraser un fichier) demandent toujours, même avec « * ».
         qputenv("KORACUT_PORTE_CONFIANCE", "*");
         CHECK(removal().ok());
-        CHECK(code(porte.call(robot, QStringLiteral("app.quitter"), {})) == QStringLiteral("confirmation_requise"));
+        pCore->currentDoc()->setModified(true);
+        const KoraCutPorte::Reply quitModified = porte.call(robot, QStringLiteral("app.quitter"), {});
+        CHECK(code(quitModified) == QStringLiteral("confirmation_requise"));
+        porte.answerConfirmation(quitModified.error.value(QStringLiteral("demande_id")).toString(), false);
+        // Rien à perdre : la confiance accordée d'avance suffit.
+        pCore->currentDoc()->setModified(false);
+        CHECK(code(porte.call(robot, QStringLiteral("app.quitter"), {})) == QStringLiteral("non_disponible"));
         qputenv("KORACUT_PORTE_CONFIANCE", " , ");
         CHECK(code(removal()) == QStringLiteral("confirmation_requise")); // une liste vide n'accorde rien
         qunsetenv("KORACUT_PORTE_CONFIANCE");
