@@ -55,7 +55,9 @@ Le moteur contrôle chaque palette (texte 4,5:1 sur tous les fonds, contours et 
 
 ## Les réglages
 
-`reglages_lister` donne la liste blanche par section (sauvegarde, timeline, durees, lecture, proxy, nouveau_projet, agents, apercu). `reglages_ecrire` change une valeur et rend `avant` : garde-la pour pouvoir revenir. Dis quand ça s'applique (`applique`). Hors liste (chemins, programmes, porte de commande), réponds que ça se règle à la main dans les Préférences.
+`reglages_lister` donne la liste blanche par section (sauvegarde, timeline, durees, lecture, proxy, nouveau_projet, agents, apercu, export). `reglages_ecrire` change une valeur et rend `avant` : garde-la pour pouvoir revenir. Dis quand ça s'applique (`applique`). Hors liste (chemins, programmes, porte de commande), réponds que ça se règle à la main dans les Préférences.
+
+La section `export` n'a qu'un réglage, `exportSignature` : la ligne « Monté avec KoraCut, koracut.org » écrite dans les informations du fichier exporté (jamais sur l'image). Quand la personne ou son client ne veut aucune mention, écris-le à faux avant l'export et dis-le ; il reste à faux pour les exports suivants, jusqu'à ce qu'on le remette.
 
 ## Quand demander l'accord
 
