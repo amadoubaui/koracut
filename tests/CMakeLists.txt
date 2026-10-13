@@ -112,6 +112,11 @@ target_sources(koracutexporttest PRIVATE ${koracutexporttest_RES})
 qt_add_resources(koracutscripttest_RES ../src/uiresources.qrc)
 target_sources(koracutscripttest PRIVATE ${koracutscripttest_RES})
 
+# La porte lit les définitions d'outils pour annoncer leurs paramètres, vérifier les appels et savoir quels
+# outils demandent l'accord (x_confirmation) : dans les deux versions, avec ou sans agents.
+qt_add_resources(koracutportetest_RES ${KORACUT_AGENTS_QRC})
+target_sources(koracutportetest PRIVATE ${koracutportetest_RES})
+
 # KoraCut, chantier 3 : la session d'agents, avec un faux service en mémoire (pas de réseau). Le test
 # lit les définitions d'outils dans la même ressource que l'application.
 if(KORACUT_AGENTS)
@@ -125,9 +130,6 @@ if(KORACUT_AGENTS)
   )
   qt_add_resources(koracutagentsessiontest_RES ${KORACUT_AGENTS_QRC})
   target_sources(koracutagentsessiontest PRIVATE ${koracutagentsessiontest_RES})
-  # La porte lit les mêmes définitions pour savoir quels outils demandent l'accord (x_confirmation).
-  qt_add_resources(koracutportetest_RES ${KORACUT_AGENTS_QRC})
-  target_sources(koracutportetest PRIVATE ${koracutportetest_RES})
   # Connexions IA (25 septembre 2026) : catalogue, coffre des clés, liste ordonnée, vérification
   # auprès d'un faux fournisseur local. Le catalogue et les logos sont dans leur propre ressource.
   ecm_add_test(

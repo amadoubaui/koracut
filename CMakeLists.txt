@@ -137,6 +137,11 @@ find_package(KDDockWidgets-qt6 2.4.0 REQUIRED)
 
 if(KORACUT_AGENTS)
   find_package(Qt${QT_MAJOR_VERSION} REQUIRED COMPONENTS WebSockets)
+endif()
+# Les définitions d'outils sont embarquées dans les deux versions (13 octobre 2026) : la porte de commande,
+# qui reste dans la version sans agents, s'en sert pour annoncer chaque outil avec ses paramètres à l'agent
+# de la personne (timeline.outils, serveur MCP) et pour refuser un appel mal formé.
+if(TRUE)
   # Les définitions d'outils des agents vivent dans « Agents in-app/outils/ », à côté du dépôt, pour
   # qu'il n'y ait qu'une seule copie (le banc et le service les lisent aussi). On les embarque en
   # ressource Qt par une qrc générée ici, avec des chemins absolus.
@@ -149,7 +154,7 @@ if(KORACUT_AGENTS)
   set(KORACUT_AGENT_TOOLS_DIR "${_koracut_tools_default}" CACHE PATH "KoraCut: folder of the agent tool definitions (Agents in-app/outils)")
   file(GLOB KORACUT_AGENT_TOOL_FILES "${KORACUT_AGENT_TOOLS_DIR}/*.json")
   if(NOT KORACUT_AGENT_TOOL_FILES)
-    message(FATAL_ERROR "KORACUT_AGENTS is ON but no *.json was found in '${KORACUT_AGENT_TOOLS_DIR}'. Set KORACUT_AGENT_TOOLS_DIR, or build with -DKORACUT_AGENTS=OFF.")
+    message(FATAL_ERROR "No tool definition (*.json) was found in '${KORACUT_AGENT_TOOLS_DIR}'. Set KORACUT_AGENT_TOOLS_DIR.")
   endif()
   set(KORACUT_AGENTS_QRC "${CMAKE_BINARY_DIR}/koracut-agents.qrc")
   set(_koracut_qrc "<RCC>\n  <qresource prefix=\"/koracut/agents\">\n")

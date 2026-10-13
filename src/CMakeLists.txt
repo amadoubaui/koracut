@@ -191,9 +191,10 @@ ecm_target_qml_sources(kdenliveLib
 )
 
 qt_add_resources(kdenlive_extra_SRCS icons.qrc uiresources.qrc ../data/icons/plateformes/plateformes.qrc ../data/icons/koracut-icons.qrc ../data/effect-previews/effect-previews.qrc ../data/koracut-agents-cli.qrc)
+# Les définitions d'outils (Agents in-app/outils/*.json), embarquées telles quelles dans les deux versions :
+# la porte de commande les annonce et s'en sert pour vérifier les appels (voir la racine).
+qt_add_resources(kdenlive_extra_SRCS ${KORACUT_AGENTS_QRC})
 if(KORACUT_AGENTS)
-  # Les définitions d'outils des agents (Agents in-app/outils/*.json), embarquées telles quelles : voir la racine.
-  qt_add_resources(kdenlive_extra_SRCS ${KORACUT_AGENTS_QRC})
   # Connexions IA : le catalogue des fournisseurs (data/koracut-fournisseurs-ia.json) et leurs logos.
   qt_add_resources(kdenlive_extra_SRCS ../data/icons/fournisseurs/fournisseurs.qrc)
 endif()
