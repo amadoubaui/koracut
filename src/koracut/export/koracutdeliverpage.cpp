@@ -1148,6 +1148,7 @@ QWidget *KoraCutExportSettingsPanel::fileTab()
     m_signature = new QCheckBox(i18nc("@option:check", "Write “Made with KoraCut, koracut.org” in the file's information"), w);
     m_signature->setToolTip(i18nc("@info:tooltip", "A line in the file's metadata (the comment field), never on the image. "
                                                    "It helps people discover KoraCut. Uncheck it for a client who wants nothing of the kind."));
+    m_signature->setObjectName(QStringLiteral("koracut_export_signature")); // l'outil reglages_ecrire la retrouve par ce nom
     m_signature->setChecked(signatureEnabled());
     connect(m_signature, &QCheckBox::toggled, this, [](bool on) { setSignatureEnabled(on); });
     f->addRow(QString(), m_signature);

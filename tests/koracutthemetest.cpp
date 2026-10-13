@@ -8,6 +8,7 @@
 #include "utils/uiutils.h"
 #include "koracut/koracutfonts.h"
 #include "koracut/koracutagenttools.h"
+#include "koracut/export/koracutexport.h"
 #include "koracut/koracutthemes.h"
 
 #include <KColorSchemeManager>
@@ -281,6 +282,23 @@ TEST_CASE("Outils du thème et des réglages", "[KoraCutTheme]")
     const QJsonObject reglages = call("reglages_lister", {{QStringLiteral("section"), QStringLiteral("timeline")}});
     REQUIRE(reglages.value(QStringLiteral("ok")).toBool());
     CHECK(reglages.value(QStringLiteral("reglages")).toArray().size() >= 5);
+    // La signature des exports : un booléen de KoraCut, lu et écrit en vrai ou faux, et c'est bien lui que l'export lit.
+    const QJsonObject exportSettings = call("reglages_lister", {{QStringLiteral("section"), QStringLiteral("export")}});
+    REQUIRE(exportSettings.value(QStringLiteral("reglages")).toArray().size() == 1);
+    const QJsonObject signature = exportSettings.value(QStringLiteral("reglages")).toArray().first().toObject();
+    CHECK(signature.value(QStringLiteral("cle")).toString() == QStringLiteral("exportSignature"));
+    CHECK(signature.value(QStringLiteral("valeur")).isBool());
+    CHECK(signature.value(QStringLiteral("defaut")).toBool());
+    const bool signatureBefore = KoraCutExport::signatureEnabled();
+    const QJsonObject sansSignature = call("reglages_ecrire", {{QStringLiteral("cle"), QStringLiteral("exportSignature")}, {QStringLiteral("valeur"), false}});
+    CHECK(sansSignature.value(QStringLiteral("ok")).toBool());
+    CHECK(sansSignature.value(QStringLiteral("apres")).toBool() == false);
+    CHECK_FALSE(KoraCutExport::signatureEnabled());
+    CHECK(call("reglages_ecrire", {{QStringLiteral("cle"), QStringLiteral("exportSignature")}, {QStringLiteral("valeur"), QStringLiteral("oui")}}).value(QStringLiteral("apres")).toBool());
+    CHECK(KoraCutExport::signatureEnabled());
+    CHECK(call("reglages_ecrire", {{QStringLiteral("cle"), QStringLiteral("exportSignature")}, {QStringLiteral("valeur"), 3}}).value(QStringLiteral("erreur")).toObject().value(QStringLiteral("code")).toString() ==
+          QStringLiteral("entree_invalide"));
+    KoraCutExport::setSignatureEnabled(signatureBefore);
     const bool magnetisme = KdenliveSettings::snaptopoints();
     const QJsonObject ecrit = call("reglages_ecrire", {{QStringLiteral("cle"), QStringLiteral("snaptopoints")}, {QStringLiteral("valeur"), !magnetisme}});
     CHECK(ecrit.value(QStringLiteral("ok")).toBool());

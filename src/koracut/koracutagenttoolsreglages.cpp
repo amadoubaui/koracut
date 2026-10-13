@@ -23,9 +23,12 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <KSharedConfig>
 
 #include <QAction>
+#include <QApplication>
+#include <QCheckBox>
 #include <QHash>
 #include <QJsonArray>
 #include <QRegularExpression>
+#include <QSignalBlocker>
 
 namespace KoraCutAgentToolsPrivate {
 
@@ -306,6 +309,7 @@ const Setting kSettings[] = {
     {"montageVisible", "agents", "Montage visible : l'écran suit les gestes des agents", Kind::Choice, 0, 0, true, "tout_de_suite", "normal,rapide,desactive", "normal"},
     {"apercuPlafondMo", "apercu", "Plafond du cache de rendu d'un projet en Mo (0 = automatique)", Kind::Int, 0, 200000, true, "tout_de_suite", "", "0"},
     {"apercuNettoyageJours", "apercu", "Âge (jours) au-delà duquel les rendus d'un projet fermé partent", Kind::Int, 1, 365, true, "tout_de_suite", "", "30"},
+    {"exportSignature", "export", "Écrire « Monté avec KoraCut, koracut.org » dans les informations du fichier exporté (jamais sur l'image)", Kind::Bool, 0, 0, true, "prochain_export", "", "true"},
 };
 
 const Setting *findSetting(const QString &key)
@@ -342,6 +346,10 @@ QJsonValue readValue(const Setting &s)
 {
     const QString key = QString::fromLatin1(s.key);
     if (s.koracut) {
+        if (s.kind == Kind::Bool) {
+            // Lu comme le lit le code qui s'en sert (KConfig accepte « true », « 1 », « on », « yes »).
+            return koraCutGroup().readEntry(s.key, QLatin1String(s.defaultValue) == QLatin1String("true"));
+        }
         const QString v = koraCutGroup().readEntry(s.key, QString::fromUtf8(s.defaultValue));
         return s.kind == Kind::Int ? QJsonValue(v.toInt()) : QJsonValue(v);
     }
@@ -356,6 +364,9 @@ QJsonValue defaultValue(const Setting &s)
 {
     if (s.koracut) {
         const QString v = QString::fromUtf8(s.defaultValue);
+        if (s.kind == Kind::Bool) {
+            return v == QLatin1String("true");
+        }
         return s.kind == Kind::Int ? QJsonValue(v.toInt()) : QJsonValue(v);
     }
     KConfigSkeletonItem *item = KdenliveSettings::self()->findItem(QString::fromLatin1(s.key));
@@ -512,8 +523,24 @@ QJsonObject reglagesEcrire(const Timeline &, const Args &args)
                                                                                : KoraCutVisible::Speed::Normal);
         }
         KConfigGroup g = koraCutGroup();
-        g.writeEntry(s->key, v.toString());
+        if (s->kind == Kind::Bool) {
+            g.writeEntry(s->key, v.toBool());
+        } else {
+            g.writeEntry(s->key, v.toString());
+        }
         g.sync();
+        if (key == QLatin1String("exportSignature")) {
+            // La case de la page de livraison, si elle est déjà construite, suit tout de suite.
+            const QWidgetList widgets = QApplication::allWidgets();
+            for (QWidget *w : widgets) {
+                if (w->objectName() == QLatin1String("koracut_export_signature")) {
+                    if (auto *box = qobject_cast<QCheckBox *>(w)) {
+                        const QSignalBlocker blocker(box);
+                        box->setChecked(v.toBool());
+                    }
+                }
+            }
+        }
     } else {
         KConfigSkeletonItem *item = KdenliveSettings::self()->findItem(key);
         if (!item) {

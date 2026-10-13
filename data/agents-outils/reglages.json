@@ -145,7 +145,8 @@
       "proxy",
       "nouveau_projet",
       "agents",
-      "apercu"
+      "apercu",
+      "export"
      ],
      "description": "Une seule section ; absent : toutes."
     }
@@ -183,7 +184,7 @@
  },
  {
   "name": "reglages_ecrire",
-  "description": "Change un réglage de la liste blanche (reglages_lister), enregistré tout de suite dans koracutrc et appliqué quand KoraCut le permet (le champ applique dit quand : tout_de_suite, nouveaux_clips, nouveau_projet). La valeur est contrôlée (type, bornes, choix, durée en « HH:MM:SS:II »). Rend { ok, cle, avant, apres, applique }. Réversible : réécrire la valeur « avant ». Ne touche pas au projet (pas d'étape d'annulation).",
+  "description": "Change un réglage de la liste blanche (reglages_lister), enregistré tout de suite dans koracutrc et appliqué quand KoraCut le permet (le champ applique dit quand : tout_de_suite, nouveaux_clips, nouveau_projet, prochain_export). La valeur est contrôlée (type, bornes, choix, durée en « HH:MM:SS:II »). Rend { ok, cle, avant, apres, applique }. Réversible : réécrire la valeur « avant ». Ne touche pas au projet (pas d'étape d'annulation).",
   "input_schema": {
    "type": "object",
    "properties": {
