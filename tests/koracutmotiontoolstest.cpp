@@ -597,6 +597,10 @@ TEST_CASE("Outils Motion : composition, éléments, rendu simulé, pose", "[Kora
             INFO(QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString());
             REQUIRE(r.value(QStringLiteral("ok")).toBool());
             CHECK(timeline->getClipPosition(cid) == 0);
+            // motion_element le dit dans sa propre réponse, pour cet élément.
+            REQUIRE(r.value(QStringLiteral("non_deplaces")).toArray().size() == 1);
+            CHECK(r.value(QStringLiteral("non_deplaces")).toArray().first().toObject().value(QStringLiteral("element")).toString() == QStringLiteral("titre-1"));
+            CHECK(r.value(QStringLiteral("remarque")).toString().contains(QStringLiteral("titre-1")));
             const QJsonObject listed = firstComposition(call(timeline, QStringLiteral("motion_lister"), {}));
             INFO(QJsonDocument(listed).toJson(QJsonDocument::Compact).toStdString());
             stuck = listed.value(QStringLiteral("non_deplaces")).toArray();

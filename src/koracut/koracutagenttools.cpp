@@ -1671,6 +1671,26 @@ QJsonObject motionElement(const Timeline &, const Args &args)
         }
         result.insert(QStringLiteral("rendu_relance"), after->hash != hashBefore && after->kind != KoraCutMotion::Kind::Audio);
     }
+    // Le fichier dit le nouveau début, mais le clip peut être resté où il était (place d'arrivée prise) :
+    // la réponse le dit pour cet élément, au lieu d'un « ok » que la timeline dément (13 octobre 2026).
+    QJsonObject refusals;
+    insertMotionRefusals(refusals, mirror->timelineFor(project), mirror, project);
+    for (const QString &key : {QStringLiteral("non_deplaces"), QStringLiteral("non_poses")}) {
+        QJsonArray mine;
+        const QJsonArray all = refusals.value(key).toArray();
+        for (const QJsonValue &v : all) {
+            if (v.toObject().value(QStringLiteral("element")).toString() == id) {
+                mine.append(v);
+            }
+        }
+        if (!mine.isEmpty()) {
+            result.insert(key, mine);
+            result.insert(QStringLiteral("remarque"),
+                          key == QLatin1String("non_deplaces")
+                              ? QStringLiteral("Le clip de « %1 » n'a PAS bougé : sa place d'arrivée est prise (voir non_deplaces, reste_a). Libère la place, puis redonne son début.").arg(id)
+                              : QStringLiteral("« %1 » n'a PAS pu être posé : sa place est prise (voir non_poses). Libère la place ou change son début.").arg(id));
+        }
+    }
     return result;
 }
 
