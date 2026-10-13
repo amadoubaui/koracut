@@ -9,6 +9,7 @@
 #include "core.h"
 #include "doc/docundostack.hpp"
 #include "doc/kdenlivedoc.h"
+#include "profiles/profilemodel.hpp"
 #include "koracut/koracutagenttools.h"
 #include "koracut/porte/koracutporte.h"
 #include "koracut/porte/koracutportemethodes.h"
@@ -624,6 +625,20 @@ TEST_CASE("Porte : les méthodes sur un vrai projet", "[KoraCutPorte]")
         CHECK(entries.first().toObject().value(QStringLiteral("existait")).toBool());
         CHECK(entries.first().toObject().value(QStringLiteral("media_id")).toString() == rushId);
         CHECK(binModel->getAllClipIds().size() == clipsBefore); // rien d'importé en double
+        // Déjà là ne veut pas dire au bon format : la ligne le dit comme pour un import neuf.
+        {
+            const auto rush = binModel->getClipByBinID(rushId);
+            REQUIRE(rush);
+            const QSize size = rush->frameSize();
+            const double fps = rush->getOriginalFps();
+            const auto &profile = pCore->getCurrentProfile();
+            const bool other = !size.isEmpty() && (size != QSize(profile->width(), profile->height()) || (fps > 0 && qAbs(fps - profile->fps()) > 0.01));
+            INFO("rush " << size.width() << "x" << size.height() << " à " << fps << ", projet " << profile->width() << "x" << profile->height() << " à " << profile->fps());
+            CHECK(entries.first().toObject().contains(QStringLiteral("format_different")) == other);
+            if (other) {
+                CHECK(entries.first().toObject().value(QStringLiteral("format_different")).toObject().value(QStringLiteral("largeur")).toInt() == size.width());
+            }
+        }
         // Un chemin relatif qui n'existe pas le dit ; « ~ » se comprend.
         got = false;
         porte.callAsync(client, QStringLiteral("medias.importer"), {{QStringLiteral("chemins"), QJsonArray{QStringLiteral("Rushs/absent.mkv"), QStringLiteral("~/absent-koracut.mkv")}}}, [&](const KoraCutPorte::Reply &r) {

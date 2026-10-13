@@ -112,6 +112,27 @@ QJsonObject timeObject(int frames)
     return QJsonObject{{QStringLiteral("i"), frames}, {QStringLiteral("tc"), KoraCutAgentTools::timecode(frames, fps())}};
 }
 
+// La taille et la cadence d'un média quand elles ne sont pas celles du projet ; vide quand il a le format du
+// projet, pour un son, et tant que le média n'est pas chargé.
+QJsonObject formatDifference(const std::shared_ptr<ProjectClip> &clip)
+{
+    if (!clip || clip->clipType() == ClipType::Audio) {
+        return {};
+    }
+    const QSize size = clip->frameSize();
+    const double fps = clip->getOriginalFps();
+    const auto &profile = pCore->getCurrentProfile();
+    if (!profile || size.isEmpty()) {
+        return {};
+    }
+    const bool otherSize = size != QSize(profile->width(), profile->height());
+    const bool otherFps = fps > 0 && qAbs(fps - profile->fps()) > 0.01 && clip->clipType() != ClipType::Image;
+    if (!otherSize && !otherFps) {
+        return {};
+    }
+    return QJsonObject{{QStringLiteral("largeur"), size.width()}, {QStringLiteral("hauteur"), size.height()}, {QStringLiteral("ips"), fps > 0 ? QJsonValue(fps) : QJsonValue()}};
+}
+
 Reply noWindow()
 {
     return Reply::fail(QStringLiteral("non_disponible"), QStringLiteral("Cette méthode a besoin de la fenêtre de KoraCut."),
@@ -1994,6 +2015,11 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
                     if (auto clip = pCore->projectItemModel()->getClipByBinID(existing)) {
                         o.insert(QStringLiteral("nom"), clip->clipName());
                         o.insert(QStringLiteral("duree"), timeObject(int(clip->frameDuration())));
+                        // Déjà là ne veut pas dire au bon format : le dire aussi pour lui (13 octobre 2026).
+                        const QJsonObject other = formatDifference(clip);
+                        if (!other.isEmpty()) {
+                            o.insert(QStringLiteral("format_different"), other);
+                        }
                     }
                     others.append(o);
                     continue;
@@ -2055,16 +2081,9 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
                     o.insert(QStringLiteral("nom"), clip->clipName());
                     o.insert(QStringLiteral("duree"), timeObject(int(clip->frameDuration())));
                     // Un rush qui n'a pas le format du projet : on le dit, le projet garde le sien (12 octobre 2026).
-                    const QSize size = clip->frameSize();
-                    const double fps = clip->getOriginalFps();
-                    const auto &profile = pCore->getCurrentProfile();
-                    if (profile && !size.isEmpty() && clip->clipType() != ClipType::Audio) {
-                        const bool otherSize = size != QSize(profile->width(), profile->height());
-                        const bool otherFps = fps > 0 && qAbs(fps - profile->fps()) > 0.01 && clip->clipType() != ClipType::Image;
-                        if (otherSize || otherFps) {
-                            o.insert(QStringLiteral("format_different"),
-                                     QJsonObject{{QStringLiteral("largeur"), size.width()}, {QStringLiteral("hauteur"), size.height()}, {QStringLiteral("ips"), fps > 0 ? QJsonValue(fps) : QJsonValue()}});
-                        }
+                    const QJsonObject other = formatDifference(clip);
+                    if (!other.isEmpty()) {
+                        o.insert(QStringLiteral("format_different"), other);
                     }
                 }
                 ready->append(o);
