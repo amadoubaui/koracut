@@ -228,6 +228,42 @@ TEST_CASE("Outils Motion : composition, éléments, rendu simulé, pose", "[Kora
             const int cid = mirror.clipFor(QStringLiteral("bandeau-essai"), QStringLiteral("titre-1"));
             CHECK(timeline->getClipPosition(cid) == int(std::lround(fps)));
             CHECK(timeline->getClipPlaytime(cid) == int(std::lround(3 * fps)));
+
+            // Plus long que son rendu (4 s) : le bloc est rendu à nouveau à sa nouvelle durée, le clip la prend,
+            // et le miroir ne remet pas l'ancienne dans le fichier en attendant (15 octobre 2026).
+            const int before5 = undoStack->index();
+            r = call(timeline, QStringLiteral("motion_element"),
+                     {{QStringLiteral("nom"), QStringLiteral("bandeau-essai")}, {QStringLiteral("id"), QStringLiteral("titre-1")}, {QStringLiteral("duree"), 6.0}});
+            INFO(QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString());
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            CHECK(r.value(QStringLiteral("allongement_en_attente")).toBool());
+            CHECK(undoStack->index() == before5 + 1);
+            mirror.renderer()->waitForIdle(20000);
+            CHECK(waitFor([&]() { return timeline->getClipPlaytime(mirror.clipFor(QStringLiteral("bandeau-essai"), QStringLiteral("titre-1"))) == int(std::lround(6 * fps)); }, 6000));
+            waitMs(900);
+            CHECK(timeline->getClipPlaytime(mirror.clipFor(QStringLiteral("bandeau-essai"), QStringLiteral("titre-1"))) == int(std::lround(6 * fps)));
+            CHECK(timeline->getClipPosition(mirror.clipFor(QStringLiteral("bandeau-essai"), QStringLiteral("titre-1"))) == int(std::lround(fps)));
+            CHECK(readAll(indexPath).contains(QLatin1String("data-duration=\"6\"")));
+            CHECK(undoStack->index() == before5 + 1);
+            // Annuler : 3 s, au clip et au fichier.
+            undoStack->undo();
+            CHECK(waitFor([&]() { return timeline->getClipPlaytime(mirror.clipFor(QStringLiteral("bandeau-essai"), QStringLiteral("titre-1"))) == int(std::lround(3 * fps)); }, 6000));
+            waitMs(900);
+            CHECK(readAll(indexPath).contains(QLatin1String("data-duration=\"3\"")));
+            // Refaire, puis motion_rendre : c'est le rendu long qui revient (pas le premier, plus court), et
+            // l'outil attend que le clip ait pris sa durée.
+            undoStack->redo();
+            r = call(timeline, QStringLiteral("motion_rendre"), {{QStringLiteral("nom"), QStringLiteral("bandeau-essai")}});
+            INFO(QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString());
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            CHECK(elementOf(r, QStringLiteral("titre-1")).value(QStringLiteral("len")).toInt() == int(std::lround(6 * fps)));
+            CHECK_FALSE(r.contains(QStringLiteral("non_allonges")));
+            waitMs(900);
+            CHECK(timeline->getClipPlaytime(mirror.clipFor(QStringLiteral("bandeau-essai"), QStringLiteral("titre-1"))) == int(std::lround(6 * fps)));
+            CHECK(readAll(indexPath).contains(QLatin1String("data-duration=\"6\"")));
+            undoStack->undo();
+            CHECK(waitFor([&]() { return timeline->getClipPlaytime(mirror.clipFor(QStringLiteral("bandeau-essai"), QStringLiteral("titre-1"))) == int(std::lround(3 * fps)); }, 6000));
+            waitMs(900);
         }
 
         r = call(timeline, QStringLiteral("motion_element"),

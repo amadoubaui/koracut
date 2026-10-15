@@ -1240,6 +1240,7 @@ void insertMotionRefusals(QJsonObject &o, const Timeline &own, KoraCutMotionMirr
 {
     QJsonArray notPlaced;
     QJsonArray notMoved;
+    QJsonArray notLengthened;
     for (const KoraCutMotionMirror::PlacementRefusal &f : mirror->placementRefusals(name)) {
         QJsonObject r{{QStringLiteral("element"), f.elementId}, {QStringLiteral("position"), f.position}, {QStringLiteral("duree"), f.length}, {QStringLiteral("raison"), f.reason}};
         if (own && f.trackId >= 0 && own->isTrack(f.trackId)) {
@@ -1256,6 +1257,12 @@ void insertMotionRefusals(QJsonObject &o, const Timeline &own, KoraCutMotionMirr
             continue;
         }
         r.insert(QStringLiteral("clip_id"), f.clipId);
+        if (f.resize) {
+            // Un allongement refusé : duree est la durée voulue, duree_actuelle celle que le clip garde.
+            r.insert(QStringLiteral("duree_actuelle"), f.stayedLength);
+            notLengthened.append(r);
+            continue;
+        }
         QJsonObject stayed{{QStringLiteral("piste_id"), f.stayedTrack}, {QStringLiteral("pos"), f.stayedPosition}};
         if (own && own->isTrack(f.stayedTrack)) {
             stayed.insert(QStringLiteral("piste"), trackLabel(own, f.stayedTrack));
@@ -1268,6 +1275,9 @@ void insertMotionRefusals(QJsonObject &o, const Timeline &own, KoraCutMotionMirr
     }
     if (!notMoved.isEmpty()) {
         o.insert(QStringLiteral("non_deplaces"), notMoved);
+    }
+    if (!notLengthened.isEmpty()) {
+        o.insert(QStringLiteral("non_allonges"), notLengthened);
     }
 }
 
@@ -1675,7 +1685,13 @@ QJsonObject motionElement(const Timeline &, const Args &args)
     // la réponse le dit pour cet élément, au lieu d'un « ok » que la timeline dément (13 octobre 2026).
     QJsonObject refusals;
     insertMotionRefusals(refusals, mirror->timelineFor(project), mirror, project);
-    for (const QString &key : {QStringLiteral("non_deplaces"), QStringLiteral("non_poses")}) {
+    // Plus long que son rendu en place : le clip prend sa durée à l'arrivée du nouveau rendu (15 octobre 2026).
+    if (mirror->lengthPending(project, id)) {
+        result.insert(QStringLiteral("allongement_en_attente"), true);
+        result.insert(QStringLiteral("remarque"),
+                      QStringLiteral("Le clip de « %1 » prendra sa nouvelle durée à l'arrivée du nouveau rendu (motion_rendre avec attente, ou motion_lister).").arg(id));
+    }
+    for (const QString &key : {QStringLiteral("non_deplaces"), QStringLiteral("non_poses"), QStringLiteral("non_allonges")}) {
         QJsonArray mine;
         const QJsonArray all = refusals.value(key).toArray();
         for (const QJsonValue &v : all) {
@@ -1688,6 +1704,8 @@ QJsonObject motionElement(const Timeline &, const Args &args)
             result.insert(QStringLiteral("remarque"),
                           key == QLatin1String("non_deplaces")
                               ? QStringLiteral("Le clip de « %1 » n'a PAS bougé : sa place d'arrivée est prise (voir non_deplaces, reste_a). Libère la place, puis redonne son début.").arg(id)
+                              : key == QLatin1String("non_allonges")
+                              ? QStringLiteral("Le clip de « %1 » n'a PAS été allongé (voir non_allonges : raison, occupe_par, duree_actuelle). Place prise : libère-la, puis redonne sa durée.").arg(id)
                               : QStringLiteral("« %1 » n'a PAS pu être posé : sa place est prise (voir non_poses). Libère la place ou change son début.").arg(id));
         }
     }

@@ -565,6 +565,7 @@ void KoraCutMotionMirror::renderAll(const QString &name, bool force)
             }
             if (force) {
                 QFile::remove(renderOutput(entry, e));
+                QFile::remove(renderOutput(entry, e, frames(e.duration, fps())));
             }
             requestRender(entry, e);
         }
@@ -586,6 +587,7 @@ int KoraCutMotionMirror::renderElements(const QString &name, const QStringList &
         }
         if (force) {
             QFile::remove(renderOutput(entry, e));
+            QFile::remove(renderOutput(entry, e, frames(e.duration, fps())));
         }
         entry.failed.remove(e.id);
         requestRender(entry, e);
@@ -595,11 +597,14 @@ int KoraCutMotionMirror::renderElements(const QString &name, const QStringList &
     return count;
 }
 
-QString KoraCutMotionMirror::renderOutput(const Entry &entry, const KoraCutMotion::Element &element) const
+QString KoraCutMotionMirror::renderOutput(const Entry &entry, const KoraCutMotion::Element &element, int lengthFrames) const
 {
     // Un plan opaque rendu d'un seul tenant n'a pas besoin de transparence : MP4, bien plus léger.
     const bool opaque = element.kind == KoraCutMotion::Kind::Whole && entry.sync->composition().opaque;
-    return KoraCutMotionProject::cacheDir(m_doc, entry.name) + QLatin1Char('/') + element.id + QLatin1Char('-') + element.hash +
+    // La durée d'un bloc n'entre pas dans son empreinte : un bloc allongé au-delà de son rendu est rendu
+    // à part, sous un nom qui porte sa durée (le premier rendu reste en cache, rien n'est écrasé).
+    const QString length = lengthFrames > 0 ? QStringLiteral("-%1i").arg(lengthFrames) : QString();
+    return KoraCutMotionProject::cacheDir(m_doc, entry.name) + QLatin1Char('/') + element.id + QLatin1Char('-') + element.hash + length +
         (opaque ? QStringLiteral(".mp4") : QStringLiteral(".mov"));
 }
 
@@ -668,7 +673,7 @@ QString KoraCutMotionMirror::envelopeFor(const Entry &entry, const KoraCutMotion
     return out;
 }
 
-void KoraCutMotionMirror::requestRender(Entry &entry, const KoraCutMotion::Element &element)
+void KoraCutMotionMirror::requestRender(Entry &entry, const KoraCutMotion::Element &element, int lengthFrames)
 {
     if (element.kind == KoraCutMotion::Kind::Audio || !element.startResolved || !m_doc) {
         return;
@@ -683,7 +688,14 @@ void KoraCutMotionMirror::requestRender(Entry &entry, const KoraCutMotion::Eleme
     r.elementId = element.id;
     r.hash = element.hash;
     r.envelopeHtml = envelopeFor(entry, element);
-    r.output = renderOutput(entry, element);
+    r.output = renderOutput(entry, element, lengthFrames);
+    if (lengthFrames <= 0 && element.kind != KoraCutMotion::Kind::Whole && element.durationKnown) {
+        // Un bloc allongé a son rendu à sa durée : c'est lui qui revient, pas le premier rendu, plus court.
+        const QString longer = renderOutput(entry, element, frames(element.duration, fps()));
+        if (QFileInfo(longer).size() > 0) {
+            r.output = longer;
+        }
+    }
     r.format = r.output.endsWith(QLatin1String(".mp4")) ? QStringLiteral("mp4") : QStringLiteral("mov");
     r.fps = fps();
     entry.failed.remove(element.id);
@@ -1082,8 +1094,18 @@ bool KoraCutMotionMirror::applyFromFile(const QString &name, bool logUndo, const
             }
             if (wantedLength > 0 && tl->getClipPlaytime(cid) != wantedLength) {
                 int size = wantedLength;
-                tl->requestItemResize(cid, size, true, true, *undo, *redo);
-                changed = true;
+                const int current = tl->getClipPlaytime(cid);
+                if (tl->requestItemResize(cid, size, true, true, *undo, *redo)) {
+                    changed = true;
+                    entry.pendingLength.remove(e.id);
+                } else if (wantedLength > current) {
+                    // Plus long que le rendu en place (15 octobre 2026) : le clip attend le nouveau rendu, ou
+                    // la place est prise et c'est dit. Avant, rien n'était retenu et la réconciliation suivante
+                    // réécrivait l'ancienne durée dans le fichier : l'allongement était perdu.
+                    lengthenLater(entry, tl, e, cid, wantedTrack >= 0 ? wantedTrack : tid, wantedPosition, wantedLength);
+                }
+            } else {
+                entry.pendingLength.remove(e.id);
             }
             if (tl->getClipPosition(cid) != wantedPosition || (wantedTrack >= 0 && tid != wantedTrack)) {
                 const int targetTrack = wantedTrack >= 0 ? wantedTrack : tid;
@@ -1267,8 +1289,11 @@ void KoraCutMotionMirror::onRendered(const QString &project, const QString &elem
             scheduleThumbnail(existing);
         }
         if (clipFor(project, elementId) >= 0) {
-            // Un élément seul rallongé attendait son nouveau rendu pour que son clip prenne toute sa durée.
-            if (entry.sync->composition().isElement()) {
+            // Un clip allongé attendait ce rendu pour prendre toute sa durée : on la lui donne dès que le
+            // chutier a rechargé le média.
+            if (entry.pendingLength.contains(elementId)) {
+                QTimer::singleShot(300, this, [this, project, elementId]() { settleLength(project, elementId, 0); });
+            } else if (entry.sync->composition().isElement()) {
                 QTimer::singleShot(600, this, [this, project]() { applyFromFile(project, false); });
             }
             Q_EMIT elementsChanged(project);
@@ -1337,6 +1362,8 @@ void KoraCutMotionMirror::onRenderFailed(const QString &project, const QString &
     }
     m_entries[project].failed.insert(elementId);
     m_entries[project].progress.remove(elementId);
+    // Un clip qui attendait ce rendu pour s'allonger ne l'aura pas : c'est dit.
+    abandonLength(project, elementId, QStringLiteral("rendu_echoue"));
     Q_EMIT message(i18n("Motion: the render of %1 failed. %2", elementId, error));
     Q_EMIT elementsChanged(project);
 }
@@ -1407,8 +1434,15 @@ void KoraCutMotionMirror::reconcileSequence(const QString &sequence)
                     attributes.insert(e->kind == Kind::Whole ? QStringLiteral("data-koracut-start") : QStringLiteral("data-start"), secondsText(position / projectFps));
                 }
                 if ((e->kind != Kind::Whole || single) && (!e->durationKnown || length != frames(e->duration, projectFps))) {
-                    // Un élément seul rallongé ou raccourci : sa durée change, son animation est rendue à nouveau.
-                    attributes.insert(QStringLiteral("data-duration"), secondsText(length / projectFps));
+                    const auto waiting = entry.pendingLength.constFind(info.elementId);
+                    if (waiting != entry.pendingLength.constEnd() && waiting->clipId == cid && waiting->from == length && e->durationKnown &&
+                        waiting->to == frames(e->duration, projectFps)) {
+                        // Le clip attend un rendu plus long : c'est le fichier qui a raison, il garde sa durée.
+                    } else {
+                        // Un élément seul rallongé ou raccourci : sa durée change, son animation est rendue à nouveau.
+                        entry.pendingLength.remove(info.elementId);
+                        attributes.insert(QStringLiteral("data-duration"), secondsText(length / projectFps));
+                    }
                 }
                 if (e->kind == Kind::Audio) {
                     const int in = tl->getClipIn(cid);
@@ -1840,11 +1874,123 @@ QList<KoraCutMotionMirror::PlacementRefusal> KoraCutMotionMirror::placementRefus
         }
         const PlacementRefusal r = entry.refused.value(e.id);
         const int cid = clipFor(project, e.id);
-        if (r.clipId < 0 ? cid < 0 : (tl && cid == r.clipId && tl->getClipTrackId(cid) == r.stayedTrack && tl->getClipPosition(cid) == r.stayedPosition)) {
+        const bool stillTrue = r.clipId < 0 ? cid < 0
+                               : r.resize ? (tl && cid == r.clipId && tl->getClipPlaytime(cid) == r.stayedLength)
+                                          : (tl && cid == r.clipId && tl->getClipTrackId(cid) == r.stayedTrack && tl->getClipPosition(cid) == r.stayedPosition);
+        if (stillTrue) {
             list.append(r);
         }
     }
     return list;
+}
+
+bool KoraCutMotionMirror::lengthPending(const QString &project, const QString &elementId) const
+{
+    return m_entries.contains(project) && m_entries[project].pendingLength.contains(elementId);
+}
+
+void KoraCutMotionMirror::lengthenLater(Entry &entry, const std::shared_ptr<TimelineItemModel> &tl, const KoraCutMotion::Element &element, int cid, int track,
+                                        int position, int length)
+{
+    const int current = tl->getClipPlaytime(cid);
+    // La place d'arrivée : rien d'autre que ce clip sur la piste, de position à position + length (fin exclue).
+    int blocking = -1;
+    if (tl->isTrack(track)) {
+        const auto items = tl->getItemsInRange(track, position, position + length, false);
+        for (int id : items) {
+            if (id != cid && tl->isClip(id) && (blocking < 0 || tl->getClipPosition(id) < tl->getClipPosition(blocking))) {
+                blocking = id;
+            }
+        }
+    }
+    const bool locked = tl->isTrack(track) && tl->trackIsLocked(track);
+    if (blocking >= 0 || locked || !tl->isTrack(track)) {
+        entry.pendingLength.remove(element.id);
+        PlacementRefusal r;
+        r.elementId = element.id;
+        r.trackId = track;
+        r.position = position;
+        r.length = length;
+        r.reason = blocking >= 0 ? QStringLiteral("place_occupee") : locked ? QStringLiteral("piste_verrouillee") : QStringLiteral("piste_indisponible");
+        r.blockingClip = blocking;
+        r.clipId = cid;
+        r.stayedTrack = tl->getClipTrackId(cid);
+        r.stayedPosition = tl->getClipPosition(cid);
+        r.resize = true;
+        r.stayedLength = current;
+        entry.refused.insert(element.id, r);
+        return;
+    }
+    Entry::PendingLength pending;
+    const auto known = entry.pendingLength.constFind(element.id);
+    if (known != entry.pendingLength.constEnd() && known->clipId == cid && known->to == length) {
+        pending = *known;
+    }
+    pending.clipId = cid;
+    pending.from = current;
+    pending.to = length;
+    // Une composition d'un seul élément : la durée est dans son empreinte, le nouveau rendu est déjà demandé
+    // par le changement d'empreinte. Un bloc : même empreinte, il faut demander un rendu plus long, une fois.
+    if (element.kind != KoraCutMotion::Kind::Whole && element.kind != KoraCutMotion::Kind::Audio && !pending.longerRender) {
+        const QString binId = findBinClip(entry.name, element.id);
+        auto bin = binId.isEmpty() ? nullptr : pCore->projectItemModel()->getClipByBinID(binId);
+        if (bin && bin->getProducerProperty(kClipHash) == element.hash && int(bin->frameDuration()) < entryPoint(element, fps()) + length) {
+            pending.longerRender = true;
+            entry.pendingLength.insert(element.id, pending);
+            requestRender(entry, element, length);
+            return;
+        }
+    }
+    entry.pendingLength.insert(element.id, pending);
+}
+
+void KoraCutMotionMirror::settleLength(const QString &project, const QString &elementId, int attempt)
+{
+    if (!m_entries.contains(project) || !m_entries[project].pendingLength.contains(elementId)) {
+        return;
+    }
+    applyFromFile(project, false);
+    if (!m_entries.contains(project) || !m_entries[project].pendingLength.contains(elementId)) {
+        return;
+    }
+    if (m_renderer->isPending(project, elementId)) {
+        // Le rendu attendu n'est pas encore là (un rendu du cache est revenu avant lui) : son arrivée relancera.
+        return;
+    }
+    if (attempt < 20) {
+        // Le chutier recharge encore le média : on repasse.
+        QTimer::singleShot(300, this, [this, project, elementId, attempt]() { settleLength(project, elementId, attempt + 1); });
+        return;
+    }
+    // Six secondes plus tard, le clip n'a toujours pas pu prendre sa durée : le rendu est trop court. C'est dit.
+    abandonLength(project, elementId, QStringLiteral("rendu_trop_court"));
+}
+
+void KoraCutMotionMirror::abandonLength(const QString &project, const QString &elementId, const QString &reason)
+{
+    if (!m_entries.contains(project) || !m_entries[project].pendingLength.contains(elementId)) {
+        return;
+    }
+    // Le clip garde sa durée : la prochaine mise en accord la réécrira dans le fichier, comme pour tout refus.
+    Entry &entry = m_entries[project];
+    const Entry::PendingLength pending = entry.pendingLength.take(elementId);
+    auto tl = timelineFor(project);
+    if (!tl || !tl->isClip(pending.clipId)) {
+        return;
+    }
+    PlacementRefusal r;
+    r.elementId = elementId;
+    r.trackId = tl->getClipTrackId(pending.clipId);
+    r.position = tl->getClipPosition(pending.clipId);
+    r.length = pending.to;
+    r.reason = reason;
+    r.clipId = pending.clipId;
+    r.stayedTrack = r.trackId;
+    r.stayedPosition = r.position;
+    r.resize = true;
+    r.stayedLength = tl->getClipPlaytime(pending.clipId);
+    entry.refused.insert(elementId, r);
+    Q_EMIT elementsChanged(project);
 }
 
 bool KoraCutMotionMirror::waitForPlacement(const QString &project, int ms)
@@ -1861,6 +2007,9 @@ bool KoraCutMotionMirror::waitForPlacement(const QString &project, int ms)
             return false;
         }
         for (const KoraCutMotion::Element &e : comp.elements) {
+            if (entry.pendingLength.contains(e.id) && !entry.failed.contains(e.id)) {
+                return true;
+            }
             if (e.kind == KoraCutMotion::Kind::Audio || !e.startResolved || entry.failed.contains(e.id) || entry.refused.contains(e.id) || clipFor(project, e.id) >= 0) {
                 continue;
             }

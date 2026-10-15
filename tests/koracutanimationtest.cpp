@@ -408,6 +408,77 @@ TEST_CASE("Motion, lot 5 : éléments seuls, transitions qui suivent la coupe, g
             mirror.renderer()->waitForIdle(20000);
             waitMs(900);
 
+            // La durée change par motion_element (15 octobre 2026, relevé au remplacement des voix d'une
+            // campagne) : plus longue que le rendu en place, le clip attendait le nouveau rendu, et le miroir
+            // réécrivait l'ancienne durée dans le fichier entre-temps. Le clip doit prendre la nouvelle durée,
+            // le fichier la garder, en une seule étape d'annulation.
+            {
+                const int clip = mirror.clipFor(QStringLiteral("titre-bunny"), QStringLiteral("titre-bunny"));
+                REQUIRE(clip >= 0);
+                REQUIRE(timeline->getClipPlaytime(clip) == 50);
+                const int pos = timeline->getClipPosition(clip);
+                const int lengthBefore = undoStack->index();
+                r = call(timeline, QStringLiteral("motion_element"),
+                         {{QStringLiteral("nom"), QStringLiteral("titre-bunny")}, {QStringLiteral("id"), QStringLiteral("titre-bunny")}, {QStringLiteral("duree"), 75 / fps}});
+                INFO(dump(r));
+                REQUIRE(r.value(QStringLiteral("ok")).toBool());
+                CHECK(r.value(QStringLiteral("rendu_relance")).toBool());
+                CHECK(r.value(QStringLiteral("allongement_en_attente")).toBool());
+                CHECK(undoStack->index() == lengthBefore + 1);
+                mirror.renderer()->waitForIdle(20000);
+                CHECK(waitFor([&]() { return timeline->getClipPlaytime(mirror.clipFor(QStringLiteral("titre-bunny"), QStringLiteral("titre-bunny"))) == 75; }, 6000));
+                waitMs(900);
+                const int longer = mirror.clipFor(QStringLiteral("titre-bunny"), QStringLiteral("titre-bunny"));
+                CHECK(timeline->getClipPlaytime(longer) == 75);
+                CHECK(timeline->getClipPosition(longer) == pos);
+                CHECK(readAll(titleIndex).contains(QStringLiteral("data-duration=\"%1\"").arg(KoraCutMotion::secondsText(75 / fps))));
+                CHECK(undoStack->index() == lengthBefore + 1);
+                // Annuler : la durée d'avant, au clip et au fichier.
+                undoStack->undo();
+                mirror.renderer()->waitForIdle(20000);
+                CHECK(waitFor([&]() { return timeline->getClipPlaytime(mirror.clipFor(QStringLiteral("titre-bunny"), QStringLiteral("titre-bunny"))) == 50; }, 6000));
+                waitMs(900);
+                CHECK(timeline->getClipPlaytime(mirror.clipFor(QStringLiteral("titre-bunny"), QStringLiteral("titre-bunny"))) == 50);
+                CHECK(readAll(titleIndex).contains(QStringLiteral("data-duration=\"%1\"").arg(KoraCutMotion::secondsText(50 / fps))));
+                // Refaire : de nouveau plus long (le rendu revient du cache).
+                undoStack->redo();
+                mirror.renderer()->waitForIdle(20000);
+                CHECK(waitFor([&]() { return timeline->getClipPlaytime(mirror.clipFor(QStringLiteral("titre-bunny"), QStringLiteral("titre-bunny"))) == 75; }, 6000));
+                waitMs(900);
+                CHECK(readAll(titleIndex).contains(QStringLiteral("data-duration=\"%1\"").arg(KoraCutMotion::secondsText(75 / fps))));
+                // Une place prise : un clip posé juste après le titre. L'allongement est refusé, et dit.
+                const int obstacle = mirror.clipFor(QStringLiteral("titre-bunny"), QStringLiteral("titre-bunny"));
+                const int animationsTrackId = timeline->getClipTrackId(obstacle);
+                int blocker = -1;
+                REQUIRE(timeline->requestClipInsertion(QStringLiteral("V%1/0/9").arg(timeline->getClipBinId(shots.at(0))), animationsTrackId, pos + 80,
+                                                       blocker, true, true, false));
+                const int refusedBefore = undoStack->index();
+                r = call(timeline, QStringLiteral("motion_element"),
+                         {{QStringLiteral("nom"), QStringLiteral("titre-bunny")}, {QStringLiteral("id"), QStringLiteral("titre-bunny")}, {QStringLiteral("duree"), 100 / fps}});
+                INFO(dump(r));
+                REQUIRE(r.value(QStringLiteral("ok")).toBool());
+                REQUIRE(r.value(QStringLiteral("non_allonges")).toArray().size() == 1);
+                const QJsonObject refused = r.value(QStringLiteral("non_allonges")).toArray().first().toObject();
+                CHECK(refused.value(QStringLiteral("raison")).toString() == QStringLiteral("place_occupee"));
+                CHECK(refused.value(QStringLiteral("occupe_par")).toObject().value(QStringLiteral("clip_id")).toInt() == blocker);
+                CHECK(refused.value(QStringLiteral("duree")).toInt() == 100);
+                CHECK(refused.value(QStringLiteral("duree_actuelle")).toInt() == 75);
+                CHECK(r.value(QStringLiteral("remarque")).toString().contains(QLatin1String("PAS")));
+                CHECK_FALSE(r.value(QStringLiteral("allongement_en_attente")).toBool());
+                mirror.renderer()->waitForIdle(20000);
+                waitMs(900);
+                CHECK(timeline->getClipPlaytime(mirror.clipFor(QStringLiteral("titre-bunny"), QStringLiteral("titre-bunny"))) == 75);
+                // On remet tout comme avant : le refus, l'obstacle, l'allongement.
+                while (undoStack->index() > lengthBefore) {
+                    undoStack->undo();
+                }
+                CHECK_FALSE(timeline->isClip(blocker));
+                mirror.renderer()->waitForIdle(20000);
+                CHECK(waitFor([&]() { return timeline->getClipPlaytime(mirror.clipFor(QStringLiteral("titre-bunny"), QStringLiteral("titre-bunny"))) == 50; }, 6000));
+                waitMs(900);
+                CHECK(readAll(titleIndex).contains(QStringLiteral("data-duration=\"%1\"").arg(KoraCutMotion::secondsText(50 / fps))));
+            }
+
             // La transition entre le premier et le deuxième plan, centrée sur la coupe (100).
             before = undoStack->index();
             r = call(timeline, QStringLiteral("motion_transition"), {{QStringLiteral("clip_avant"), shots.at(0)}, {QStringLiteral("style"), QStringLiteral("cordes")}, {QStringLiteral("duree"), 20}});

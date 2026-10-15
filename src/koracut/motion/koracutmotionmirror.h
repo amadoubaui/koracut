@@ -93,11 +93,13 @@ public:
         int trackId = -1;      ///< la piste visée, -1 si aucune n'a pu être trouvée ou créée
         int position = 0;      ///< en images
         int length = 0;        ///< en images
-        QString reason;        ///< place_occupee, piste_verrouillee, piste_indisponible, pose_refusee, deplacement_refuse
+        QString reason;        ///< place_occupee, piste_verrouillee, piste_indisponible, pose_refusee, deplacement_refuse, rendu_trop_court, rendu_echoue
         int blockingClip = -1; ///< place_occupee : le premier clip qui tient la place
         int clipId = -1;       ///< un déplacement refusé : le clip de l'élément, resté où il était
         int stayedTrack = -1;
         int stayedPosition = -1;
+        bool resize = false;   ///< un allongement refusé (length : la durée voulue) : le clip garde stayedLength
+        int stayedLength = -1;
     };
 
     /** @brief Le projet KoraCut courant et sa timeline. Relit les projets Motion du dossier. */
@@ -166,6 +168,9 @@ public:
     /** @brief Après un rendu : laisse au chutier le temps de charger les rendus prêts, jusqu'à ce que chaque
      * élément rendu ait son clip ou son refus (au plus @p ms). @return vrai si plus rien n'est en suspens. */
     bool waitForPlacement(const QString &project, int ms);
+    /** @brief Vrai si le clip de cet élément attend un rendu plus long pour prendre la durée du fichier
+     * (motion_element avec une durée plus longue que le rendu en place). */
+    bool lengthPending(const QString &project, const QString &elementId) const;
 
     // Lot 5 du document 19 : un élément = une composition, posée comme un seul clip.
     /** @brief Où poser une composition d'un seul élément qui vient d'être créée : la piste voulue (-1 : la
@@ -227,6 +232,16 @@ private:
         QSet<QString> placed;                  ///< les éléments qui ont eu un clip dans la timeline
         QMap<QString, PlacementRefusal> refused; ///< les éléments dont la pose a été refusée (place prise…)
         QMap<QString, RemovedElement> removed; ///< retirés du HTML après la suppression de leur clip
+        /** Un clip plus court que la durée du fichier, parce que son rendu en place est trop court : il
+         * attend le nouveau rendu. Pendant ce temps, le miroir ne réécrit pas l'ancienne durée dans le HTML. */
+        struct PendingLength
+        {
+            int clipId = -1;
+            int from = 0; ///< la durée du clip, en images
+            int to = 0;   ///< la durée du fichier
+            bool longerRender = false; ///< un bloc (sa durée n'entre pas dans l'empreinte) : rendu plus long demandé
+        };
+        QMap<QString, PendingLength> pendingLength;
         int homeTrack = -1;                    ///< composition d'un seul élément : la piste où poser son clip
         int cutBefore = -1;                    ///< transition : le plan qui finit à la coupe
         int cutAfter = -1;                     ///< transition : le plan qui commence à la coupe
@@ -242,7 +257,7 @@ private:
      * ramènent leur élément. @return les projets réécrits. */
     QStringList reconcileRemovals(const std::shared_ptr<TimelineItemModel> &tl, const QString &sequence);
     static int entryPoint(const KoraCutMotion::Element &element, double fps);
-    void requestRender(Entry &entry, const KoraCutMotion::Element &element);
+    void requestRender(Entry &entry, const KoraCutMotion::Element &element, int lengthFrames = 0);
     void onRendered(const QString &project, const QString &elementId, const QString &hash, const QString &path);
     void onRenderFailed(const QString &project, const QString &elementId, const QString &error);
     void scheduleReconcile(const QString &sequence);
@@ -265,7 +280,17 @@ private:
     QString findBinClip(const QString &project, const QString &elementId) const;
     /** @brief La vignette du clip du chutier au milieu du rendu (un rendu transparent est vide à sa première image). */
     void scheduleThumbnail(const QString &binId, int attempt = 0);
-    QString renderOutput(const Entry &entry, const KoraCutMotion::Element &element) const;
+    /** @brief Le fichier de rendu d'un élément. @p lengthFrames > 0 : la variante d'un bloc rendu plus long
+     * que son premier rendu (même empreinte, autre durée). */
+    QString renderOutput(const Entry &entry, const KoraCutMotion::Element &element, int lengthFrames = 0) const;
+    /** @brief Le clip de @p cid ne peut pas encore prendre @p length images : place libre, il attend un rendu
+     * plus long ; place prise ou piste verrouillée, le refus est gardé. */
+    void lengthenLater(Entry &entry, const std::shared_ptr<TimelineItemModel> &tl, const KoraCutMotion::Element &element, int cid, int track, int position,
+                       int length);
+    /** @brief Après l'arrivée du rendu : redonne au clip la durée du fichier, quelques fois tant que le chutier recharge. */
+    void settleLength(const QString &project, const QString &elementId, int attempt);
+    /** @brief L'allongement attendu n'aura pas lieu (@p reason : rendu_trop_court, rendu_echoue) : gardé comme un refus. */
+    void abandonLength(const QString &project, const QString &elementId, const QString &reason);
     QString envelopeFor(const Entry &entry, const KoraCutMotion::Element &element) const;
     bool insertClip(const Entry &entry, const KoraCutMotion::Element &element, const QString &binId, int in, int length, Fun &undo, Fun &redo);
     /** @brief La piste d'une composition d'un seul élément, libre de @p position sur @p length images : sa
