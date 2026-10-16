@@ -13,6 +13,7 @@
 #include "doc/kdenlivedoc.h"
 #include "koracut/koracutagenttools.h"
 #include "koracut/motion/koracutmotionmirror.h"
+#include "koracut/motion/koracutmotionproject.h"
 #include "koracut/motion/koracutmotionrenderer.h"
 #include "koracut/motion/koracutmotionsync.h"
 
@@ -27,6 +28,10 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QUndoGroup>
+#include <QUrl>
+
+#include <atomic>
 
 #include <algorithm>
 #include <cmath>
@@ -1079,6 +1084,134 @@ TEST_CASE("Outils Motion : deux séquences, noms libérés, fichiers fournis", "
     waitMs(800);
     KoraCutMotionRenderer::setSimulator({});
     mirror.clear();
+    KoraCutAgentTools::setMotionMirror(nullptr);
+    pCore->projectManager()->closeCurrentDocument(false, false);
+}
+
+// 15 octobre 2026 : un ménage du cache vide `cache/motion/`. À la réouverture, chaque rendu absent ouvrait la fenêtre
+// « Problèmes du clip » alors que sa composition est là et que le miroir sait le refaire. Le clip devient un
+// espace réservé sans question, son rendu se refait en fond (un à la fois), et il reprend sa place. Un rendu
+// dont la composition a disparu reste, lui, un vrai problème. Et le vidage du cache d'un projet épargne `motion/`.
+TEST_CASE("Motion : un rendu parti avec le cache se refait sans fenêtre", "[KoraCutMotionTools]")
+{
+    // Le vidage d'un dossier de cache : tout part sauf motion/ et le témoin du fichier projet.
+    {
+        QTemporaryDir cache;
+        REQUIRE(cache.isValid());
+        QTemporaryDir projets;
+        REQUIRE(projets.isValid());
+        const QString projet = projets.path() + QStringLiteral("/essai.koracut");
+        QFile(projet).open(QIODevice::WriteOnly);
+        QDir(cache.path()).mkpath(QStringLiteral("motion/titre"));
+        QDir(cache.path()).mkpath(QStringLiteral("videothumbs"));
+        QFile(cache.path() + QStringLiteral("/motion/titre/titre-1-abc.mov")).open(QIODevice::WriteOnly);
+        QFile(cache.path() + QStringLiteral("/videothumbs/1.png")).open(QIODevice::WriteOnly);
+        const QString temoin = cache.path() + QLatin1Char('/') + QLatin1Char('.') + QString::fromUtf8(QUrl::toPercentEncoding(projet));
+        QFile(temoin).open(QIODevice::WriteOnly);
+        CHECK(KoraCutMotionProject::projectFileOfCache(cache.path()) == projet);
+        CHECK(KoraCutMotionProject::clearCacheKeepingMotion(cache.path()));
+        CHECK(QFile::exists(cache.path() + QStringLiteral("/motion/titre/titre-1-abc.mov")));
+        CHECK(QFile::exists(temoin));
+        CHECK_FALSE(QFileInfo::exists(cache.path() + QStringLiteral("/videothumbs")));
+        QFile::remove(projet);
+        CHECK(KoraCutMotionProject::projectFileOfCache(cache.path()).isEmpty());
+    }
+
+    if (ffmpegPath().isEmpty()) {
+        WARN("ffmpeg absent : la réouverture n'est pas essayée");
+        return;
+    }
+    auto binModel = pCore->projectItemModel();
+    std::shared_ptr<DocUndoStack> undoStack = std::make_shared<DocUndoStack>(nullptr);
+    auto document = std::make_unique<KdenliveDoc>(undoStack);
+    pCore->projectManager()->testSetDocument(document.get());
+    KdenliveTests::updateTimeline(false, QString(), QString(), QDateTime::currentDateTime(), 0);
+    auto timeline = document->getTimeline(document->uuid());
+    pCore->projectManager()->testSetActiveTimeline(timeline);
+
+    QTemporaryDir tmp;
+    REQUIRE(tmp.isValid());
+    const QString saveFile = tmp.path() + QStringLiteral("/reprise.koracut");
+    document->setUrl(QUrl::fromLocalFile(saveFile));
+    {
+        QFile marker(saveFile);
+        REQUIRE(marker.open(QIODevice::WriteOnly));
+    }
+    std::atomic<int> rendus{0};
+    KoraCutMotionRenderer::setSimulator([&rendus](const KoraCutMotionRenderRequest &r) {
+        ++rendus;
+        return fakeRender(r, 4.);
+    });
+    auto mirror = std::make_unique<KoraCutMotionMirror>();
+    mirror->setDocument(document.get(), timeline);
+    QJsonObject r = call(timeline, QStringLiteral("motion_creer"), {{QStringLiteral("nom"), QStringLiteral("reprise")}});
+    INFO(dumpJson(r));
+    REQUIRE(r.value(QStringLiteral("ok")).toBool());
+    REQUIRE(waitFor([&]() { return mirror->clipFor(QStringLiteral("reprise"), QStringLiteral("titre-1")) >= 0; }, 20000));
+    const int cid = mirror->clipFor(QStringLiteral("reprise"), QStringLiteral("titre-1"));
+    const int position = timeline->getClipPosition(cid);
+    const int length = timeline->getClipPlaytime(cid);
+    const QString binId = timeline->getClipBinId(cid);
+    // Le rendu en place (dans les essais, le dossier de cache change à la réouverture : on relit toujours l'adresse du clip).
+    auto renderPath = [&]() { return binModel->getClipByBinID(binId)->url(); };
+    REQUIRE(QFile::exists(renderPath()));
+    mirror->renderer()->waitForIdle(20000);
+    waitMs(800);
+
+    std::unique_ptr<KdenliveDoc> ouvert;
+    // Enregistre, vide le rendu comme un ménage du cache, ferme et rouvre. Rend le résultat de l'ouverture.
+    auto rouvrir = [&]() -> bool {
+        const QString rendered = renderPath();
+        pCore->projectManager()->testSaveFileAs(saveFile);
+        mirror->clear();
+        timeline.reset();
+        pCore->projectManager()->closeCurrentDocument(false, false);
+        REQUIRE(QFile::remove(rendered));
+        QUndoGroup *undoGroup = new QUndoGroup(pCore.get());
+        undoGroup->addStack(undoStack.get());
+        DocOpenResult res = KdenliveDoc::Open(QUrl::fromLocalFile(saveFile), QDir::temp().path(), undoGroup, false, nullptr);
+        if (!res.isSuccessful()) {
+            return false;
+        }
+        document.reset();
+        ouvert = res.getDocument();
+        pCore->projectManager()->testSetDocument(ouvert.get());
+        const QUuid uuid = ouvert->uuid();
+        KdenliveTests::updateTimeline(false, QString(), QString(), QFileInfo(saveFile).lastModified(), 0);
+        pCore->projectManager()->openTimeline(binModel->getAllSequenceClips().value(uuid), -1, uuid);
+        timeline = ouvert->getTimeline(uuid);
+        pCore->projectManager()->testSetActiveTimeline(timeline);
+        return true;
+    };
+
+    // Le HTML est là : l'ouverture passe (avant : « Problèmes du clip », et sans fenêtre l'ouverture était abandonnée).
+    REQUIRE(rouvrir());
+    auto bin = binModel->getClipByBinID(binId);
+    REQUIRE(bin);
+    CHECK(bin->clipStatus() == FileStatus::StatusMissing);
+    const int avant = rendus;
+    mirror->setDocument(ouvert.get(), timeline);
+    // Rien n'est lancé d'un coup : le rendu attend son tour dans la file.
+    CHECK(rendus == avant);
+    CHECK(mirror->restoreQueueSize() == 1);
+    REQUIRE(waitFor([&]() { return QFile::exists(renderPath()) && binModel->getClipByBinID(binId)->clipStatus() == FileStatus::StatusReady; }, 30000));
+    CHECK(rendus == avant + 1);
+    const int cid2 = mirror->clipFor(QStringLiteral("reprise"), QStringLiteral("titre-1"));
+    REQUIRE(cid2 >= 0);
+    CHECK(timeline->getClipPosition(cid2) == position);
+    CHECK(timeline->getClipPlaytime(cid2) == length);
+    REQUIRE(waitFor([&]() { return mirror->restoreQueueSize() == 0; }, 10000));
+    mirror->renderer()->waitForIdle(20000);
+    waitMs(800);
+
+    // La composition a disparu : le rendu absent reste un problème, l'ouverture (sans fenêtre possible) est abandonnée.
+    const QString motionDir = tmp.path() + QStringLiteral("/motion/reprise");
+    mirror->clear();
+    REQUIRE(QDir().rename(motionDir, tmp.path() + QStringLiteral("/ailleurs")));
+    CHECK_FALSE(rouvrir());
+
+    KoraCutMotionRenderer::setSimulator({});
+    mirror.reset();
     KoraCutAgentTools::setMotionMirror(nullptr);
     pCore->projectManager()->closeCurrentDocument(false, false);
 }

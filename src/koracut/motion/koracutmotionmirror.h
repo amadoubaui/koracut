@@ -19,6 +19,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 class KdenliveDoc;
 class KoraCutMotionRenderer;
+class ProjectClip;
 class QTimer;
 class TimelineItemModel;
 
@@ -204,6 +205,12 @@ public:
     /** @brief Le clip de timeline d'un élément, -1 s'il n'y en a pas. */
     int clipFor(const QString &project, const QString &elementId) const;
 
+    /** @brief Un clip du chutier dont le rendu Motion est absent (ménage du cache) et dont on se sert (aperçu) :
+     * son rendu passe en tête de la file des rendus à refaire. @return vrai s'il est un rendu Motion à refaire. */
+    bool restoreBinClip(const QString &binId);
+    /** @brief Les rendus absents qui attendent d'être refaits, en fond (un à la fois, jamais pendant la lecture). */
+    int restoreQueueSize() const { return m_restore.size() + (m_restoring.isEmpty() ? 0 : 1); }
+
     /** @brief Pour les essais : une ligne KORACUT-MOTION par élément. */
     QString stateDump() const;
 
@@ -307,6 +314,12 @@ private:
     bool findCutNear(const std::shared_ptr<TimelineItemModel> &tl, int aboveTrack, int center, int radius, int &before, int &after, int &cut) const;
     QString trackName(const Entry &entry, int trackIndex, bool audio) const;
     static int frames(double seconds, double fps);
+    /** @brief Vrai si le clip du chutier de cet élément n'a plus son rendu (espace réservé après un ménage du cache). */
+    static bool renderMissing(const std::shared_ptr<ProjectClip> &bin);
+    /** @brief Met le rendu absent de cet élément dans la file des rendus à refaire (@p first : en tête). */
+    void queueRestore(const QString &project, const QString &elementId, bool first);
+    /** @brief Lance le rendu suivant de la file, quand le précédent est fini et que personne ne lit ni ne glisse. */
+    void processRestore();
     static void merge(Fun &undo, Fun &redo, const Fun &localUndo, const Fun &localRedo);
 
     KdenliveDoc *m_doc{nullptr};
@@ -323,4 +336,8 @@ private:
     QSet<QString> m_dirty;  ///< les séquences dont la timeline a bougé depuis la dernière réconciliation
     QString m_sequence;     ///< uuid (sans accolades) de la séquence active
     QString m_mainSequence; ///< la séquence des compositions sans data-koracut-sequence
+    /** Les rendus absents à refaire (15 octobre 2026) : « projet/élément », la séquence active d'abord. */
+    QStringList m_restore;
+    QString m_restoring; ///< celui qui se rend en ce moment
+    QTimer *m_restoreTimer;
 };

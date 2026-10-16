@@ -7945,6 +7945,9 @@ void MainWindow::setTimelineToolbarIconSize(QAction *a)
 
 void MainWindow::slotManageCache()
 {
+    if (pCore->currentDoc() == nullptr) {
+        return;
+    }
     QPointer<TemporaryData> d(new TemporaryData(pCore->currentDoc(), false, this));
     connect(d, &TemporaryData::disableProxies, this, &MainWindow::slotDisableProxies);
     d->exec();
@@ -8702,7 +8705,8 @@ void MainWindow::checkMaxCacheSize()
         toAdd << cacheDir;
     }
     if (backupFolder.exists()) {
-        toAdd << cacheDir;
+        // KoraCut : le dossier des sauvegardes, pas une seconde fois le cache (le total comptait le cache deux fois).
+        toAdd << backupFolder;
     }
     if (cacheDir.cd(QStringLiteral("knewstuff"))) {
         toRemove << cacheDir;
@@ -8717,17 +8721,28 @@ void MainWindow::checkMaxCacheSize()
         cacheDir.cdUp();
     }
     pCore->displayMessage(i18n("Checking cached data size"), InformationMessage);
+    // KoraCut (15 octobre 2026) : un cache trop gros se dit dans le chutier, avec un bouton. Avant, la fenêtre
+    // « Gestion des données en cache » s'ouvrait toute seule à la fin de la mesure, à n'importe quel moment :
+    // pendant l'ouverture d'un projet par la porte, elle gardait l'ancien document, détruit entre-temps (plantage).
+    auto suggestCleanup = [this]() {
+        auto *manage = new QAction(i18n("Manage Cached Data…"), this);
+        connect(manage, &QAction::triggered, this, &MainWindow::slotManageCache);
+        Q_EMIT pCore->displayBinMessage(
+            i18n("Your cache and backup data exceeds %1, cleanup is recommended.", KIO::convertSize(KIO::filesize_t(1048576) * KdenliveSettings::maxcachesize())),
+            KMessageWidget::Information, {manage}, true, BinMessage::BinCategory::InformationMessage);
+        qInfo() << "KoraCut: cache trop gros, nettoyage propose" << m_totalCacheSize;
+    };
     while (!toAdd.isEmpty()) {
         QDir dir = toAdd.takeFirst();
         m_totalCacheJobs++;
         QFutureWatcher<KIO::filesize_t> *watcher = new QFutureWatcher<KIO::filesize_t>(this);
-        connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher] {
+        connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, suggestCleanup] {
             KIO::filesize_t size = watcher->result();
             m_totalCacheSize += size;
             m_totalCacheJobs--;
             watcher->deleteLater();
             if (m_totalCacheJobs == 0 && m_totalCacheSize > KIO::filesize_t(1048576) * KdenliveSettings::maxcachesize()) {
-                slotManageCache();
+                suggestCleanup();
             }
         });
         QFuture<KIO::filesize_t> future = QtConcurrent::run(&MainWindow::fetchFolderSize, this, dir.absolutePath());
@@ -8737,13 +8752,13 @@ void MainWindow::checkMaxCacheSize()
         QDir dir = toRemove.takeFirst();
         m_totalCacheJobs++;
         QFutureWatcher<KIO::filesize_t> *watcher = new QFutureWatcher<KIO::filesize_t>(this);
-        connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher] {
+        connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, suggestCleanup] {
             KIO::filesize_t size = watcher->result();
             m_totalCacheSize -= size;
             m_totalCacheJobs--;
             watcher->deleteLater();
             if (m_totalCacheJobs == 0 && m_totalCacheSize > KIO::filesize_t(1048576) * KdenliveSettings::maxcachesize()) {
-                slotManageCache();
+                suggestCleanup();
             }
         });
         QFuture<KIO::filesize_t> future = QtConcurrent::run(&MainWindow::fetchFolderSize, this, dir.absolutePath());

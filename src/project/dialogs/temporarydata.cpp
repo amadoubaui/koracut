@@ -10,6 +10,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "core.h"
 #include "doc/kdenlivedoc.h"
 #include "kdenlivesettings.h"
+#include "koracut/motion/koracutmotionproject.h"
 #include "mainwindow.h"
 
 #include <KLocalizedString>
@@ -77,6 +78,17 @@ TemporaryData::TemporaryData(KdenliveDoc *doc, bool currentProjectOnly, QWidget 
 {
     setAttribute(Qt::WA_DeleteOnClose);
     setupUi(this);
+    if (doc) {
+        // KoraCut : le projet se ferme (un autre s'ouvre) pendant que la fenêtre est ouverte ou mesure encore les
+        // dossiers en fond : elle se ferme avec lui, elle ne lit plus un document détruit.
+        connect(doc, &QObject::destroyed, this, [this]() {
+            m_globalDirectories.clear();
+            m_processingDirectory.clear();
+            if (isWindow()) {
+                reject();
+            }
+        });
+    }
     m_currentSizes = {0, 0, 0, 0, 0};
 
     // Setup page for current project
@@ -209,6 +221,9 @@ TemporaryData::TemporaryData(KdenliveDoc *doc, bool currentProjectOnly, QWidget 
 
 void TemporaryData::updateDataInfo()
 {
+    if (!m_doc) {
+        return;
+    }
     m_totalCurrent = 0;
     bool ok = false;
     QDir preview = m_doc->getCacheDir(CacheBase, &ok);
@@ -337,6 +352,9 @@ void TemporaryData::updateTotal()
 
 void TemporaryData::deletePreview()
 {
+    if (!m_doc) {
+        return;
+    }
     bool ok = false;
     QDir dir = m_doc->getCacheDir(CachePreview, &ok);
     if (!ok) {
@@ -448,6 +466,9 @@ void TemporaryData::cleanCache()
 
 void TemporaryData::deleteProjectProxy()
 {
+    if (!m_doc) {
+        return;
+    }
     if (m_proxies.isEmpty()) {
         KMessageBox::information(this, i18n("No proxies found in the current project."));
         return;
@@ -475,6 +496,9 @@ void TemporaryData::deleteProjectProxy()
 
 void TemporaryData::deleteAudio()
 {
+    if (!m_doc) {
+        return;
+    }
     bool ok = false;
     QDir dir = m_doc->getCacheDir(CacheAudio, &ok);
     if (!ok) {
@@ -494,6 +518,9 @@ void TemporaryData::deleteAudio()
 
 void TemporaryData::deleteThumbs()
 {
+    if (!m_doc) {
+        return;
+    }
     bool ok = false;
     QDir dir = m_doc->getCacheDir(CacheThumbs, &ok);
     if (!ok) {
@@ -513,6 +540,9 @@ void TemporaryData::deleteThumbs()
 
 void TemporaryData::deleteCurrentCacheData(bool warn)
 {
+    if (!m_doc) {
+        return;
+    }
     bool ok = false;
     QDir dir = m_doc->getCacheDir(CacheBase, &ok);
     if (!ok) {
@@ -526,7 +556,9 @@ void TemporaryData::deleteCurrentCacheData(bool warn)
     if (dir.dirName() == m_doc->getDocumentProperty(QStringLiteral("documentid"))) {
         Q_EMIT disablePreview();
         Q_EMIT disableProxies();
-        dir.removeRecursively();
+        // KoraCut (15 octobre 2026) : les rendus Motion restent. Chacun coûte un rendu Chrome, et un rendu absent
+        // à la réouverture faisait la fenêtre « Problèmes du clip » pour chaque composition.
+        KoraCutMotionProject::clearCacheKeepingMotion(dir.absolutePath());
         m_doc->initCacheDirs();
         if (warn) {
             updateDataInfo();
@@ -536,6 +568,9 @@ void TemporaryData::deleteCurrentCacheData(bool warn)
 
 void TemporaryData::openCacheFolder()
 {
+    if (!m_doc) {
+        return;
+    }
     bool ok = false;
     QDir dir = m_doc->getCacheDir(CacheBase, &ok);
     if (!ok) {
@@ -575,6 +610,9 @@ void TemporaryData::processProxyDirectory()
 
 void TemporaryData::updateGlobalInfo()
 {
+    if (!m_doc) {
+        return;
+    }
     listWidget->blockSignals(true);
     bool ok = false;
     QDir preview = m_doc->getCacheDir(SystemCacheRoot, &ok);
@@ -677,6 +715,9 @@ void TemporaryData::refreshWarningMessage()
 
 void TemporaryData::refreshGlobalPie()
 {
+    if (!m_doc) {
+        return;
+    }
     QList<QTreeWidgetItem *> list = listWidget->selectedItems();
     KIO::filesize_t currentSize = 0;
     for (QTreeWidgetItem *current : std::as_const(list)) {
@@ -715,6 +756,9 @@ void TemporaryData::deleteSelected()
 
 void TemporaryData::deleteCache(QStringList &folders)
 {
+    if (!m_doc) {
+        return;
+    }
     const QString currentId = m_doc->getDocumentProperty(QStringLiteral("documentid"));
     for (const QString &folder : std::as_const(folders)) {
         if (folder == currentId) {
@@ -723,7 +767,12 @@ void TemporaryData::deleteCache(QStringList &folders)
             continue;
         }
         QDir toRemove(m_globalDir.filePath(folder));
-        toRemove.removeRecursively();
+        if (!KoraCutMotionProject::projectFileOfCache(toRemove.absolutePath()).isEmpty()) {
+            // KoraCut : le projet existe encore, ses rendus Motion restent (le reste se refait à l'ouverture).
+            KoraCutMotionProject::clearCacheKeepingMotion(toRemove.absolutePath());
+        } else {
+            toRemove.removeRecursively();
+        }
     }
     updateGlobalInfo();
 }

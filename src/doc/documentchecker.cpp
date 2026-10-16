@@ -188,6 +188,7 @@ bool DocumentChecker::hasErrorInProject()
 {
     Q_EMIT pCore->loadingMessageNewStage(i18n("Checking for missing items…"), 0);
     m_items.clear();
+    m_motionPlaceholders.clear();
 
     QString storageFolder;
     QDir projectDir(m_url.adjusted(QUrl::RemoveFilename).toLocalFile());
@@ -420,6 +421,15 @@ bool DocumentChecker::hasErrorInProject()
         QDomElement e = documentChains.item(i).toElement();
         verifiedPaths << getMissingProducers(e, entries, storageFolder);
         Q_EMIT pCore->loadingMessageIncrease();
+    }
+    // KoraCut : les rendus Motion refaisables, en espaces réservés sans question (liste parcourue à part : changer
+    // la balise d'un élément modifie les listes vivantes du document).
+    for (const QString &clipId : std::as_const(m_motionPlaceholders)) {
+        usePlaceholderForClip(documentProducers, clipId);
+        usePlaceholderForClip(documentChains, clipId);
+    }
+    if (!m_motionPlaceholders.isEmpty()) {
+        qInfo() << "KoraCut: motion, rendus absents a refaire" << m_motionPlaceholders.size();
     }
     max = documentTractors.count();
     for (int i = 0; i < max; ++i) {
@@ -1136,6 +1146,14 @@ QString DocumentChecker::getMissingProducers(QDomElement &e, const QDomNodeList 
             }
         }
         bool isPreviewChunk = QFileInfo(resource).absolutePath().endsWith(QStringLiteral("/%1/preview").arg(m_documentid));
+        if (!isPreviewChunk && koraCutMotionRenderRestorable(e, resource)) {
+            // KoraCut (15 octobre 2026) : le rendu d'un élément Motion parti avec un ménage du cache, alors que sa
+            // composition est là. Le clip devient un espace réservé sans fenêtre, le miroir Motion refera le rendu.
+            if (!m_motionPlaceholders.contains(clipId)) {
+                m_motionPlaceholders << clipId;
+            }
+            return producerResource;
+        }
         // Missing clip found, make sure to omit timeline preview
         if (!isPreviewChunk) {
             checkClip(e, resource);
@@ -1656,6 +1674,26 @@ void DocumentChecker::fixAssetResource(const QDomNodeList &assets, const QMap<QS
             }
         }
     }
+}
+
+bool DocumentChecker::koraCutMotionRenderRestorable(const QDomElement &producer, const QString &resource) const
+{
+    const QString project = Xml::getXmlProperty(producer, QStringLiteral("kdenlive:koracut_motion_project"));
+    if (project.isEmpty() || project.contains(QLatin1Char('/')) || project.startsWith(QLatin1Char('.')) ||
+        Xml::getXmlProperty(producer, QStringLiteral("kdenlive:koracut_motion_element")).isEmpty() || m_url.isEmpty()) {
+        return false;
+    }
+    // Seul un rendu se refait : .mov ou .mp4, hors du dossier de la composition (un son ou une image fournis
+    // qui manquent restent un vrai problème).
+    const QString suffix = QFileInfo(resource).suffix().toLower();
+    if (suffix != QLatin1String("mov") && suffix != QLatin1String("mp4")) {
+        return false;
+    }
+    const QDir compositionDir(QFileInfo(m_url.toLocalFile()).absolutePath() + QStringLiteral("/motion/") + project);
+    if (QFileInfo(resource).absolutePath().startsWith(compositionDir.absolutePath())) {
+        return false;
+    }
+    return QFile::exists(compositionDir.absoluteFilePath(QStringLiteral("index.html")));
 }
 
 void DocumentChecker::usePlaceholderForClip(const QDomNodeList &items, const QString &clipId)

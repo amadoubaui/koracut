@@ -132,6 +132,11 @@ private:
     /** @brief Update a filter's tag and id with a new name */
     static void fixAssetsById(QDomDocument &doc, const QString &tagName, const QString &oldId, const QString &newId);
     void usePlaceholderForClip(const QDomNodeList &items, const QString &clipId);
+    /** @brief KoraCut : vrai si ce producteur est le rendu d'un élément Motion dont la composition (index.html)
+     * est encore à côté du projet. Un tel rendu absent se refait : ce n'est pas un problème à montrer. */
+    bool koraCutMotionRenderRestorable(const QDomElement &producer, const QString &resource) const;
+    /** @brief KoraCut : les clips dont le rendu Motion est absent mais refaisable, mis en espaces réservés sans question. */
+    QStringList m_motionPlaceholders;
     void removeClip(const QDomNodeList &producers, const QDomNodeList &chains, const QDomNodeList &playlists, const QString &clipId);
     void fixClip(const QDomNodeList &items, const QString &clipId, const QString &newPath);
 

@@ -10,6 +10,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <QDir>
 #include <QDirIterator>
+#include <QUrl>
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
@@ -330,6 +331,48 @@ QString import(const QString &root, const QString &source, const QString &name, 
         return QString();
     }
     return index;
+}
+
+QString projectFileOfCache(const QString &cacheFolder)
+{
+    const QDir dir(cacheFolder);
+    const QStringList found = dir.entryList({QStringLiteral("*.koracut"), QStringLiteral("*.kdenlive")}, QDir::Files | QDir::Hidden, QDir::Time);
+    for (const QString &name : found) {
+        if (!name.startsWith(QLatin1Char('.'))) {
+            continue;
+        }
+        const QString path = QUrl::fromPercentEncoding(name.mid(1).toUtf8());
+        if (QFileInfo::exists(path)) {
+            return path;
+        }
+    }
+    return QString();
+}
+
+bool clearCacheKeepingMotion(const QString &cacheFolder)
+{
+    QDir dir(cacheFolder);
+    if (!dir.exists()) {
+        return true;
+    }
+    bool ok = true;
+    const QFileInfoList entries = dir.entryInfoList(QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot);
+    for (const QFileInfo &info : entries) {
+        if (info.fileName() == QLatin1String("motion") && info.isDir() && !info.isSymLink()) {
+            continue;
+        }
+        // Le témoin du fichier projet reste aussi : sans lui, le prochain ménage ne saurait plus que le projet existe.
+        if (info.isFile() && info.fileName().startsWith(QLatin1Char('.')) &&
+            (info.fileName().endsWith(QLatin1String(".koracut")) || info.fileName().endsWith(QLatin1String(".kdenlive")))) {
+            continue;
+        }
+        if (info.isDir() && !info.isSymLink()) {
+            ok = QDir(info.absoluteFilePath()).removeRecursively() && ok;
+        } else {
+            ok = QFile::remove(info.absoluteFilePath()) && ok;
+        }
+    }
+    return ok;
 }
 
 } // namespace KoraCutMotionProject

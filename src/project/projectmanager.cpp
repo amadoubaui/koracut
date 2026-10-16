@@ -685,6 +685,17 @@ bool ProjectManager::saveFileAs(const QString &outputFileName, bool saveOverExis
     pCore->bin()->saveSequenceAudioThumb();
     if (!saveACopy) {
         m_project->setUrl(url);
+        // KoraCut (15 octobre 2026) : le témoin du fichier projet dans son dossier de cache, à chaque enregistrement
+        // (Kdenlive ne le posait qu'à « Enregistrer sous » par la fenêtre). Le ménage du cache s'en sert pour
+        // savoir que le projet existe encore et garder ses rendus Motion.
+        bool cacheOk = false;
+        const QDir projectCache = m_project->getCacheDir(CacheBase, &cacheOk);
+        if (cacheOk) {
+            QFile marker(projectCache.absoluteFilePath(QString::fromLatin1(QUrl::toPercentEncoding(QStringLiteral(".") + outputFileName))));
+            if (!marker.exists() && marker.open(QIODevice::WriteOnly)) {
+                marker.close();
+            }
+        }
         // setting up autosave file in ~/.kde/data/stalefiles/kdenlive/
         // saved under file name
         // actual saving by KdenliveDoc::slotAutoSave() called by a timer 3 seconds after the document has been edited

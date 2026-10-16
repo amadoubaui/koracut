@@ -19,6 +19,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "doc/kdenlivedoc.h"
 #include "jobs/taskmanager.h"
 #include "mainwindow.h"
+#include "monitor/monitor.h"
+#include "monitor/monitormanager.h"
 #include "project/projectmanager.h"
 #include "timeline2/model/timelineitemmodel.hpp"
 
@@ -28,6 +30,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QRegularExpression>
 #include <QCoreApplication>
 #include <QDateTime>
@@ -93,7 +96,12 @@ KoraCutMotionMirror::KoraCutMotionMirror(QObject *parent)
     , m_renderer(new KoraCutMotionRenderer(this))
     , m_reconcile(new QTimer(this))
     , m_rescan(new QTimer(this))
+    , m_restoreTimer(new QTimer(this))
 {
+    // Les rendus absents se refont un à un, en fond : un tour toutes les 1,5 s au plus.
+    m_restoreTimer->setSingleShot(true);
+    m_restoreTimer->setInterval(1500);
+    connect(m_restoreTimer, &QTimer::timeout, this, &KoraCutMotionMirror::processRestore);
     m_reconcile->setSingleShot(true);
     m_reconcile->setInterval(200);
     connect(m_reconcile, &QTimer::timeout, this, &KoraCutMotionMirror::reconcileTimeline);
@@ -149,6 +157,9 @@ void KoraCutMotionMirror::clear()
     m_reconcile->stop();
     m_sequence.clear();
     m_mainSequence.clear();
+    m_restore.clear();
+    m_restoring.clear();
+    m_restoreTimer->stop();
     for (auto it = m_entries.begin(); it != m_entries.end(); ++it) {
         delete it->sync;
     }
@@ -1124,6 +1135,10 @@ bool KoraCutMotionMirror::applyFromFile(const QString &name, bool logUndo, const
             if (bin && bin->getProducerProperty(kClipHash) != e.hash) {
                 // Le contenu a changé : nouveau rendu en fond, l'ancien reste affiché en attendant.
                 requestRender(entry, e);
+            } else if (renderMissing(bin)) {
+                // Le rendu est parti avec un ménage du cache (15 octobre 2026) : il se refait en fond, ceux de la
+                // séquence devant d'abord. Rien n'est lancé tout de suite : pas de rafale de rendus à l'ouverture.
+                queueRestore(name, e.id, resolved(comp.sequence) == m_sequence);
             }
             continue;
         }
@@ -1185,6 +1200,9 @@ bool KoraCutMotionMirror::applyFromFile(const QString &name, bool logUndo, const
                 entry.placed.insert(e.id);
                 changed = true;
             }
+        } else if (renderMissing(bin) && bin->getProducerProperty(kClipHash) == e.hash) {
+            // Même empreinte, rendu parti avec le cache : dans la file, pas tout de suite.
+            queueRestore(name, e.id, resolved(comp.sequence) == m_sequence);
         } else {
             requestRender(entry, e);
         }
@@ -1265,7 +1283,7 @@ void KoraCutMotionMirror::onRendered(const QString &project, const QString &elem
         return;
     }
     if (existingBin) {
-        if (existingBin->getProducerProperty(kClipHash) != hash || existingBin->url() != path) {
+        if (existingBin->getProducerProperty(kClipHash) != hash || existingBin->url() != path || renderMissing(existingBin)) {
             // Le clip du chutier existe : on échange son média, le clip de la timeline ne bouge pas
             // (même id, même place, même durée) et l'annulation n'a rien à enregistrer : le média
             // découle du fichier, que l'annulation du geste ramènera à son tour. L'ancien rendu est
@@ -1353,6 +1371,116 @@ void KoraCutMotionMirror::onRendered(const QString &project, const QString &elem
         return;
     }
     ClipCreator::createClipFromFile(path, folder, pCore->projectItemModel(), *undo, *redo, place);
+}
+
+bool KoraCutMotionMirror::renderMissing(const std::shared_ptr<ProjectClip> &bin)
+{
+    return bin && (bin->clipStatus() == FileStatus::StatusMissing || !QFileInfo::exists(bin->url()));
+}
+
+void KoraCutMotionMirror::queueRestore(const QString &project, const QString &elementId, bool first)
+{
+    const QString key = project + QLatin1Char('/') + elementId;
+    if (key == m_restoring) {
+        return;
+    }
+    const QString urgent = QLatin1Char('!') + key;
+    if (m_restore.contains(key) || m_restore.contains(urgent)) {
+        if (!first) {
+            return;
+        }
+        m_restore.removeAll(key);
+        m_restore.removeAll(urgent);
+    }
+    if (first) {
+        // Après les autres urgents, devant les autres : l'ordre de la séquence est gardé.
+        int at = 0;
+        while (at < m_restore.size() && m_restore.at(at).startsWith(QLatin1Char('!'))) {
+            ++at;
+        }
+        m_restore.insert(at, urgent);
+    } else {
+        m_restore.append(key);
+    }
+    if (!m_restoreTimer->isActive()) {
+        m_restoreTimer->start();
+    }
+}
+
+bool KoraCutMotionMirror::restoreBinClip(const QString &binId)
+{
+    auto model = pCore->projectItemModel();
+    auto bin = model ? model->getClipByBinID(binId) : nullptr;
+    if (!bin || !renderMissing(bin)) {
+        return false;
+    }
+    const QString project = bin->getProducerProperty(kClipProject);
+    const QString elementId = bin->getProducerProperty(kClipElement);
+    if (project.isEmpty() || elementId.isEmpty()) {
+        return false;
+    }
+    rescan();
+    if (!m_entries.contains(project) || !m_entries[project].sync->composition().element(elementId)) {
+        return false;
+    }
+    queueRestore(project, elementId, true);
+    return true;
+}
+
+void KoraCutMotionMirror::processRestore()
+{
+    if (!m_doc) {
+        return;
+    }
+    if (!m_restoring.isEmpty()) {
+        const QString project = m_restoring.section(QLatin1Char('/'), 0, 0);
+        const QString elementId = m_restoring.section(QLatin1Char('/'), 1);
+        if (m_renderer->isPending(project, elementId)) {
+            m_restoreTimer->start();
+            return;
+        }
+        m_restoring.clear();
+    }
+    if (m_restore.isEmpty()) {
+        return;
+    }
+    // Personne ne lit ni ne glisse : la machine reste à la personne (même règle que les copies légères).
+    bool busy = QGuiApplication::mouseButtons() != Qt::NoButton;
+    if (!busy && pCore->monitorManager()) {
+        Monitor *project = pCore->monitorManager()->projectMonitor();
+        Monitor *clip = pCore->monitorManager()->clipMonitor();
+        busy = (project && project->isPlaying()) || (clip && clip->isPlaying());
+    }
+    if (busy) {
+        m_restoreTimer->start();
+        return;
+    }
+    while (!m_restore.isEmpty()) {
+        QString key = m_restore.takeFirst();
+        if (key.startsWith(QLatin1Char('!'))) {
+            key.remove(0, 1);
+        }
+        const QString project = key.section(QLatin1Char('/'), 0, 0);
+        const QString elementId = key.section(QLatin1Char('/'), 1);
+        if (!m_entries.contains(project)) {
+            continue;
+        }
+        Entry &entry = m_entries[project];
+        const KoraCutMotion::Element *e = entry.sync->composition().element(elementId);
+        const QString binId = findBinClip(project, elementId);
+        auto bin = binId.isEmpty() ? nullptr : pCore->projectItemModel()->getClipByBinID(binId);
+        if (!e || !renderMissing(bin) || m_renderer->isPending(project, elementId)) {
+            continue;
+        }
+        qInfo().noquote() << "KoraCut: motion, rendu absent refait" << key << "reste" << m_restore.size();
+        m_restoring = key;
+        requestRender(entry, *e);
+        Q_EMIT elementsChanged(project);
+        break;
+    }
+    if (!m_restoring.isEmpty() || !m_restore.isEmpty()) {
+        m_restoreTimer->start();
+    }
 }
 
 void KoraCutMotionMirror::onRenderFailed(const QString &project, const QString &elementId, const QString &error)

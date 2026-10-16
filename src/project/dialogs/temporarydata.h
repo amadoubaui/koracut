@@ -11,6 +11,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include <KIO/DirectorySizeJob>
 #include <QDialog>
 #include <QDir>
+#include <QPointer>
 #include <QTreeWidgetItem>
 
 class KdenliveDoc;
@@ -81,7 +82,9 @@ public:
     explicit TemporaryData(KdenliveDoc *doc, bool currentProjectOnly, QWidget *parent = nullptr);
 
 private:
-    KdenliveDoc *m_doc;
+    /** KoraCut : le document peut mourir sous la fenêtre (un projet ouvert par la porte pendant qu'elle
+     * mesurait, plantage du 15 octobre 2026) : pointeur gardé, fenêtre fermée avec lui. */
+    QPointer<KdenliveDoc> m_doc;
     ChartWidget *m_currentPie;
     ChartWidget *m_globalPie;
     bool m_currentProjectOnly;

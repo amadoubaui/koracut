@@ -782,14 +782,22 @@ bool KdenliveDoc::saveSceneList(const QString &path, const QString &scene, bool 
         }
 
         KIO::FileCopyJob *copyjob = KIO::file_copy(QUrl::fromLocalFile(path), QUrl::fromLocalFile(backupFile));
-        if (copyjob->exec()) {
-            KMessageBox::information(QApplication::activeWindow(), message);
-            m_documentOpenStatus = CleanProject;
+        const bool copied = copyjob->exec();
+        if (!copied) {
+            message = i18n("Your project file was upgraded to the latest KoraCut document version, but it was not possible to create the backup copy %1.",
+                           backupFile);
         } else {
-            KMessageBox::information(
-                QApplication::activeWindow(),
-                i18n("Your project file was upgraded to the latest KoraCut document version, but it was not possible to create the backup copy %1.",
-                     backupFile));
+            m_documentOpenStatus = CleanProject;
+        }
+        if (qApp->property("koracut_sans_fenetre").toBool()) {
+            // KoraCut (15 octobre 2026) : sous la porte ou un agent, jamais de fenêtre modale (PORTE.md § 2 bis).
+            // Le message reste dit, dans le chutier et le journal.
+            qInfo().noquote() << "KoraCut: enregistrement," << message;
+            if (pCore) {
+                Q_EMIT pCore->displayBinMessage(message, KMessageWidget::Information, {}, true, BinMessage::BinCategory::InformationMessage);
+            }
+        } else {
+            KMessageBox::information(QApplication::activeWindow(), message);
         }
     }
     QSaveFile file(path);

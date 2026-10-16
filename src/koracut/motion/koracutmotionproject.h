@@ -54,4 +54,14 @@ QString templateHtml(const QString &compositionId, int width, int height, double
 /** @brief Copie récursive d'un dossier. */
 bool copyDirectory(const QString &from, const QString &to);
 
+/** @brief Le fichier projet dont @p cacheFolder est le dossier de cache (le témoin `.<chemin>.koracut` que
+ * KoraCut y pose), vide s'il n'y en a pas. */
+QString projectFileOfCache(const QString &cacheFolder);
+
+/** @brief Vide un dossier de cache de projet sans toucher à ses rendus Motion (`motion/`) : ils coûtent un
+ * rendu Chrome chacun et le projet s'en sert encore (15 octobre 2026). Le dossier lui-même et le témoin du
+ * fichier projet restent.
+ * @return vrai si tout ce qui devait partir est parti. */
+bool clearCacheKeepingMotion(const QString &cacheFolder);
+
 } // namespace KoraCutMotionProject

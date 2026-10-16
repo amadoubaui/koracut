@@ -35,6 +35,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "kdenlivesettings.h"
 #include "macros.hpp"
 #include "mainwindow.h"
+#include "koracut/motion/koracutmotionmirror.h"
 #include "mediabrowser.h"
 #include "mltcontroller/clipcontroller.h"
 #include "mltcontroller/clippropertiescontroller.h"
@@ -4221,6 +4222,10 @@ void Bin::setupGeneratorMenu()
 
 void Bin::openClipInMonitor(std::shared_ptr<ProjectClip> clip, int in, int out, const QUuid &uuid, int seekFrame)
 {
+    // KoraCut (15 octobre 2026) : un rendu Motion parti avec le cache se refait quand on regarde son clip.
+    if (clip && clip->clipStatus() == FileStatus::StatusMissing && pCore->window() && pCore->window()->koraCutMotionMirror()) {
+        pCore->window()->koraCutMotionMirror()->restoreBinClip(clip->clipId());
+    }
     if (pCore->getMonitor(Kdenlive::ClipMonitor)->slotOpenClip(clip, in, out, uuid) && clip) {
         Q_EMIT pCore->requestShowBinEffectStack(clip->clipName(), clip->m_effectStack, clip->getFrameSize(), false);
         if (clip->hasLimitedDuration()) {
