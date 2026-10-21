@@ -64,6 +64,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "xml/xml.hpp"
 #include "koracut/koracutemptystate.h"
 #include "koracut/koracutmetrics.h"
+#include "koracut/koracutperformance.h"
 
 #include <kddockwidgets/core/DockWidget.h>
 #include <QTimer>
@@ -2715,6 +2716,8 @@ void Bin::slotDuplicateClip()
                     }
                     QReadLocker lock(&pCore->xmlMutex);
                     const QByteArray result = doc.toString().toUtf8();
+                    // KoraCut : de la place dans le cache des décodeurs pendant le chargement de la copie (document 6).
+                    const KoraCutPerformance::DecoderCacheRoom room(QString::fromUtf8(result));
                     std::shared_ptr<Mlt::Producer> xmlProd(new Mlt::Producer(pCore->getProjectProfile(), "xml-string", result.constData()));
                     lock.unlock();
                     Fun undo = []() { return true; };

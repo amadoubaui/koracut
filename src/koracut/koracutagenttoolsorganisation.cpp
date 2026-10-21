@@ -18,6 +18,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "core.h"
 #include "doc/kdenlivedoc.h"
 #include "kdenlivesettings.h"
+#include "koracut/koracutperformance.h"
 #include "koracut/porte/koracutportemethodes.h"
 #include "mainwindow.h"
 #include "profiles/profilemodel.hpp"
@@ -1160,6 +1161,9 @@ QJsonObject dupliquerSequence(const Timeline &, const Args &args)
     }
     QReadLocker lock(&pCore->xmlMutex);
     const QByteArray content = xml.toString().toUtf8();
+    // La copie ouvre un décodeur par plan : sans place en plus, elle évince ceux du moniteur
+    // (document 6, 2 octobre 2026). Déclarée avant le producteur, la garde lui survit.
+    const KoraCutPerformance::DecoderCacheRoom room(QString::fromUtf8(content));
     std::shared_ptr<Mlt::Producer> xmlProd(new Mlt::Producer(pCore->getProjectProfile(), "xml-string", content.constData()));
     lock.unlock();
     if (!xmlProd->is_valid()) {

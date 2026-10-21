@@ -24,6 +24,8 @@
 #include <QJsonDocument>
 #include <QUndoGroup>
 
+#include <framework/mlt.h>
+
 using KoraCutAgentTools::call;
 
 namespace {
@@ -619,10 +621,13 @@ TEST_CASE("Script : un script par séquence", "[KoraCutScript]")
     SECTION("Une séquence dupliquée emporte son script")
     {
         REQUIRE(KoraCutScriptStore::apply(titled(QStringLiteral("Pub 2")), QStringLiteral("titre"), QString(), Fun(), Fun(), second));
+        const int cacheBefore = mlt_service_cache_get_size(nullptr, "producer_avformat");
         QJsonObject r = call(timeline, QStringLiteral("dupliquer_sequence"),
                              {{QStringLiteral("sequence"), QStringLiteral("Pub 2")}, {QStringLiteral("nom"), QStringLiteral("Pub 2 - v2")}, {QStringLiteral("activer"), false}});
         INFO(dump(r));
         REQUIRE(r.value(QStringLiteral("ok")).toBool());
+        // La place prise dans le cache des décodeurs le temps de la copie est rendue.
+        CHECK(mlt_service_cache_get_size(nullptr, "producer_avformat") == cacheBefore);
         const QUuid copy = KoraCutScriptStore::findSequence(QStringLiteral("Pub 2 - v2"), &document);
         REQUIRE(!copy.isNull());
         REQUIRE(copy != second);
