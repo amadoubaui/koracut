@@ -101,6 +101,13 @@ bool KoraCutTerminal::open(const QString &projectDir, const QString &porteFile, 
     // sous lui (21 octobre 2026, KC-008).
     const QString tmp = QDir::tempPath() + QStringLiteral("/koracut-fenetres");
     QDir().mkpath(tmp);
+    // Les scripts des fenêtres d'avant-hier ne sont plus relus par personne : on les retire.
+    const QDateTime old = QDateTime::currentDateTime().addDays(-2);
+    for (const QFileInfo &previous : QDir(tmp).entryInfoList({QStringLiteral("koracut-*.command"), QStringLiteral("koracut-*.cmd")}, QDir::Files)) {
+        if (previous.lastModified() < old) {
+            QFile::remove(previous.absoluteFilePath());
+        }
+    }
     const QString stamp = QStringLiteral("%1-%2").arg(QCoreApplication::applicationPid()).arg(QDateTime::currentMSecsSinceEpoch());
 #if defined(Q_OS_WIN)
     const QString script = tmp + QStringLiteral("/koracut-%1.cmd").arg(stamp);
