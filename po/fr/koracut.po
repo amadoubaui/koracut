@@ -55867,3 +55867,8 @@ msgstr "Ouvrir l'agent dans une fenêtre à part (elle reste ouverte si KoraCut 
 msgctxt "@option:check"
 msgid "Let the agent work without asking for approval at each step (ffmpeg and melt stay refused)"
 msgstr "Laisser l'agent travailler sans demander l'accord à chaque geste (ffmpeg et melt restent refusés)"
+
+#: src/koracut (21 octobre 2026)
+msgctxt "@info"
+msgid "Analyzing the sound of the clip…"
+msgstr "Analyse du son du clip…"

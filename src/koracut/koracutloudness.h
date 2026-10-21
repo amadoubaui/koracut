@@ -37,6 +37,19 @@ struct Measure
     bool ok = false;                  // la mesure a pu être faite
 };
 
+/** @brief Tant qu'elle vit, une mesure demandée depuis le fil principal part dans un fil de travail et
+ *  l'interface continue de se dessiner, sans prendre de clic ni de touche (demande de TACHES, chantier 5 :
+ *  « Normaliser le volume » figeait l'application, 21 octobre 2026). Posée par l'Inspecteur seulement :
+ *  les appels des agents et de la porte restent tels quels. */
+class KeepInterfaceAlive
+{
+public:
+    KeepInterfaceAlive();
+    ~KeepInterfaceAlive();
+    KeepInterfaceAlive(const KeepInterfaceAlive &) = delete;
+    KeepInterfaceAlive &operator=(const KeepInterfaceAlive &) = delete;
+};
+
 /**
  * @brief Mesure une timeline entre deux images (fin comprise).
  * @param xml la scène MLT (sceneList) de la timeline, lue dans le fil principal

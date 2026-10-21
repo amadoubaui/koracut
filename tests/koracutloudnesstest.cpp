@@ -26,6 +26,7 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QTimer>
 
 using KoraCutAgentTools::call;
 
@@ -125,6 +126,22 @@ TEST_CASE("Le niveau sonore à l'export : mesure, gain fixe, rendu", "[KoraCutLo
         INFO(dump(r));
         REQUIRE(r.value(QStringLiteral("ok")).toBool());
         CHECK(std::abs(r.value(QStringLiteral("lufs_integre")).toDouble() - m.lufs) < 0.15);
+        // Demandée par l'Inspecteur (KeepInterfaceAlive) : même chiffre, et l'interface continue de tourner
+        // pendant la mesure (un minuteur du fil principal se déclenche).
+        {
+            int ticks = 0;
+            QTimer tick;
+            tick.setInterval(1);
+            QObject::connect(&tick, &QTimer::timeout, [&ticks]() { ++ticks; });
+            tick.start();
+            const KoraCutLoudness::KeepInterfaceAlive alive;
+            const KoraCutLoudness::Measure threaded = KoraCutLoudness::measure(timeline->sceneList(QString()), fps, 0, last);
+            tick.stop();
+            REQUIRE(threaded.ok);
+            CHECK(threaded.lufs == m.lufs);
+            CHECK(threaded.truePeak == m.truePeak);
+            CHECK(ticks > 0);
+        }
         // Une zone vide ou un XML vide : pas de mesure.
         CHECK_FALSE(KoraCutLoudness::measure(QString(), fps, 0, last).ok);
         CHECK_FALSE(KoraCutLoudness::measure(timeline->sceneList(QString()), fps, 10, 5).ok);

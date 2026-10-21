@@ -13,10 +13,13 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <KLocalizedString>
 
+#include <QCoreApplication>
 #include <QDebug>
 #include <QEventLoop>
+#include <QFutureWatcher>
 #include <QLocale>
 #include <QThread>
+#include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
 #include <functional>
@@ -145,14 +148,45 @@ namespace {
 Measure measureImpl(const QString &xml, double fps, int start, int endInclusive, const QSet<int> &mltTracks, bool muteMixer, double gainDb, bool limiter);
 }
 
+namespace {
+int s_keepAlive = 0;
+
+// Dans un fil de travail quand l'Inspecteur le demande : la boucle d'attente dessine l'interface mais
+// laisse de côté la souris et le clavier, rien ne peut changer la timeline pendant la mesure.
+Measure measureKeepingAlive(const std::function<Measure()> &job)
+{
+    if (s_keepAlive == 0 || !qApp || QThread::currentThread() != qApp->thread()) {
+        return job();
+    }
+    QFutureWatcher<Measure> watcher;
+    QEventLoop loop;
+    QObject::connect(&watcher, &QFutureWatcher<Measure>::finished, &loop, &QEventLoop::quit);
+    watcher.setFuture(QtConcurrent::run(job));
+    if (!watcher.isFinished()) {
+        loop.exec(QEventLoop::ExcludeUserInputEvents);
+    }
+    return watcher.result();
+}
+} // namespace
+
+KeepInterfaceAlive::KeepInterfaceAlive()
+{
+    ++s_keepAlive;
+}
+
+KeepInterfaceAlive::~KeepInterfaceAlive()
+{
+    --s_keepAlive;
+}
+
 Measure measure(const QString &xml, double fps, int start, int endInclusive, const QSet<int> &mltTracks, bool muteMixer)
 {
-    return measureImpl(xml, fps, start, endInclusive, mltTracks, muteMixer, 0., false);
+    return measureKeepingAlive([=]() { return measureImpl(xml, fps, start, endInclusive, mltTracks, muteMixer, 0., false); });
 }
 
 Measure measureTreated(const QString &xml, double fps, int start, int endInclusive, double gainDb, bool limiter)
 {
-    return measureImpl(xml, fps, start, endInclusive, {}, false, gainDb, limiter);
+    return measureKeepingAlive([=]() { return measureImpl(xml, fps, start, endInclusive, {}, false, gainDb, limiter); });
 }
 
 namespace {

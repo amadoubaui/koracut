@@ -4,6 +4,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 */
 
 #include "koracutcliptoolspanel.h"
+#include "koracutloudness.h"
 #include "koracutagenttools.h"
 #include "koracutcliptools.h"
 #include "koracutmetrics.h"
@@ -497,10 +498,17 @@ void KoraCutClipToolsPanel::normalize()
     if (audio < 0) {
         return;
     }
+    // Les mesures partent dans un fil de travail : l'interface continue de se dessiner pendant l'analyse.
     QApplication::setOverrideCursor(Qt::WaitCursor);
-    const QJsonObject r = KoraCutAgentTools::call(
-        tl, QStringLiteral("normaliser_loudness"),
-        {{QStringLiteral("cible"), QStringLiteral("clip")}, {QStringLiteral("clip_id"), audio}, {QStringLiteral("lufs_cible"), -16}});
+    m_normalizeButton->setEnabled(false);
+    pCore->displayMessage(i18nc("@info", "Analyzing the sound of the clip…"), ProcessingJobMessage);
+    QJsonObject r;
+    {
+        const KoraCutLoudness::KeepInterfaceAlive alive;
+        r = KoraCutAgentTools::call(tl, QStringLiteral("normaliser_loudness"),
+                                    {{QStringLiteral("cible"), QStringLiteral("clip")}, {QStringLiteral("clip_id"), audio}, {QStringLiteral("lufs_cible"), -16}});
+    }
+    m_normalizeButton->setEnabled(true);
     QApplication::restoreOverrideCursor();
     if (r.value(QStringLiteral("ok")).toBool()) {
         pCore->displayMessage(i18nc("@info", "Volume normalized: %1 LUFS before, %2 LUFS now.", r.value(QStringLiteral("lufs_avant")).toDouble(),
