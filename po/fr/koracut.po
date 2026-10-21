@@ -55847,3 +55847,13 @@ msgstr "Cette fenêtre reste ouverte même si KoraCut se ferme. Rouvre KoraCut e
 msgctxt "@info line in the terminal"
 msgid "KoraCut: the last conversation in this folder continues."
 msgstr "KoraCut : la dernière conversation de ce dossier reprend."
+
+#: src/koracut (21 octobre 2026, KC-009)
+msgctxt "@action:button"
+msgid "Download"
+msgstr "Télécharger"
+
+#: src/koracut (21 octobre 2026, KC-009)
+msgctxt "@info %1 date of the new version, %2 date of the installed one"
+msgid "A new version of KoraCut is available (%1, you have %2)."
+msgstr "Une nouvelle version de KoraCut est disponible (%1, tu as celle du %2)."

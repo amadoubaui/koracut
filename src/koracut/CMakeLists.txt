@@ -73,6 +73,8 @@ set(koracut_SRCS
     koracut/koracutsupportdialog.cpp
     # 4 octobre 2026 : l'accueil de premier lancement, à la place du « Quick Setup » de Kdenlive.
     koracut/koracutfirstrun.cpp
+    # 21 octobre 2026 (KC-009) : « Une nouvelle version existe », pour ceux qui ont téléchargé le paquet.
+    koracut/koracutupdatecheck.cpp
     koracut/koracuticons.cpp
     koracut/koracutloudness.cpp
     koracut/koracutmodules.cpp

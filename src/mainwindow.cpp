@@ -91,6 +91,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "koracut/koracutstyle.h"
 #include "koracut/koracutworkspace.h"
 #include "koracut/porte/koracutconsolepanel.h"
+#include "koracut/koracutupdatecheck.h"
 #include "koracut/terminal/koracutagentscli.h"
 #include "koracut/terminal/koracutterminalpanel.h"
 #include "koracut/script/koracutscriptpanel.h"
@@ -2924,6 +2925,8 @@ void MainWindow::finishUiSetup()
     }
     koraCutDevScreenshot();
     koraCutRelay();
+    // Le paquet téléchargé dit quand une version plus récente est publiée (KC-009) ; KORACUT_MAJ_FORCER=1 pour les essais.
+    KoraCutUpdateCheck::schedule(this, qEnvironmentVariableIntValue("KORACUT_MAJ_FORCER") > 0);
     koraCutStartPorte();
     // Premier lancement : deux questions simples, une fois la fenêtre ouverte (4 octobre 2026).
     KoraCutFirstRun::schedule(this);

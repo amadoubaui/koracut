@@ -6,6 +6,7 @@
 
 #include "koracut/koracutfirstrun.h"
 #include "koracut/koracutvideotypes.h"
+#include "koracut/koracutupdatecheck.h"
 
 #include <KLocalizedString>
 #include <QAbstractButton>
@@ -107,4 +108,20 @@ TEST_CASE("Le sens préféré se garde et s'efface", "[KoraCutFirstRun]")
     CHECK(KoraCutVideoTypes::preferredFormat().isEmpty());
     KoraCutVideoTypes::setPreferredFormat(avant);
     CHECK(KoraCutVideoTypes::preferredFormat() == avant);
+}
+
+TEST_CASE("Mise à jour : une date publiée plus récente que celle du paquet est annoncée (KC-009)", "[KoraCut]")
+{
+    CHECK(KoraCutUpdateCheck::isNewer(QStringLiteral("2026.10.21"), QStringLiteral("2026.10.05")));
+    CHECK(KoraCutUpdateCheck::isNewer(QStringLiteral("2027.01.02"), QStringLiteral("2026.12.31")));
+    CHECK_FALSE(KoraCutUpdateCheck::isNewer(QStringLiteral("2026.10.05"), QStringLiteral("2026.10.05")));
+    CHECK_FALSE(KoraCutUpdateCheck::isNewer(QStringLiteral("2026.10.04"), QStringLiteral("2026.10.05")));
+    // Une forme inattendue (fichier abîmé, version compilée à la main) n'annonce rien.
+    CHECK_FALSE(KoraCutUpdateCheck::isNewer(QStringLiteral("demain"), QStringLiteral("2026.10.05")));
+    CHECK_FALSE(KoraCutUpdateCheck::isNewer(QStringLiteral("2026.10.21"), QString()));
+    // Hors paquet, pas de date : rien n'est vérifié ; la variable d'essai en donne une.
+    qputenv("KORACUT_PAQUET_DATE", "2026.10.05");
+    CHECK(KoraCutUpdateCheck::packageInfo().value(QStringLiteral("date")).toString() == QStringLiteral("2026.10.05"));
+    qunsetenv("KORACUT_PAQUET_DATE");
+    CHECK(KoraCutUpdateCheck::feedUrl() == QStringLiteral("https://koracut.org/version.json"));
 }
