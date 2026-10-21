@@ -42,6 +42,14 @@
       "lancement": [
         "claude"
       ],
+      "sans_accord": [
+        "--permission-mode",
+        "bypassPermissions"
+      ],
+      "reprendre": [
+        "claude",
+        "--continue"
+      ],
       "premier_message": [
         "claude",
         "{message}"
@@ -73,7 +81,7 @@
           "--mcp-config",
           "{fichier}"
         ],
-        "note_koracut": "KoraCut passe son serveur par --mcp-config : pas de question d'approbation à chaque lancement (un .mcp.json de projet en poserait une tant que le dossier n'est pas de confiance). Depuis le 4 octobre 2026 : seuls les outils de KoraCut sont autorisés d'avance, ffmpeg et melt sont refusés (--disallowedTools), tout le reste demande l'accord de la personne (--permission-mode default : le mode automatique de Claude Code déciderait seul), et la règle « tu montes dans KoraCut » est ajoutée à la consigne système.",
+        "note_koracut": "KoraCut passe son serveur par --mcp-config : pas de question d'approbation à chaque lancement (un .mcp.json de projet en poserait une tant que le dossier n'est pas de confiance). Depuis le 4 octobre 2026 : seuls les outils de KoraCut sont autorisés d'avance, ffmpeg et melt sont refusés (--disallowedTools), tout le reste demande l'accord de la personne (--permission-mode default : le mode automatique de Claude Code déciderait seul), et la règle « tu montes dans KoraCut » est ajoutée à la consigne système. Depuis le 21 octobre 2026 (KC-008) : avec le réglage agentSansAccord (oui par défaut), « sans_accord » remplace default par bypassPermissions, l'agent ne demande plus l'accord à chaque geste ; ffmpeg et melt restent refusés.",
         "ligne_position": "fin"
       },
       "notes": "La première fois, Claude Code ouvre le navigateur pour se connecter au compte Claude : KoraCut ne voit ni ne garde aucun identifiant. Ensuite la connexion de l'ordinateur est réutilisée. KoraCut autorise d'avance ses propres outils (serveur MCP koracut et koracut-ctl) et la lecture de deux dossiers (ses compétences et son cache, où sont les images de contrôle), rien d'autre. Installation vérifiée le 1er octobre 2026 sur code.claude.com/docs/en/setup. Il lit AGENTS.md seulement s'il n'y a aucun CLAUDE.md dans le dossier ou au-dessus (version 2.1.277 et plus). Sous Windows, Git for Windows est conseillé mais pas obligatoire."
@@ -114,6 +122,9 @@
       },
       "lancement": [
         "codex"
+      ],
+      "sans_accord": [
+        "--dangerously-bypass-approvals-and-sandbox"
       ],
       "premier_message": [
         "codex",
@@ -183,6 +194,9 @@
       },
       "lancement": [
         "gemini"
+      ],
+      "sans_accord": [
+        "--yolo"
       ],
       "premier_message": [
         "gemini",

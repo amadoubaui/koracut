@@ -55634,8 +55634,8 @@ msgstr "Monter avec un agent"
 
 #: src/koracut (document 18, 4 octobre 2026)
 msgctxt "@info:tooltip"
-msgid "Prepares the project and launches your agent (Claude Code, Codex, Gemini, OpenCode and others) in the KoraCut terminal, connected to KoraCut, with your own account"
-msgstr "Prépare le projet et lance ton agent (Claude Code, Codex, Gemini, OpenCode et d'autres) dans le terminal de KoraCut, branché sur KoraCut, avec ton compte à toi"
+msgid "Prepares the project and launches your agent (Claude Code, Codex, Gemini, OpenCode and others) in a terminal window of its own, which stays open if KoraCut closes, connected to KoraCut, with your own account"
+msgstr "Prépare le projet et lance ton agent (Claude Code, Codex, Gemini, OpenCode et d'autres) dans une fenêtre de terminal à lui, qui reste ouverte si KoraCut se ferme, branché sur KoraCut, avec ton compte à toi"
 
 #: src/koracut (document 18, 4 octobre 2026)
 msgctxt "@info:tooltip"
@@ -55837,3 +55837,13 @@ msgstr "Une ligne dans les métadonnées du fichier (le champ commentaire), jama
 msgctxt "@action undo text"
 msgid "Insert clip on a free track"
 msgstr "Poser le clip sur une piste libre"
+
+#: src/koracut (21 octobre 2026, KC-008)
+msgctxt "@info line in the system terminal"
+msgid "This window stays open even if KoraCut closes. Open KoraCut again and carry on here."
+msgstr "Cette fenêtre reste ouverte même si KoraCut se ferme. Rouvre KoraCut et continue ici."
+
+#: src/koracut (21 octobre 2026, KC-008)
+msgctxt "@info line in the terminal"
+msgid "KoraCut: the last conversation in this folder continues."
+msgstr "KoraCut : la dernière conversation de ce dossier reprend."

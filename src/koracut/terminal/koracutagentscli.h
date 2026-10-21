@@ -48,11 +48,26 @@ struct Agent
     QStringList launch;
     QStringList firstMessage; ///< « {message} » est remplacé ; vide : l'agent ne sait pas le prendre
     bool firstMessageKeepsSession{true};
+    QStringList noApproval;   ///< « sans_accord » : les options qui laissent l'agent agir sans demander (demande KC-008)
+    QStringList resume;       ///< « reprendre » : la commande qui reprend la dernière conversation du dossier
     QStringList instructions; ///< les fichiers lus au démarrage, relatifs au dossier du projet
     bool readsAgentsMd{false};
     QJsonObject mcp;          ///< format, fichier, ligne, utilisateur
     QString notes;
 };
+
+/** @brief Lancer l'agent sans qu'il demande l'accord à chaque geste (réglage agentSansAccord, oui par défaut,
+ *  demande d'Amadou Ba du 21 octobre 2026, KC-008). */
+bool noApprovalWanted();
+/** @brief Pose les options « sans_accord » de l'agent dans @p command : une option déjà présente voit sa valeur
+ *  remplacée (« --permission-mode default » devient « bypassPermissions »), sinon elles vont juste après l'exécutable. */
+void applyNoApproval(QStringList &command, const Agent &agent);
+/** @brief « Monter avec un agent » ouvre une fenêtre de terminal à part, qui reste ouverte si KoraCut se ferme
+ *  (réglage agentFenetre : « separee » par défaut, « koracut » pour le terminal intégré). */
+bool separateWindowWanted();
+/** @brief La commande qui reprend la conversation de l'agent dans @p dir quand elle date de moins de 24 heures
+ *  (Claude Code : ~/.claude/projects) ; vide sinon. */
+QStringList resumeCommand(const Agent &agent, const QString &dir);
 
 /** @brief Le catalogue, lu une fois. */
 const QList<Agent> &all();

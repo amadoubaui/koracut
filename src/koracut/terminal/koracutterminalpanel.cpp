@@ -31,6 +31,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QStandardPaths>
 #include <QStackedWidget>
 #include <QTabBar>
 #include <QTextStream>
@@ -131,6 +132,22 @@ void insertMcpArguments(QStringList &command, const KoraCutAgentsCli::Agent &age
     for (int i = 0; i < mcpArgs.size(); ++i) {
         command.insert(at + i, mcpArgs.at(i));
     }
+}
+
+// La ligne qui lance l'agent : la conversation d'hier reprise s'il y en a une dans ce dossier (Claude Code),
+// sinon le premier message ; puis le serveur MCP et, si la personne le veut, sans demande d'accord (KC-008).
+QStringList agentCommand(const KoraCutAgentsCli::Agent &agent, const KoraCutAgentInit::Context &ctx, const QString &dir, bool *resumed = nullptr)
+{
+    QStringList command = KoraCutAgentsCli::resumeCommand(agent, dir);
+    if (resumed) {
+        *resumed = !command.isEmpty();
+    }
+    if (command.isEmpty()) {
+        command = KoraCutAgentsCli::launchCommand(agent, KoraCutAgentInit::firstMessage());
+    }
+    insertMcpArguments(command, agent, KoraCutAgentInit::mcpLaunchArguments(agent, ctx));
+    KoraCutAgentsCli::applyNoApproval(command, agent);
+    return command;
 }
 
 } // namespace
@@ -883,7 +900,9 @@ QString KoraCutTerminalPanel::ctlLinkDirectory()
     m_linkDir = ctlDir;
 #else
     // koracut-ctl seul dans un dossier à part : son voisinage (les outils de l'application) reste hors du PATH.
-    const QString dir = tempRoot() + QStringLiteral("/bin");
+    // Hors du dossier temporaire de cette session (21 octobre 2026, KC-008) : une fenêtre de terminal à part
+    // reste ouverte après la fermeture de KoraCut, et doit retrouver koracut-ctl quand KoraCut revient.
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QStringLiteral("/terminal-bin");
     QDir().mkpath(dir);
     const QString link = dir + QStringLiteral("/koracut-ctl");
     QFile::remove(link);
@@ -1244,12 +1263,14 @@ bool KoraCutTerminalPanel::launchAgent(const QString &id, bool install)
         body += QStringLiteral("echo ok > %1\n").arg(state);
 #endif
     }
-    QStringList command = KoraCutAgentsCli::launchCommand(*agent, KoraCutAgentInit::firstMessage());
+    bool resumed = false;
+    QStringList command = agentCommand(*agent, ctx, dir, &resumed);
     if (!exe.isEmpty() && !command.isEmpty()) {
         command[0] = exe;
     }
-    const QStringList mcpArgs = KoraCutAgentInit::mcpLaunchArguments(*agent, ctx);
-    insertMcpArguments(command, *agent, mcpArgs);
+    if (resumed) {
+        body += printfLine(i18nc("@info line in the terminal", "KoraCut: the last conversation in this folder continues."));
+    }
 #ifdef Q_OS_WIN
     // « call » : un agent installé par npm est un .cmd, qui sans lui ne rendrait pas la main au script.
     body += QStringLiteral("call ");
@@ -1319,6 +1340,31 @@ bool KoraCutTerminalPanel::editWithAgent()
     return launchAgent(last, false);
 }
 
+bool KoraCutTerminalPanel::editInSeparateWindow()
+{
+    QString id = KoraCutAgentsCli::lastChoice();
+    if (id.isEmpty()) {
+        id = kClaudeId;
+    }
+    const KoraCutAgentsCli::Agent *agent = KoraCutAgentsCli::byId(id);
+    if (!agent || KoraCutAgentsCli::locate(*agent).isEmpty()) {
+        // À installer : la page de choix du panneau s'en charge, dans le terminal intégré.
+        return false;
+    }
+    KoraCutAgentsCli::setLastChoice(id);
+    if (openInSystemTerminal(id)) {
+        return true;
+    }
+    if (!m_saveButton->isHidden()) {
+        // Le projet n'a pas encore de dossier : l'agent doit savoir où il travaille. On l'enregistre d'abord,
+        // la fenêtre suit (resumePending).
+        m_pendingAgent = QStringLiteral("systeme:") + id;
+        Q_EMIT saveProjectRequested();
+        return true;
+    }
+    return false;
+}
+
 QString KoraCutTerminalPanel::nodeInstallBody() const
 {
 #ifdef Q_OS_WIN
@@ -1373,10 +1419,13 @@ bool KoraCutTerminalPanel::openInSystemTerminal(const QString &agentId)
             }
         }
         KoraCutAgentInit::writeForAgent(dir, *agent, ctx);
-        QStringList args = KoraCutAgentsCli::launchCommand(*agent, KoraCutAgentInit::firstMessage());
-        const QStringList mcpArgs = KoraCutAgentInit::mcpLaunchArguments(*agent, ctx);
-        insertMcpArguments(args, *agent, mcpArgs);
-        command = KoraCutAgentsCli::shellLine(args);
+        bool resumed = false;
+        const QStringList args = agentCommand(*agent, ctx, dir, &resumed);
+        command = printfLine(i18nc("@info line in the system terminal", "This window stays open even if KoraCut closes. Open KoraCut again and carry on here."));
+        if (resumed) {
+            command += printfLine(i18nc("@info line in the terminal", "KoraCut: the last conversation in this folder continues."));
+        }
+        command += KoraCutAgentsCli::shellLine(args);
     } else if (agent) {
         // Pas installé : le terminal s'ouvre quand même, et dit où l'installer.
         command = printfLine(i18nc("@info %1 agent name", "%1 is not installed yet. Install it from the KoraCut terminal panel (Edit with an Agent), then come back.", agent->name),

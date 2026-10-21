@@ -17,7 +17,11 @@
 #include "koracut/terminal/koracutterminalpanel.h"
 #include "koracut/terminal/koracutterminalview.h"
 
+#include <KConfigGroup>
+#include <KSharedConfig>
+
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -465,6 +469,70 @@ TEST_CASE("Agents en ligne de commande : catalogue, PATH élargi, premier messag
 }
 
 #ifndef Q_OS_WIN
+TEST_CASE("Agents : lancés sans demande d'accord, la conversation d'hier reprise (KC-008)", "[KoraCut]")
+{
+    KConfigGroup group = KSharedConfig::openConfig()->group(QStringLiteral("KoraCut"));
+    const KoraCutAgentsCli::Agent *claude = KoraCutAgentsCli::byId(QStringLiteral("claude-code"));
+    const KoraCutAgentsCli::Agent *codex = KoraCutAgentsCli::byId(QStringLiteral("codex"));
+    REQUIRE(claude);
+    REQUIRE(codex);
+    group.deleteEntry("agentSansAccord");
+    group.deleteEntry("agentFenetre");
+    CHECK(KoraCutAgentsCli::noApprovalWanted());
+    CHECK(KoraCutAgentsCli::separateWindowWanted());
+
+    // Claude Code : le mode d'accord posé par la ligne MCP change de valeur, les refus (ffmpeg, melt) restent.
+    QStringList line{QStringLiteral("claude"), QStringLiteral("--disallowedTools"), QStringLiteral("Bash(ffmpeg *)"), QStringLiteral("--permission-mode"), QStringLiteral("default")};
+    KoraCutAgentsCli::applyNoApproval(line, *claude);
+    CHECK(line == QStringList{QStringLiteral("claude"), QStringLiteral("--disallowedTools"), QStringLiteral("Bash(ffmpeg *)"), QStringLiteral("--permission-mode"),
+                              QStringLiteral("bypassPermissions")});
+    // Sans ligne MCP : l'option va juste après l'exécutable, avant le premier message.
+    QStringList bare{QStringLiteral("claude"), QStringLiteral("Bonjour")};
+    KoraCutAgentsCli::applyNoApproval(bare, *claude);
+    CHECK(bare == QStringList{QStringLiteral("claude"), QStringLiteral("--permission-mode"), QStringLiteral("bypassPermissions"), QStringLiteral("Bonjour")});
+    QStringList cx{QStringLiteral("codex"), QStringLiteral("Bonjour")};
+    KoraCutAgentsCli::applyNoApproval(cx, *codex);
+    CHECK(cx == QStringList{QStringLiteral("codex"), QStringLiteral("--dangerously-bypass-approvals-and-sandbox"), QStringLiteral("Bonjour")});
+
+    // La personne qui veut valider chaque geste coupe le réglage : rien ne change.
+    group.writeEntry("agentSansAccord", false);
+    QStringList kept{QStringLiteral("claude"), QStringLiteral("--permission-mode"), QStringLiteral("default")};
+    KoraCutAgentsCli::applyNoApproval(kept, *claude);
+    CHECK(kept.last() == QStringLiteral("default"));
+    group.deleteEntry("agentSansAccord");
+    group.writeEntry("agentFenetre", QStringLiteral("koracut"));
+    CHECK_FALSE(KoraCutAgentsCli::separateWindowWanted());
+    group.deleteEntry("agentFenetre");
+
+    // La reprise : une conversation de Claude Code dans ce dossier, de moins de 24 heures.
+    QTemporaryDir home;
+    REQUIRE(home.isValid());
+    const QByteArray oldHome = qgetenv("HOME");
+    qputenv("HOME", QFile::encodeName(home.path()));
+    const QString project = home.filePath(QStringLiteral("Mes projets/Pub été"));
+    QDir().mkpath(project);
+    CHECK(KoraCutAgentsCli::resumeCommand(*claude, project).isEmpty());
+    QString key = QDir::cleanPath(project);
+    for (QChar &c : key) {
+        if (!(c.isLetterOrNumber() && c.unicode() < 128)) {
+            c = QLatin1Char('-');
+        }
+    }
+    CHECK(key.endsWith(QStringLiteral("-Mes-projets-Pub--t-")));
+    const QString sessions = QDir::homePath() + QStringLiteral("/.claude/projects/") + key;
+    QDir().mkpath(sessions);
+    writeAll(sessions + QStringLiteral("/a.jsonl"), QStringLiteral("{}\n"));
+    CHECK(KoraCutAgentsCli::resumeCommand(*claude, project) == QStringList{QStringLiteral("claude"), QStringLiteral("--continue")});
+    // Une vieille conversation ne revient pas, et un autre agent n'a pas de reprise.
+    QFile old(sessions + QStringLiteral("/a.jsonl"));
+    REQUIRE(old.open(QIODevice::ReadWrite));
+    old.setFileTime(QDateTime::currentDateTime().addDays(-2), QFileDevice::FileModificationTime);
+    old.close();
+    CHECK(KoraCutAgentsCli::resumeCommand(*claude, project).isEmpty());
+    CHECK(KoraCutAgentsCli::resumeCommand(*codex, project).isEmpty());
+    qputenv("HOME", oldHome);
+}
+
 TEST_CASE("Terminal : le PTY lance un programme et on lit sa sortie", "[KoraCut]")
 {
     SECTION("echo par le PTY brut")

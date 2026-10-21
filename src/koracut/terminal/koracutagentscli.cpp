@@ -10,6 +10,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <QColor>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -105,6 +106,8 @@ QList<KoraCutAgentsCli::Agent> load()
         }
         a.firstMessage = strings(o.value(QStringLiteral("premier_message")));
         a.firstMessageKeepsSession = o.value(QStringLiteral("premier_message_garde_session")).toBool(true);
+        a.noApproval = strings(o.value(QStringLiteral("sans_accord")));
+        a.resume = strings(o.value(QStringLiteral("reprendre")));
         a.instructions = strings(o.value(QStringLiteral("instructions")));
         a.readsAgentsMd = o.value(QStringLiteral("lit_agents_md")).toBool();
         a.mcp = o.value(QStringLiteral("mcp")).toObject();
@@ -360,6 +363,55 @@ QStringList KoraCutAgentsCli::launchCommand(const Agent &agent, const QString &f
         return out;
     }
     return agent.launch;
+}
+
+bool KoraCutAgentsCli::noApprovalWanted()
+{
+    return KSharedConfig::openConfig()->group(QStringLiteral("KoraCut")).readEntry("agentSansAccord", true);
+}
+
+void KoraCutAgentsCli::applyNoApproval(QStringList &command, const Agent &agent)
+{
+    if (agent.noApproval.isEmpty() || command.isEmpty() || !noApprovalWanted()) {
+        return;
+    }
+    const QString option = agent.noApproval.constFirst();
+    const int at = command.indexOf(option);
+    if (at > 0) {
+        if (agent.noApproval.size() == 2 && at + 1 < command.size()) {
+            command[at + 1] = agent.noApproval.at(1);
+        }
+        return;
+    }
+    for (int i = 0; i < agent.noApproval.size(); ++i) {
+        command.insert(1 + i, agent.noApproval.at(i));
+    }
+}
+
+bool KoraCutAgentsCli::separateWindowWanted()
+{
+    return KSharedConfig::openConfig()->group(QStringLiteral("KoraCut")).readEntry("agentFenetre", QStringLiteral("separee")) != QLatin1String("koracut");
+}
+
+QStringList KoraCutAgentsCli::resumeCommand(const Agent &agent, const QString &dir)
+{
+    if (agent.resume.isEmpty() || dir.isEmpty() || agent.id != QLatin1String("claude-code")) {
+        return {};
+    }
+    // Claude Code range les conversations d'un dossier dans ~/.claude/projects/<chemin, chaque signe
+    // autre qu'une lettre ou un chiffre devenu « - »>/<session>.jsonl.
+    QString key = QDir::cleanPath(QFileInfo(dir).absoluteFilePath());
+    for (QChar &c : key) {
+        if (!(c.isLetterOrNumber() && c.unicode() < 128)) {
+            c = QLatin1Char('-');
+        }
+    }
+    const QDir sessions(QDir::homePath() + QStringLiteral("/.claude/projects/") + key);
+    const QFileInfoList files = sessions.entryInfoList({QStringLiteral("*.jsonl")}, QDir::Files, QDir::Time);
+    if (files.isEmpty() || files.constFirst().lastModified().secsTo(QDateTime::currentDateTime()) > 24 * 3600) {
+        return {};
+    }
+    return agent.resume;
 }
 
 QString KoraCutAgentsCli::lastChoice()

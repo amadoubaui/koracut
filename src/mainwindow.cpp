@@ -91,6 +91,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "koracut/koracutstyle.h"
 #include "koracut/koracutworkspace.h"
 #include "koracut/porte/koracutconsolepanel.h"
+#include "koracut/terminal/koracutagentscli.h"
 #include "koracut/terminal/koracutterminalpanel.h"
 #include "koracut/script/koracutscriptpanel.h"
 #include "koracut/color/koracutclipstrip.h"
@@ -4878,8 +4879,8 @@ void MainWindow::setupActions()
     // l'action est resté) : l'agent de la personne dans le terminal, ou la page de choix. Sans raccourci.
     auto *claudeCode = new QAction(QIcon::fromTheme(QStringLiteral("utilities-terminal")), i18nc("@action", "Edit with an Agent"), this);
     claudeCode->setToolTip(i18nc("@info:tooltip",
-                                 "Prepares the project and launches your agent (Claude Code, Codex, Gemini, OpenCode and others) in the KoraCut terminal, "
-                                 "connected to KoraCut, with your own account"));
+                                 "Prepares the project and launches your agent (Claude Code, Codex, Gemini, OpenCode and others) in a terminal window of its own, "
+                                 "which stays open if KoraCut closes, connected to KoraCut, with your own account"));
     connect(claudeCode, &QAction::triggered, this, &MainWindow::slotEditWithClaudeCode);
     addAction(QStringLiteral("koracut_claude_code"), claudeCode, QKeySequence(), koraCutActions);
 #ifdef Q_OS_MACOS
@@ -5618,10 +5619,17 @@ void MainWindow::slotEditWithClaudeCode()
     if (!m_terminalDock) {
         return;
     }
-    koraCutRevealTerminalDock();
     // Au tour de boucle suivant : déclenchée par la porte (actions.declencher), l'action doit d'abord
     // rendre la main, sinon la porte répond « occupé » quand le panneau lit le projet.
-    QTimer::singleShot(0, m_terminalPanel, [this]() { m_terminalPanel->editWithAgent(); });
+    // Depuis le 21 octobre 2026 (KC-008), l'agent part dans une fenêtre de terminal à part, qui survit à
+    // KoraCut ; le panneau ne s'ouvre que s'il faut choisir ou installer l'agent (réglage agentFenetre).
+    QTimer::singleShot(0, m_terminalPanel, [this]() {
+        if (KoraCutAgentsCli::separateWindowWanted() && m_terminalPanel->editInSeparateWindow()) {
+            return;
+        }
+        koraCutRevealTerminalDock();
+        m_terminalPanel->editWithAgent();
+    });
 }
 
 QString MainWindow::koraCutTerminalPlace() const

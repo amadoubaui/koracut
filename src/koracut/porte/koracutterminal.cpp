@@ -10,6 +10,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <KSharedConfig>
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -95,10 +96,14 @@ bool KoraCutTerminal::open(const QString &projectDir, const QString &porteFile, 
         error = QStringLiteral("dossier_absent");
         return false;
     }
-    const QString tmp = QDir::tempPath() + QStringLiteral("/koracut-terminal-%1").arg(QCoreApplication::applicationPid());
+    // Un dossier à part du dossier temporaire de la session (que KoraCut vide en quittant), et un nom par
+    // fenêtre : le shell d'une fenêtre encore ouverte relit son script après l'agent, il ne doit pas changer
+    // sous lui (21 octobre 2026, KC-008).
+    const QString tmp = QDir::tempPath() + QStringLiteral("/koracut-fenetres");
     QDir().mkpath(tmp);
+    const QString stamp = QStringLiteral("%1-%2").arg(QCoreApplication::applicationPid()).arg(QDateTime::currentMSecsSinceEpoch());
 #if defined(Q_OS_WIN)
-    const QString script = tmp + QStringLiteral("/koracut.cmd");
+    const QString script = tmp + QStringLiteral("/koracut-%1.cmd").arg(stamp);
     QFile f(script);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         error = QStringLiteral("ecriture_impossible");
@@ -125,7 +130,7 @@ bool KoraCutTerminal::open(const QString &projectDir, const QString &porteFile, 
     if (shell.isEmpty() || !QFileInfo::exists(shell)) {
         shell = QFileInfo::exists(QStringLiteral("/bin/zsh")) ? QStringLiteral("/bin/zsh") : QStringLiteral("/bin/bash");
     }
-    const QString script = tmp + QStringLiteral("/koracut.command");
+    const QString script = tmp + QStringLiteral("/koracut-%1.command").arg(stamp);
     QFile f(script);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         error = QStringLiteral("ecriture_impossible");

@@ -56,6 +56,10 @@ public:
     /** @brief « Monter avec un agent » : le dernier agent choisi s'il est installé (son onglet ramené devant s'il
      *  tourne déjà), sinon la page de choix, avec les deux voies. */
     bool editWithAgent();
+    /** @brief « Monter avec un agent » dans une fenêtre de terminal à part (KC-008, 21 octobre 2026) : elle reste
+     *  ouverte si KoraCut se ferme ou plante. Rend false quand il faut la page de choix du panneau (aucun agent
+     *  choisi ou installé, terminal du système introuvable) ; un projet sans dossier fait ouvrir l'enregistrement. */
+    bool editInSeparateWindow();
     /** @brief La page de choix montre aussi la voie « dans le chat, avec ta clé » (version avec agents). */
     void setChatWayAvailable(bool available);
     /** @brief Le dossier mis en tête du PATH du terminal : koracut-ctl, hyperframes, les gardes (npx, ffmpeg, melt). */
