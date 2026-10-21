@@ -34,29 +34,24 @@ Item {
         id: thumbRepeater
         // switching the model allows one to have different view modes.
         // We set the model to the number of frames we want to show
-        model: switch (parentTrack.trackThumbsFormat) {
-                   case 0:
-                       // in/out
-                       if (thumbRow.width > 2 * thumbRow.thumbWidth) {
-                           2 // 2: will display start / end thumbs
-                       } else {
-                           1 // 1: if the width of the container is to small, only show first thumbnail
-                       }
-                       break;
-                   case 1:
-                       // All frames
-                       // display as many thumbnails as can fit into the container
-                       Math.ceil(thumbRow.width / thumbRow.thumbWidth)
-                       break;
-                   case 2:
-                       // In frame only
-                       1 // 1: only show first thumbnail
-                       break;
-                   case 3:
-                   default:
-                       // No thumbs
-                       0 // 0: will disable thumbnails
-               }
+        // Des « return » plutôt que la valeur du switch : qmllint de Qt 6.12 refuse une expression sans effet.
+        model: {
+            switch (parentTrack.trackThumbsFormat) {
+            case 0:
+                // in/out : 2 montre l'image de début et de fin, 1 seulement la première si la place manque
+                return thumbRow.width > 2 * thumbRow.thumbWidth ? 2 : 1;
+            case 1:
+                // All frames : autant d'images que la place en tient
+                return Math.ceil(thumbRow.width / thumbRow.thumbWidth);
+            case 2:
+                // In frame only
+                return 1;
+            case 3:
+            default:
+                // No thumbs
+                return 0;
+            }
+        }
         property int startFrame: thumbRow.parentClip.inPoint
         property int endFrame: thumbRow.parentClip.outPoint
         // Des cases de largeur entière, collées : pas de jour entre deux images.
