@@ -20,6 +20,7 @@
 #include <KConfigGroup>
 #include <KSharedConfig>
 
+#include <QCheckBox>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -503,6 +504,27 @@ TEST_CASE("Agents : lancés sans demande d'accord, la conversation d'hier repris
     group.writeEntry("agentFenetre", QStringLiteral("koracut"));
     CHECK_FALSE(KoraCutAgentsCli::separateWindowWanted());
     group.deleteEntry("agentFenetre");
+
+    // Les deux cases de la page de choix écrivent ces réglages.
+    {
+        KoraCutTerminalPanel panel(nullptr);
+        auto *separate = panel.findChild<QCheckBox *>(QStringLiteral("koracutAgentSeparateWindow"));
+        auto *noApproval = panel.findChild<QCheckBox *>(QStringLiteral("koracutAgentNoApproval"));
+        REQUIRE(separate);
+        REQUIRE(noApproval);
+        CHECK(separate->isChecked());
+        CHECK(noApproval->isChecked());
+        separate->setChecked(false);
+        noApproval->setChecked(false);
+        CHECK_FALSE(KoraCutAgentsCli::separateWindowWanted());
+        CHECK_FALSE(KoraCutAgentsCli::noApprovalWanted());
+        separate->setChecked(true);
+        noApproval->setChecked(true);
+        CHECK(KoraCutAgentsCli::separateWindowWanted());
+        CHECK(KoraCutAgentsCli::noApprovalWanted());
+    }
+    group.deleteEntry("agentFenetre");
+    group.deleteEntry("agentSansAccord");
 
     // La reprise : une conversation de Claude Code dans ce dossier, de moins de 24 heures.
     QTemporaryDir home;

@@ -13,8 +13,11 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "koracutskills.h"
 #include "koracutterminalview.h"
 
+#include <KConfigGroup>
 #include <KLocalizedString>
+#include <KSharedConfig>
 
+#include <QCheckBox>
 #include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDir>
@@ -415,6 +418,25 @@ KoraCutTerminalPanel::KoraCutTerminalPanel(KoraCutPorte *porte, QWidget *parent)
     other->addWidget(systemButton);
     other->addStretch(1);
     page->addLayout(other);
+    // Les deux réglages de KC-008 (21 octobre 2026), visibles là où l'on choisit son agent.
+    auto *separate = new QCheckBox(i18nc("@option:check", "Open the agent in a window of its own (it stays open if KoraCut closes)"), m_chooser);
+    separate->setObjectName(QStringLiteral("koracutAgentSeparateWindow"));
+    separate->setChecked(KoraCutAgentsCli::separateWindowWanted());
+    connect(separate, &QCheckBox::toggled, this, [](bool on) {
+        KConfigGroup group = KSharedConfig::openConfig()->group(QStringLiteral("KoraCut"));
+        group.writeEntry("agentFenetre", on ? QStringLiteral("separee") : QStringLiteral("koracut"));
+        group.sync();
+    });
+    page->addWidget(separate);
+    auto *noApproval = new QCheckBox(i18nc("@option:check", "Let the agent work without asking for approval at each step (ffmpeg and melt stay refused)"), m_chooser);
+    noApproval->setObjectName(QStringLiteral("koracutAgentNoApproval"));
+    noApproval->setChecked(KoraCutAgentsCli::noApprovalWanted());
+    connect(noApproval, &QCheckBox::toggled, this, [](bool on) {
+        KConfigGroup group = KSharedConfig::openConfig()->group(QStringLiteral("KoraCut"));
+        group.writeEntry("agentSansAccord", on);
+        group.sync();
+    });
+    page->addWidget(noApproval);
     scroll->setWidget(m_chooser);
     m_stack->addWidget(scroll);
 
@@ -541,6 +563,17 @@ void KoraCutTerminalPanel::launchFromButton()
     m_launchButton->setEnabled(false);
     m_launchButton->setText(i18nc("@action:button the click was taken, the terminal is opening", "Opening the terminal…"));
     m_launchButton->repaint();
+    const KoraCutAgentsCli::Agent *agent = KoraCutAgentsCli::byId(id);
+    if (KoraCutAgentsCli::separateWindowWanted() && agent && !KoraCutAgentsCli::locate(*agent).isEmpty()) {
+        // Installé : la fenêtre à part, comme « Monter avec un agent » (KC-008).
+        KoraCutAgentsCli::setLastChoice(id);
+        if (!openInSystemTerminal(id) && !m_saveButton->isHidden()) {
+            m_pendingAgent = QStringLiteral("systeme:") + id;
+            Q_EMIT saveProjectRequested();
+        }
+        updateDetails();
+        return;
+    }
     const bool started = launchAgent(id, true);
     if (!started) {
         updateDetails();

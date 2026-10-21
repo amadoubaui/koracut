@@ -55857,3 +55857,13 @@ msgstr "Télécharger"
 msgctxt "@info %1 date of the new version, %2 date of the installed one"
 msgid "A new version of KoraCut is available (%1, you have %2)."
 msgstr "Une nouvelle version de KoraCut est disponible (%1, tu as celle du %2)."
+
+#: src/koracut (21 octobre 2026, KC-008)
+msgctxt "@option:check"
+msgid "Open the agent in a window of its own (it stays open if KoraCut closes)"
+msgstr "Ouvrir l'agent dans une fenêtre à part (elle reste ouverte si KoraCut se ferme)"
+
+#: src/koracut (21 octobre 2026, KC-008)
+msgctxt "@option:check"
+msgid "Let the agent work without asking for approval at each step (ffmpeg and melt stay refused)"
+msgstr "Laisser l'agent travailler sans demander l'accord à chaque geste (ffmpeg et melt restent refusés)"
