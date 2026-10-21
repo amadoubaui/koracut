@@ -401,7 +401,11 @@ if (BUILD_QCH)
     )
 endif()
 
-add_dependencies(koracut all_qmllint)
+# KoraCut (21 octobre 2026) : sous Windows, le qmllint de Qt 6.12 (MSYS2) rend un code d'échec alors qu'il ne
+# signale que des avertissements ; il ne bloque donc la compilation que sur macOS et Linux, où il garde son rôle.
+if(NOT WIN32)
+    add_dependencies(koracut all_qmllint)
+endif()
 
 ecm_finalize_qml_module(kdenliveLib
     DESTINATION ${KDE_INSTALL_QMLDIR})
