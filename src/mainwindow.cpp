@@ -1060,32 +1060,11 @@ void MainWindow::init()
     m_agentPanel = new KoraCutAgentPanel(m_agentSession, this);
     m_agentDock = addDock(i18nc("@title:window nom court d'un panneau", "Agents"), QStringLiteral("agents"), m_agentPanel, KDDockWidgets::Location_None, m_effectStackDock);
     // La pastille de la barre du haut suit la liaison et le tour : gris, vert, bleu qui respire, rouge.
-    auto refreshAgentsPill = [this]() {
-        KoraCutTopBar::AgentsState state = KoraCutTopBar::AgentsState::NoService;
-        QString tip = i18nc("@info:tooltip", "No agents service");
-        switch (m_agentSession->linkState()) {
-        case KoraCutAgents::LinkState::NoService:
-            break;
-        case KoraCutAgents::LinkState::Connecting:
-            tip = i18nc("@info:tooltip", "Connecting to the agents service…");
-            break;
-        case KoraCutAgents::LinkState::Error:
-            state = KoraCutTopBar::AgentsState::Error;
-            tip = i18nc("@info:tooltip", "Agents service: error");
-            break;
-        case KoraCutAgents::LinkState::Connected:
-            state = m_agentSession->turnOpen() ? KoraCutTopBar::AgentsState::Working : KoraCutTopBar::AgentsState::Ready;
-            tip = m_agentSession->turnOpen() ? i18nc("@info:tooltip", "An agent is working") : i18nc("@info:tooltip", "Agents ready");
-            break;
-        }
-        m_topBar->setAgentsState(state, tip);
-    };
-    connect(m_agentSession, &KoraCutAgentSession::linkStateChanged, this, refreshAgentsPill);
-    connect(m_agentSession, &KoraCutAgentSession::turnStarted, this, refreshAgentsPill);
-    connect(m_agentSession, &KoraCutAgentSession::turnFinished, this, refreshAgentsPill);
-    connect(m_agentSession, &KoraCutAgentSession::turnCancelled, this, refreshAgentsPill);
+    connect(m_agentSession, &KoraCutAgentSession::linkStateChanged, this, &MainWindow::koraCutRefreshAgentsPill);
+    connect(m_agentSession, &KoraCutAgentSession::turnStarted, this, &MainWindow::koraCutRefreshAgentsPill);
+    connect(m_agentSession, &KoraCutAgentSession::turnFinished, this, &MainWindow::koraCutRefreshAgentsPill);
+    connect(m_agentSession, &KoraCutAgentSession::turnCancelled, this, &MainWindow::koraCutRefreshAgentsPill);
     connect(m_topBar, &KoraCutTopBar::agentsRequested, this, &MainWindow::slotShowAgentsPanel);
-    refreshAgentsPill();
     // Connexions IA (25 septembre 2026) : les modèles de la personne, avec leurs clés, partent vers le
     // service local ; sans adresse réglée, l'application lance ce service à l'ouverture du panneau.
     auto *aiBridge = new KoraCutAiBridge(m_agentClient, m_agentPanel, this);
@@ -1100,6 +1079,9 @@ void MainWindow::init()
     connect(qApp, &QCoreApplication::aboutToQuit, m_porte, &KoraCutPorte::close);
     // Une instance pilotée par un agent le dit dans son titre et ne se ferme pas sans prévenir (1er octobre 2026).
     connect(m_porte, &KoraCutPorte::turnsChanged, this, &MainWindow::koraCutRefreshPilotedTitle);
+    // Un agent qui travaille par la porte (Claude Code dans le terminal, par exemple) allume aussi la pastille (22 octobre 2026).
+    connect(m_porte, &KoraCutPorte::turnsChanged, this, &MainWindow::koraCutRefreshAgentsPill);
+    koraCutRefreshAgentsPill();
 #if KORACUT_AGENTS
     connect(m_agentSession, &KoraCutAgentSession::turnStarted, this, &MainWindow::koraCutRefreshPilotedTitle);
     connect(m_agentSession, &KoraCutAgentSession::turnFinished, this, &MainWindow::koraCutRefreshPilotedTitle);
@@ -6040,6 +6022,42 @@ QStringList MainWindow::koraCutAgentsAtWork() const
     }
 #endif
     return atWork;
+}
+
+void MainWindow::koraCutRefreshAgentsPill()
+{
+    if (!m_topBar) {
+        return;
+    }
+    KoraCutTopBar::AgentsState state = KoraCutTopBar::AgentsState::NoService;
+    QString tip = i18nc("@info:tooltip", "No agents service");
+#if KORACUT_AGENTS
+    if (m_agentSession) {
+        switch (m_agentSession->linkState()) {
+        case KoraCutAgents::LinkState::NoService:
+            break;
+        case KoraCutAgents::LinkState::Connecting:
+            tip = i18nc("@info:tooltip", "Connecting to the agents service…");
+            break;
+        case KoraCutAgents::LinkState::Error:
+            state = KoraCutTopBar::AgentsState::Error;
+            tip = i18nc("@info:tooltip", "Agents service: error");
+            break;
+        case KoraCutAgents::LinkState::Connected:
+            state = m_agentSession->turnOpen() ? KoraCutTopBar::AgentsState::Working : KoraCutTopBar::AgentsState::Ready;
+            tip = m_agentSession->turnOpen() ? i18nc("@info:tooltip", "An agent is working") : i18nc("@info:tooltip", "Agents ready");
+            break;
+        }
+    }
+#endif
+    // Un agent qui monte par la porte de commande compte aussi : la pastille respire et dit qui travaille.
+    if (state != KoraCutTopBar::AgentsState::Working && m_porte) {
+        if (const QStringList names = m_porte->openTurns(); !names.isEmpty()) {
+            state = KoraCutTopBar::AgentsState::Working;
+            tip = i18nc("@info:tooltip %1 is a list of programs driving the app", "At work through the command door: %1", names.join(QStringLiteral(", ")));
+        }
+    }
+    m_topBar->setAgentsState(state, tip);
 }
 
 void MainWindow::koraCutRefreshPilotedTitle()

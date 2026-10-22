@@ -329,6 +329,8 @@ private:
     QStringList koraCutAgentsAtWork() const;
     /** @brief Ajoute ou retire « pilotée par un agent, ne pas fermer » au bout du titre de la fenêtre. */
     void koraCutRefreshPilotedTitle();
+    /** @brief La pastille Agents de la barre du haut : session des agents et tours ouverts à la porte. */
+    void koraCutRefreshAgentsPill();
     bool m_koraCutTitling{false};
     KoraCutConsolePanel *m_consolePanel{nullptr};
     KDDockWidgets::QtWidgets::DockWidget *m_consoleDock{nullptr};

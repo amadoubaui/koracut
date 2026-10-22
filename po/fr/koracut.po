@@ -55978,3 +55978,7 @@ msgid ""
 msgstr ""
 "Réveil des agents… Monteur, Coloriste, Sound designer, Mixeur, Retoucheur, "
 "Compositeur"
+
+msgctxt "@info:tooltip %1 is a list of programs driving the app"
+msgid "At work through the command door: %1"
+msgstr "Au travail par la porte de commande : %1"
