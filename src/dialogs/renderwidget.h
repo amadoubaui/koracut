@@ -5,6 +5,9 @@
 
 #pragma once
 
+#include <QJsonObject>
+#include <optional>
+
 namespace Purpose {
 class Menu;
 }
@@ -130,6 +133,11 @@ public:
     void koraCutSetBounds(int in, int out);
     /** @brief KoraCut, porte de commande : inclure les sous-titres (true) ou rendre une version sans. */
     void koraCutSetSubtitles(bool include);
+    /** @brief KoraCut, porte de commande : un gain fixe en dB pour le prochain rendu, à la place de la cible LUFS
+     *  (celui d'un export précédent, 22 octobre 2026). Consommé par le rendu suivant. */
+    void koraCutSetFixedGain(double gainDb);
+    /** @brief KoraCut : ce que le nivellement du dernier rendu a posé (planJson), vide s'il n'y en a pas eu. */
+    QJsonObject koraCutLastLevelling() const { return m_koraCutLastLevelling; }
     bool koraCutSubtitles() const;
 
 protected:
@@ -210,6 +218,8 @@ private:
     Ui::RenderWidget_UI m_view;
     /** @brief KoraCut : normaliser le son du rendu (case et cible en LUFS), rangé sous « Audio ». */
     QPoint m_koraCutBounds{-1, -1};
+    std::optional<double> m_koraCutFixedGain;
+    QJsonObject m_koraCutLastLevelling;
     QCheckBox *m_loudnessCheck{nullptr};
     QSpinBox *m_loudnessTarget{nullptr};
     QCheckBox *m_koraCutSubtitles{nullptr};

@@ -997,6 +997,11 @@ void RenderWidget::koraCutSetBounds(int in, int out)
     m_koraCutBounds = QPoint(in, out);
 }
 
+void RenderWidget::koraCutSetFixedGain(double gainDb)
+{
+    m_koraCutFixedGain = gainDb;
+}
+
 void RenderWidget::koraCutSetSubtitles(bool include)
 {
     m_koraCutSubtitles->setChecked(include);
@@ -1164,8 +1169,15 @@ void RenderWidget::slotPrepareExport2(bool delayedRendering)
         request.setBounds(m_koraCutBounds.x(), m_koraCutBounds.y());
     }
     m_koraCutBounds = QPoint(-1, -1);
+    // Le gain d'un export précédent, donné par export.lancer : il remplace la cible, une seule fois.
+    if (m_koraCutFixedGain) {
+        request.setFixedGain(*m_koraCutFixedGain);
+    }
+    m_koraCutFixedGain.reset();
 
     std::vector<RenderRequest::RenderJob> jobs = request.process();
+    const KoraCutLoudness::Plan levelling = request.loudnessPlan();
+    m_koraCutLastLevelling = levelling.target != 0 || levelling.fixedGain ? KoraCutLoudness::planJson(levelling) : QJsonObject();
 
     if (!request.errorMessages().isEmpty()) {
         KMessageBox::errorList(this, i18n("The following errors occurred while trying to render"), request.errorMessages());

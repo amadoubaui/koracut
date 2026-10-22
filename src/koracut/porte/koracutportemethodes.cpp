@@ -2845,6 +2845,9 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
          p(QStringLiteral("niveau_lufs"), QStringLiteral("number"),
            QStringLiteral("Niveau sonore cible, de -30 à -8 (-14 pour le web). Absent : le son du mixage tel quel, sans nivellement : le fichier contient ce que "
                           "mesurer_audio annonce (cible mixage). La cible du type de vidéo du projet n'est pas appliquée d'office : la réponse la rappelle.")),
+         p(QStringLiteral("gain_db"), QStringLiteral("number"),
+           QStringLiteral("Un gain fixe en dB, de -24 à 24, à la place de niveau_lufs : celui d'un export précédent (nivellement.gain_db de sa réponse), pour "
+                          "qu'une version où une voix manque ne remonte pas tout le mixage. Pas avec niveau_lufs.")),
          p(QStringLiteral("ecraser"), QStringLiteral("boolean"), QStringLiteral("true : écrase le fichier s'il existe (à confirmation).")),
          p(QStringLiteral("zone"), QStringLiteral("any"), QStringLiteral("projet (défaut, toute la séquence), zone (la zone du moniteur), ou { in, out } en images ou timecode, out exclu.")),
          p(QStringLiteral("sous_titres"), QStringLiteral("string"), QStringLiteral("incruster (défaut) ou sans : une version sans sous-titres, sans toucher à la piste."))},
@@ -2904,6 +2907,15 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
                 return Reply::fail(QStringLiteral("parametres_invalides"), QStringLiteral("niveau_lufs est un nombre entier de -30 à -8 (-14 pour le web, -16 pour un podcast, -23 pour la télévision)."),
                                    QStringLiteral("Sans niveau_lufs, le son est rendu tel quel."));
             }
+            const bool fixedGain = call.params.contains(QStringLiteral("gain_db")) && !call.params.value(QStringLiteral("gain_db")).isNull();
+            const double gainDb = call.params.value(QStringLiteral("gain_db")).toDouble(0.);
+            if (fixedGain && levelling) {
+                return Reply::fail(QStringLiteral("parametres_invalides"), QStringLiteral("niveau_lufs ou gain_db, pas les deux."),
+                                   QStringLiteral("gain_db reprend le gain d'un export précédent ; niveau_lufs vise une cible."));
+            }
+            if (fixedGain && (!call.params.value(QStringLiteral("gain_db")).isDouble() || gainDb < -24. || gainDb > 24.)) {
+                return Reply::fail(QStringLiteral("parametres_invalides"), QStringLiteral("gain_db est un nombre de -24 à 24 dB."));
+            }
             if (QFileInfo::exists(path)) {
                 if (!call.params.value(QStringLiteral("ecraser")).toBool(false)) {
                     return Reply::fail(QStringLiteral("fichier_existe"), QStringLiteral("%1 existe déjà.").arg(path), QStringLiteral("Donne un autre chemin, ou ecraser=true (à confirmation)."));
@@ -2936,6 +2948,9 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
             QDir().mkpath(QFileInfo(path).absolutePath());
             rw->koraCutSetBounds(boundIn, boundOut >= 0 ? boundOut - 1 : -1);
             rw->koraCutSetSubtitles(subtitles == QLatin1String("incruster"));
+            if (fixedGain) {
+                rw->koraCutSetFixedGain(gainDb);
+            }
             rw->startRenderTo(path);
             porte->publish(QStringLiteral("taches"), QJsonObject{{QStringLiteral("quoi"), QStringLiteral("rendu_lance")}, {QStringLiteral("chemin"), path}});
             QJsonObject o{{QStringLiteral("tache_id"), path}, {QStringLiteral("prereglage"), rw->currentPresetName()}, {QStringLiteral("zone"), zoneKind}, {QStringLiteral("sous_titres"), subtitles}};
@@ -2945,7 +2960,14 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
             }
             // Ce qui est fait du son, dit en clair : nivelé à la cible, ou rendu tel quel.
             o.insert(QStringLiteral("niveau_lufs"), levelling ? QJsonValue(lufs) : QJsonValue());
-            if (!levelling) {
+            if (fixedGain) {
+                o.insert(QStringLiteral("gain_db"), gainDb);
+            }
+            if (levelling || fixedGain) {
+                // Ce que le nivellement a posé : gain_db est celui à redonner pour une autre version au même niveau.
+                o.insert(QStringLiteral("nivellement"), rw->koraCutLastLevelling());
+            }
+            if (!levelling && !fixedGain) {
                 const int typeTarget = pCore->currentDoc()->getDocumentProperty(QStringLiteral("koracut:export_lufs")).toInt();
                 QString note = QStringLiteral("Son rendu tel quel, sans nivellement : le fichier contient ce que mesurer_audio annonce pour le mixage.");
                 if (typeTarget != 0) {
