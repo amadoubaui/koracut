@@ -8118,11 +8118,7 @@ msgid ""
 "Timecode,Frame number,File name,Base name,Creation date,File date (GMT),File "
 "date (local),Source frame rate,Source codec,Source bit rate,Source width,"
 "Source height,Source comment"
-msgstr ""
-"Repère de temps, numéro de trame, nom de fichier, racine de nom, date de "
-"création, date de fichier (GMT), date de fichier (Local), fréquence d'image "
-"source, codec source, débit source, largeur de source, hauteur de source, "
-"commentaire de source"
+msgstr "Timecode,Numéro d'image,Nom de fichier,Nom sans extension,Date de création,Date du fichier (GMT),Date du fichier (locale),Cadence de la source,Codec de la source,Débit de la source,Largeur de la source,Hauteur de la source,Commentaire de la source"
 
 #: data/effects/fade_from_black.xml:4
 #, kde-format
@@ -19044,7 +19040,7 @@ msgstr "Son"
 #: data/generators/count.xml:21
 #, kde-format
 msgid "Drop frame timecode"
-msgstr "Marqueur temporel avec les images perdues"
+msgstr "Timecode avec saut d'images (drop frame)"
 
 #: data/generators/frei0r_test_pat_b.xml:3
 #, kde-format
@@ -23900,12 +23896,12 @@ msgstr "Durée du repère en trames"
 #: src/dialogs/exportguidesdialog.cpp:130
 #, kde-format
 msgid "Marker duration in timecode"
-msgstr "Durée du repère en horodatage"
+msgstr "Durée du marqueur en timecode"
 
 #: src/dialogs/exportguidesdialog.cpp:131
 #, kde-format
 msgid "Marker end position in timecode"
-msgstr "Position de fin du repère en horodatage"
+msgstr "Fin du marqueur en timecode"
 
 #: src/dialogs/exportguidesdialog.cpp:132
 #, kde-format
@@ -24398,12 +24394,12 @@ msgstr "Aucun(e)"
 #: src/mltcontroller/clippropertiescontroller.cpp:1456
 #, kde-format
 msgid "Timecode"
-msgstr "Horodatage"
+msgstr "Timecode"
 
 #: src/dialogs/renderwidget.cpp:398
 #, kde-format
 msgid "Timecode Non Drop Frame"
-msgstr "Horodater une trame non perdue"
+msgstr "Timecode sans saut d'images"
 
 #: src/dialogs/renderwidget.cpp:399
 #, kde-format
@@ -24685,7 +24681,7 @@ msgstr "Longueur du fichier de rendu : %1"
 #: src/mltcontroller/clippropertiescontroller.cpp:626
 #, kde-format
 msgid "Timecode Offset:"
-msgstr "Décalage de l'horodatage :"
+msgstr "Décalage du timecode :"
 
 #: src/dialogs/renderwidget.cpp:2437
 #, kde-format
@@ -30113,7 +30109,7 @@ msgstr "Basculer l'écran"
 #: src/mainwindow.cpp:1719
 #, kde-format
 msgid "Focus Timecode"
-msgstr "Faire un zoom sur l'horodatage"
+msgstr "Aller au champ du timecode"
 
 #: src/mainwindow.cpp:1720
 #, kde-format
@@ -30128,7 +30124,7 @@ msgstr "Informations incrustées sur le moniteur"
 #: src/mainwindow.cpp:1727
 #, kde-format
 msgid "Monitor Overlay Timecode"
-msgstr "Marqueur de temps incrustée sur le moniteur"
+msgstr "Timecode incrusté sur le moniteur"
 
 #: src/mainwindow.cpp:1732
 #, kde-format
@@ -30507,12 +30503,12 @@ msgstr "Aligner l'audio sur la référence"
 #: src/mainwindow.cpp:1995
 #, kde-format
 msgid "Set Timecode Reference"
-msgstr "Définir la référence du repère chronologique"
+msgstr "Définir le timecode de référence"
 
 #: src/mainwindow.cpp:1998
 #, kde-format
 msgid "Align Timecode to Reference"
-msgstr "Aligner le repère chronologique sur la référence"
+msgstr "Aligner le timecode sur la référence"
 
 #: src/mainwindow.cpp:2002
 #, kde-format
@@ -32036,7 +32032,7 @@ msgstr "Afficher les niveaux audio"
 #: src/monitor/monitor.cpp:753
 #, kde-format
 msgid "Show Source Timecode"
-msgstr "Afficher le repère temporel de la source"
+msgstr "Afficher le timecode de la source"
 
 #: src/monitor/monitor.cpp:790
 #, kde-format
@@ -33580,7 +33576,7 @@ msgstr "Rechercher les repères de timeline"
 #: src/project/dialogs/noteswidget.cpp:33
 #, kde-format
 msgid "Insert current timecode"
-msgstr "Insérer le repère de temps actif"
+msgstr "Insérer le timecode courant"
 
 #: src/project/dialogs/noteswidget.cpp:46
 #, kde-format
@@ -33603,7 +33599,7 @@ msgstr "Impossible de trouver une séquence du projet"
 #: src/project/dialogs/noteswidget.cpp:271
 #, kde-format
 msgid "Select some timecodes to reassign"
-msgstr "Sélectionner quelques repères de temps à ré-assigner."
+msgstr "Sélectionne des timecodes à réassocier"
 
 #: src/project/dialogs/noteswidget.cpp:259
 #: src/timeline2/view/timelinecontroller.cpp:4614
@@ -33614,7 +33610,7 @@ msgstr "Aucune séquence sélectionnée dans la timeline"
 #: src/project/dialogs/noteswidget.cpp:284
 #, kde-format
 msgid "Select some timecodes to create markers"
-msgstr "Sélectionner des repères de temps pour créer des signets."
+msgstr "Sélectionne des timecodes pour créer des marqueurs"
 
 #: src/project/dialogs/profilewidget.cpp:44
 #, kde-format
@@ -34144,19 +34140,17 @@ msgstr "Notes de projet"
 #: src/project/notesplugin.cpp:159
 #, kde-format
 msgid "Reassign selected timecodes to current Bin clip"
-msgstr "Associer les horodatages sélectionnés au clip courant des Médias"
+msgstr "Associer les timecodes sélectionnés au clip courant des Médias"
 
 #: src/project/notesplugin.cpp:163
 #, kde-format
 msgid "Reassign selected timecodes to current timeline clip"
-msgstr ""
-"Réassigner les codes d'horodatage à la séquence courante de la timeline "
-"."
+msgstr "Associer les timecodes sélectionnés au clip courant de la timeline"
 
 #: src/project/notesplugin.cpp:167
 #, kde-format
 msgid "Create markers from selected timecodes"
-msgstr "Créer des signets à partir des repères de temps sélectionnés."
+msgstr "Créer des marqueurs à partir des timecodes sélectionnés"
 
 #: src/project/notesplugin.cpp:169
 #, kde-kuit-format
@@ -34164,10 +34158,7 @@ msgctxt "@info:whatsthis"
 msgid ""
 "Creates markers in the timeline from the selected timecodes (doesn’t matter "
 "if other text is selected too)."
-msgstr ""
-"Crée des repères dans la timeline à partir des étiquettes "
-"d'horodatage sélectionnées (Peu importe si un autre texte est également "
-"sélectionné)."
+msgstr "Crée des marqueurs dans la timeline à partir des timecodes sélectionnés (le reste du texte sélectionné est ignoré)."
 
 #: src/project/notesplugin.cpp:214
 #, kde-format
@@ -36979,13 +36970,12 @@ msgstr "Définir la référence audio avant d'opérer à l'alignement"
 #: src/timeline2/view/timelinecontroller.cpp:4008
 #, kde-format
 msgid "No timecode for clip"
-msgstr "Aucun repère chronologique pour la séquence"
+msgstr "Aucun timecode pour ce clip"
 
 #: src/timeline2/view/timelinecontroller.cpp:4003
 #, kde-format
 msgid "Set timecode reference before attempting to align"
-msgstr ""
-"Définir la référence du repère chronologique avant de lancer l'alignement"
+msgstr "Définis le timecode de référence avant d'aligner"
 
 #: src/timeline2/view/timelinecontroller.cpp:4124
 #, kde-format
