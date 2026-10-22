@@ -6548,8 +6548,20 @@ void TimelineController::showSubtitleManager(int page)
 
 void TimelineController::setTimelineMouseOffset(int offset)
 {
+    // KoraCut (22 octobre 2026, KC-011) : appelé à chaque pas de défilement et de zoom ; la position de la souris dans
+    // la barre d'état n'est remise à jour qu'une fois par tour de boucle, et seulement si le décalage a changé.
+    if (offset == m_timelineMouseOffset) {
+        return;
+    }
     m_timelineMouseOffset = offset;
-    Q_EMIT timelineMouseOffsetChanged(offset);
+    if (m_koraMouseOffsetQueued) {
+        return;
+    }
+    m_koraMouseOffsetQueued = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_koraMouseOffsetQueued = false;
+        Q_EMIT timelineMouseOffsetChanged(m_timelineMouseOffset);
+    });
 }
 
 void TimelineController::setTimecodeOffset(int offset)

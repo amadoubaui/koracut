@@ -911,6 +911,7 @@ private:
     double m_koraPendingZoom{1.};
     bool m_koraZoomOnMouse{true};
     bool m_koraZoomQueued{false};
+    bool m_koraMouseOffsetQueued{false};
     QAction *m_disablePreview;
     std::shared_ptr<AudioCorrelation> m_audioCorrelator;
     QMutex m_metaMutex;

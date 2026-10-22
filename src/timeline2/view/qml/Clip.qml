@@ -118,7 +118,10 @@ Rectangle {
     readonly property bool hideClipViews: !visible || clipRoot.width < root.minClipWidthForViews
     readonly property bool hideDecorations: !K.KdenliveSettings.showClipOverlays || !visible || trimInMouseArea.drag.active || trimOutMouseArea.drag.active || fadeInMouseArea.drag.active || fadeOutMouseArea.drag.active
     width : Math.round(clipDuration * timeScale)
-    opacity: dragProxyArea.drag.active && dragProxy.draggedItem == clipId ? 0.8 : 1.0
+    // KoraCut (22 octobre 2026, KC-011) : une seule liaison par plan sur le plan survolé ou tiré, au lieu de cinq :
+    // chaque survol change dragProxy.draggedItem, et tous les plans réévaluaient leurs cinq liaisons.
+    readonly property bool koraIsDragged: dragProxy.draggedItem === clipRoot.clipId
+    opacity: dragProxyArea.drag.active && clipRoot.koraIsDragged ? 0.8 : 1.0
     enabled: !clipDropArea.containsDrag && !compoArea.containsDrag
 
     signal trimmingIn(var clip, real newDuration, bool shiftTrim, bool controlTrim)
@@ -1165,7 +1168,7 @@ Rectangle {
 
                     return false
                 }
-                enabled: !clipRoot.isLocked && (pressed || (container.handleVisible && (mixArea.enabled || clipRoot.mixDuration == 0))) && clipRoot.clipId == dragProxy.draggedItem
+                enabled: !clipRoot.isLocked && (pressed || (container.handleVisible && (mixArea.enabled || clipRoot.mixDuration == 0))) && clipRoot.koraIsDragged
                 hoverEnabled: true
                 drag.target: trimInMouseArea
                 drag.axis: Drag.XAxis
@@ -1290,7 +1293,7 @@ Rectangle {
                 hoverEnabled: true
                 visible: enabled && (K.Core.activeTool === K.ToolType.SelectTool
                                      || (K.Core.activeTool === K.ToolType.RippleTool && clipRoot.mixDuration <= 0))
-                enabled: !clipRoot.isLocked && (pressed || container.handleVisible) && clipRoot.clipId == dragProxy.draggedItem
+                enabled: !clipRoot.isLocked && (pressed || container.handleVisible) && clipRoot.koraIsDragged
                 property bool shiftTrim: false
                 property bool controlTrim: false
                 property bool sizeChanged: false
@@ -1780,7 +1783,7 @@ Rectangle {
             hoverEnabled: !clipRoot.isPanning
             cursorShape: Qt.PointingHandCursor
             visible: !clipRoot.isAudio
-            enabled: !clipRoot.isPanning && !clipRoot.isAudio && dragProxy.draggedItem === clipRoot.clipId && compositionIn.visible
+            enabled: !clipRoot.isPanning && !clipRoot.isAudio && clipRoot.koraIsDragged && compositionIn.visible
             onPressed: mouse => {
                 if (mouse.modifiers & Qt.ControlModifier && (K.Core.activeTool === K.ToolType.SelectTool || K.Core.activeTool === K.ToolType.RippleTool)) {
                     mouse.accepted = false
@@ -1820,7 +1823,7 @@ Rectangle {
             height: width
             hoverEnabled: !clipRoot.isPanning
             cursorShape: Qt.PointingHandCursor
-            enabled: !clipRoot.isPanning && !clipRoot.isAudio && dragProxy.draggedItem === clipRoot.clipId && compositionOut.visible
+            enabled: !clipRoot.isPanning && !clipRoot.isAudio && clipRoot.koraIsDragged && compositionOut.visible
             visible: !clipRoot.isAudio
             onPressed: mouse => {
                 if (mouse.modifiers & Qt.ControlModifier && (K.Core.activeTool === K.ToolType.SelectTool || K.Core.activeTool === K.ToolType.RippleTool)) {
