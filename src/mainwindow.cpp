@@ -1465,10 +1465,10 @@ void MainWindow::init()
     slotConnectMonitors();
 
     m_timelineToolBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    // KoraCut : la coupe automatique garde son libellé à côté de l'icône, pour qu'on la voie.
+    // KoraCut : la coupe automatique en icône seule comme les autres outils (KC-011, 22 octobre 2026 : un libellé à
+    // côté de chaque icône encombrait la barre), son nom dans l'infobulle.
     if (QAction *autoCutAction = actionCollection()->action(QStringLiteral("koracut_auto_cut"))) {
         if (auto *button = qobject_cast<QToolButton *>(m_timelineToolBar->widgetForAction(autoCutAction))) {
-            button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
             button->setObjectName(QStringLiteral("koracutAutoCutButton"));
         }
     }
@@ -1495,11 +1495,8 @@ void MainWindow::init()
     tlMenu->addAction(actionCollection()->action(QStringLiteral("clear_render_timeline_zone")));
     tlMenu->addAction(actionCollection()->action(QStringLiteral("manage_cache")));
     timelinePreview->setActions(prevRender, stopPrevRender);
-    // La barre passe ses boutons en icône seule : le bouton Rendu garde son libellé, qui dit l'état.
-    timelinePreview->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    connect(m_timelineToolBar, &QToolBar::toolButtonStyleChanged, timelinePreview, [timelinePreview]() {
-        timelinePreview->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    });
+    // Le bouton Rendu règle lui-même son style : icône seule, le pourcentage pendant un rendu (KC-011).
+    connect(m_timelineToolBar, &QToolBar::toolButtonStyleChanged, timelinePreview, [timelinePreview]() { timelinePreview->refresh(true); });
     // Le bouton se range juste après la coupe automatique (le fichier .rc le met plus loin).
     if (QAction *autoCutAction = actionCollection()->action(QStringLiteral("koracut_auto_cut"))) {
         const QList<QAction *> toolbarActions = m_timelineToolBar->actions();
@@ -2101,6 +2098,9 @@ void MainWindow::koraCutDevScreenshot()
                             getCurrentTimeline()->controller()->clearRenders();
                         } else if (what == QLatin1String("etat")) {
                             print(KoraCutRender::stateJson());
+                        } else if (what == QLatin1String("timeline")) {
+                            // « apercu:timeline » : la fluidité de la timeline (zoom, défilement, glisser un plan), KC-011.
+                            qWarning().noquote() << "KORACUT-FLUIDITE" << QString::fromUtf8(QJsonDocument(KoraCutRender::measureTimelineFluidity()).toJson(QJsonDocument::Compact));
                         } else if (what == QLatin1String("gestes")) {
                             // « apercu:gestes » : temps de réponse aux gestes (2 octobre 2026, document 6).
                             // « apercu:gestes:glisser:N » : seulement le glisser de la tête de lecture, N fois.
@@ -3480,6 +3480,20 @@ void MainWindow::setupActions()
     sceneMode->addAction(m_overwriteEditTool);
     sceneMode->addAction(m_insertEditTool);
     sceneMode->setCurrentItem(0);
+    // KoraCut (22 octobre 2026, KC-011) : un bouton qui montre l'icône du mode en cours et ouvre la liste, au lieu
+    // d'une liste déroulante « Mode normal » dans la barre de la timeline.
+    sceneMode->setToolBarMode(KSelectAction::MenuMode);
+    sceneMode->setToolButtonPopupMode(QToolButton::InstantPopup);
+    sceneMode->setIcon(m_normalEditTool->icon());
+    sceneMode->setToolTip(i18n("Timeline Edit Mode") + QStringLiteral(" : ") + m_normalEditTool->text());
+    for (QAction *mode : {m_normalEditTool, m_overwriteEditTool, m_insertEditTool}) {
+        connect(mode, &QAction::toggled, sceneMode, [sceneMode, mode](bool on) {
+            if (on) {
+                sceneMode->setIcon(mode->icon());
+                sceneMode->setToolTip(i18n("Timeline Edit Mode") + QStringLiteral(" : ") + mode->text());
+            }
+        });
+    }
     connect(sceneMode, &KSelectAction::actionTriggered, this, &MainWindow::slotChangeEdit);
     addAction(QStringLiteral("timeline_mode"), sceneMode);
     actionCollection()->setShortcutsConfigurable(sceneMode, false);

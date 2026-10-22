@@ -50,7 +50,7 @@ void LayoutSwitcher::setLayouts(const QList<LayoutTab> &tabs, const QString &cur
             btn->setIcon(tab.icon);
             btn->setIconSize(QSize(16, 16));
         }
-        btn->setToolButtonStyle(tab.icon.isNull() ? Qt::ToolButtonTextOnly : Qt::ToolButtonTextBesideIcon);
+        btn->setToolButtonStyle(Qt::ToolButtonTextOnly);
         btn->setToolTip(tab.tooltip.isEmpty() ? tab.label : tab.tooltip);
         btn->setCheckable(true);
         btn->setAutoRaise(true);
@@ -90,7 +90,9 @@ void LayoutSwitcher::applyCompactMode()
             btn->setToolButtonStyle(Qt::ToolButtonTextOnly);
             continue;
         }
-        btn->setToolButtonStyle(m_compact ? Qt::ToolButtonIconOnly : Qt::ToolButtonTextBesideIcon);
+        // KoraCut (22 octobre 2026, KC-011) : le nom seul, sans icône à côté (l'icône et le nom disaient deux fois la
+        // même chose) ; l'icône seule quand la fenêtre est trop étroite pour les noms.
+        btn->setToolButtonStyle(m_compact ? Qt::ToolButtonIconOnly : Qt::ToolButtonTextOnly);
     }
 }
 
