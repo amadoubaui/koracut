@@ -873,6 +873,33 @@ QJsonObject measureTimelineFluidity()
             model->requestClipMove(clip, track, origin, true, true, false);
         }
         result.insert(QStringLiteral("plan_remis"), model->getClipPosition(clip) == origin && model->getClipTrackId(clip) == track);
+        // Changer de piste pendant le glisser : une piste vidéo voisine libre à cet endroit, un aller-retour toutes les
+        // quatre images (le plan passe d'une piste à l'autre, comme la main qui monte et descend).
+        int other = -1;
+        const int length = model->getClipPlaytime(clip);
+        for (int tid : model->getTracksIds(false)) {
+            if (tid == track || model->trackIsLocked(tid)) {
+                continue;
+            }
+            bool free = true;
+            for (int item : model->getItemsInRange(tid, origin, origin + length, false)) {
+                free = free && !model->isClip(item);
+            }
+            if (free) {
+                other = tid;
+                break;
+            }
+        }
+        if (other >= 0) {
+            result.insert(QStringLiteral("glisser_piste"), sweepTimeline(widget, 120, [model, clip, track, other, origin](double phase) {
+                const int step = int(phase * 120.);
+                model->suggestClipMove(clip, (step / 4) % 2 ? other : track, origin, -1, -1);
+            }));
+            if (model->getClipPosition(clip) != origin || model->getClipTrackId(clip) != track) {
+                model->requestClipMove(clip, track, origin, true, true, false);
+            }
+            result.insert(QStringLiteral("plan_remis_piste"), model->getClipPosition(clip) == origin && model->getClipTrackId(clip) == track);
+        }
     }
     if (guard) {
         controller->setScaleFactorOnMouse(scale, false);
