@@ -20487,7 +20487,7 @@ msgstr "Effets de a piste %1"
 #: src/assets/assetpanel.cpp:289
 #, kde-format
 msgid "Bin %1 effects"
-msgstr "Effets pour la source %1"
+msgstr "Effets du clip %1 des Médias"
 
 #: src/assets/assetpanel.cpp:493 src/bin/bin.cpp:4259
 #: src/dialogs/speechdialog.cpp:50 src/dialogs/textbasededit.cpp:765
@@ -21440,7 +21440,7 @@ msgstr[1] "%1 tâches en attente"
 #: src/bin/bin.cpp:1458
 #, kde-format
 msgid "Bin Search"
-msgstr "Rechercher dans le projet"
+msgstr "Rechercher dans les Médias"
 
 #: src/bin/bin.cpp:1511
 #, kde-format
@@ -21505,7 +21505,7 @@ msgstr "Note"
 #: src/bin/bin.cpp:1600
 #, kde-format
 msgid "Disable Bin Effects"
-msgstr "Désactiver les effets sur les sources"
+msgstr "Désactiver les effets des clips des Médias"
 
 #: src/bin/bin.cpp:1608
 #, kde-format
@@ -21518,9 +21518,7 @@ msgctxt "@info:whatsthis"
 msgid ""
 "Opens a menu to configure the project bin (e.g. view mode, sort, show "
 "rating)."
-msgstr ""
-"Ouvre une fenêtre pour configurer le dossier du projet (Par exemple, mode "
-"d'affichage, tri, affichage de la notation)."
+msgstr "Ouvre un menu pour régler le panneau Médias (affichage, tri, notes…)."
 
 #: src/bin/bin.cpp:1625
 #, kde-format
@@ -21540,7 +21538,7 @@ msgstr "Afficher la notation"
 #: src/bin/bin.cpp:1644
 #, kde-format
 msgid "Open Current Folder In New Bin"
-msgstr "Ouvrir le dossier courant dans un nouveau dossier"
+msgstr "Ouvrir le dossier courant dans un nouveau panneau Médias"
 
 #: src/bin/bin.cpp:1649
 #, kde-format
@@ -21554,15 +21552,12 @@ msgid ""
 "Filter the project bin contents. Click on the filter icon to toggle the "
 "filter display. Click on the arrow icon to open a list of possible filter "
 "settings."
-msgstr ""
-"Filtrer le contenu du dossier de projet. Veuillez cliquer sur l'icône de "
-"filtre pour faire basculer l'affichage du filtre, puis cliquer sur l'icône "
-"en forme de flèche pour ouvrir une liste des paramètres possibles de filtre."
+msgstr "Filtrer le contenu des Médias. Clique sur l'icône de filtre pour afficher ou masquer le filtre, puis sur la flèche pour ouvrir la liste des réglages du filtre."
 
 #: src/bin/bin.cpp:1706
 #, kde-format
 msgid "Close Current Bin"
-msgstr "Fermer le dossier courant"
+msgstr "Fermer ce panneau Médias"
 
 #: src/bin/bin.cpp:1718
 #, kde-format
@@ -21582,7 +21577,7 @@ msgstr "Annuler les tâches en attente"
 #: src/bin/bin.cpp:1763
 #, kde-format
 msgid "Bin Clip Properties"
-msgstr "Propriétés de vidéos du projet"
+msgstr "Propriétés du clip"
 
 #: src/bin/bin.cpp:2106
 #, kde-format
@@ -21615,7 +21610,7 @@ msgstr ""
 #: src/bin/bin.cpp:2144
 #, kde-format
 msgid "Delete bin Clips"
-msgstr "Supprimer les clips sources"
+msgstr "Supprimer des clips des Médias"
 
 #: src/bin/bin.cpp:2169 src/effects/effectstack/view/maskmanager.cpp:266
 #, kde-format
@@ -21939,7 +21934,7 @@ msgstr "Dossier"
 #: src/bin/bin.cpp:2921
 #, kde-format
 msgid "Create bin folder"
-msgstr "Créer un dossier source"
+msgstr "Créer un dossier dans les Médias"
 
 #: src/bin/bin.cpp:3062 src/bin/bin.cpp:3075 src/bin/bin.cpp:4146
 #: src/timeline2/model/timelinemodel.cpp:2622
@@ -21953,9 +21948,7 @@ msgctxt "@info:whatsthis"
 msgid ""
 "Deletes the currently selected clips from the project bin and also from the "
 "timeline."
-msgstr ""
-"Supprime les vidéos actuellement sélectionnées du dossier du projet et aussi "
-"de la timeline."
+msgstr "Supprime les clips sélectionnés des Médias, et aussi de la timeline."
 
 #: src/bin/bin.cpp:3065 src/bin/bin.cpp:3078 src/bin/bin.cpp:4122
 #, kde-format
@@ -22000,12 +21993,7 @@ msgid ""
 "audio, titles, animations).<nl/>Click on the down-arrow icon to get a list "
 "of source types to select from.<nl/>Click on the media icon to open a window "
 "to select source files."
-msgstr ""
-"Boite de dialogue principale pour l'ajout de matériel source à votre dossier "
-"de projet (vidéos, images, audio, titres, animations). <nl/>Cliquez sur "
-"l'icône fléchée vers le bas pour obtenir une liste de types de sources à "
-"sélectionner. <nl/>Cliquez sur l'icône de média pour l'ouverture d'une "
-"fenêtre pour sélectionner les fichiers source."
+msgstr "La fenêtre principale pour ajouter des médias au projet (vidéos, images, sons, titres, animations).<nl/>Clique sur la flèche vers le bas pour choisir un type de média.<nl/>Clique sur l'icône de média pour choisir des fichiers."
 
 #: src/bin/bin.cpp:4067
 #, kde-format
@@ -22108,10 +22096,7 @@ msgctxt "@info:whatsthis"
 msgid ""
 "Creates a folder in the current position in the project bin. Allows for "
 "better organization of source files. Folders can be nested."
-msgstr ""
-"Crée un dossier dans la position actuelle dans le dossier du projet. Permet "
-"une meilleure organisation des fichiers sources. Les dossiers peuvent être "
-"imbriqués."
+msgstr "Crée un dossier à l'endroit sélectionné dans les Médias, pour ranger les clips. Les dossiers peuvent s'imbriquer."
 
 #: src/bin/bin.cpp:4324 src/bin/bin.cpp:4357
 #, kde-format
@@ -22299,7 +22284,7 @@ msgstr "Reconstruire les intermédiaires"
 #, kde-format
 msgctxt "@title:window"
 msgid "Project Bin"
-msgstr "Dossier du projet"
+msgstr "Médias"
 
 #: src/bin/bin.cpp:5928
 #, kde-format
@@ -22425,12 +22410,12 @@ msgstr "Supprimer l'effet %1"
 #: src/bin/bin.cpp:6935 src/mainwindow.cpp:261
 #, kde-format
 msgid "Project Bin"
-msgstr "Sources du projet"
+msgstr "Médias"
 
 #: src/bin/bin.cpp:6938 src/bin/bin.cpp:6941 src/mainwindow.cpp:5386
 #, kde-format
 msgid "Project Bin %1"
-msgstr "Environnement du projet %1"
+msgstr "Médias %1"
 
 #: src/bin/bincommands.cpp:19 src/bin/bincommands.cpp:39
 #, kde-format
@@ -22606,7 +22591,7 @@ msgstr "Ignorer la structure du sous-dossier"
 #: src/bin/mediabrowser.cpp:215 src/dialogs/clipcreationdialog.cpp:453
 #, kde-format
 msgid "Do not create subfolders in Project Bin"
-msgstr "Ne pas créer de sous-dossiers dans le dossier du projet"
+msgstr "Ne pas créer de sous-dossiers dans les Médias"
 
 #: src/bin/mediabrowser.cpp:218 src/dialogs/clipcreationdialog.cpp:456
 #, kde-kuit-format
@@ -22614,10 +22599,7 @@ msgctxt "@info:whatsthis"
 msgid ""
 "When enabled, Kdenlive will import all clips contained in the folder and its "
 "subfolders without creating the subfolders in Project Bin."
-msgstr ""
-"Lorsque cette option est activée, KoraCut importera toutes les vidéos "
-"contenus dans le dossier et ses sous-dossiers sans créer de sous-dossiers "
-"dans le dossier du projet."
+msgstr "Si cette option est cochée, KoraCut importe tous les clips du dossier et de ses sous-dossiers sans recréer les sous-dossiers dans les Médias."
 
 #: src/bin/mediabrowser.cpp:221 src/dialogs/clipcreationdialog.cpp:446
 #, kde-format
@@ -22996,7 +22978,7 @@ msgstr "Zone"
 #: src/bin/projectitemmodel.cpp:1019
 #, kde-format
 msgid "Add bin clip"
-msgstr "Ajouter des clips sources"
+msgstr "Ajouter un clip aux Médias"
 
 #: src/bin/projectitemmodel.cpp:1137
 #, kde-format
@@ -23477,7 +23459,7 @@ msgstr "Modèle de clip titre"
 #: src/dialogs/clipjobmanager.cpp:23
 #, kde-format
 msgid "Manage Bin Clip Jobs"
-msgstr "Gérer les tâches sur les vidéos du dossier"
+msgstr "Gérer les tâches des clips"
 
 #: src/dialogs/clipjobmanager.cpp:42
 #, kde-format
@@ -23492,11 +23474,7 @@ msgid ""
 "<b>{param1}</b> will be replaced by the first parameter value, <b>{param2}</"
 "b> will be replaced by the second parameter value, <b>{output}</b> will be "
 "replaced by the output file name."
-msgstr ""
-"<b>{source}</b> sera remplacé par l'emplacement du fichier source de la "
-"vidéo du projet, <b>{param1}</b> sera remplacé par la première valeur du "
-"paramètre, <b>{param2}</b> sera remplacé par la deuxième valeur du paramètre "
-"et <b>{output}</b> sera remplacé par le nom du fichier de sortie."
+msgstr "<b>{source}</b> est remplacé par le chemin du fichier du clip, <b>{param1}</b> par la valeur du premier paramètre, <b>{param2}</b> par la valeur du deuxième paramètre et <b>{output}</b> par le nom du fichier de sortie."
 
 #: src/dialogs/clipjobmanager.cpp:46
 #, kde-format
@@ -23511,11 +23489,7 @@ msgid ""
 "the modified extension. It will be appended at the end of the arguments or "
 "inserted in place of <b>{output}</b> if found. If output filename already "
 "exists, a -0001 pattern will be appended."
-msgstr ""
-"Le nom du fichier de sortie sera le même que le nom de fichier de la vidéo "
-"du projet source, avec une extension modifiée. Elle sera ajoutée à la fin "
-"des arguments ou insérée à la place de <b>{output}</b> si trouvé. Si le nom "
-"de fichier de sortie existe déjà, une extension « -0001 » sera ajoutée."
+msgstr "Le fichier de sortie porte le même nom que le fichier du clip, avec l'extension changée. Il est ajouté à la fin des arguments, ou à la place de <b>{output}</b> s'il y figure. Si ce nom existe déjà, « -0001 » lui est ajouté."
 
 #: src/dialogs/clipjobmanager.cpp:52 src/dialogs/clipjobmanager.cpp:61
 #, kde-format
@@ -26600,7 +26574,7 @@ msgstr "Veuillez installer un modèle de langue."
 #: src/dialogs/textbasededit.cpp:1110
 #, kde-format
 msgid "Select a clip with audio in Project Bin."
-msgstr "Sélectionner une vidéo avec de l'audio dans le dossier du projet."
+msgstr "Sélectionne un clip avec du son dans les Médias."
 
 #: src/dialogs/textbasededit.cpp:1156
 #, kde-format
@@ -28949,8 +28923,7 @@ msgstr "Ajouter un clip au projet"
 #, kde-kuit-format
 msgctxt "@info:whatsthis"
 msgid "Adds the selected library clip to the project bin."
-msgstr ""
-"Ajoute la vidéo de la bibliothèque sélectionnée vers le dossier du projet."
+msgstr "Ajoute aux Médias le clip sélectionné dans la bibliothèque."
 
 #: src/library/librarywidget.cpp:223
 #, kde-format
@@ -29307,9 +29280,7 @@ msgstr ""
 #: src/main.cpp:343
 #, kde-format
 msgid "Comma separated list of files to add as clips to the bin."
-msgstr ""
-"Liste des fichiers à ajouter (séparés par des virgules) à ajouter comme "
-"vidéos dans le dossier."
+msgstr "Liste de fichiers, séparés par des virgules, à ajouter comme clips aux Médias."
 
 #: src/main.cpp:347
 #, kde-format
@@ -29375,7 +29346,7 @@ msgstr "Navigation et lecture"
 #: src/mainwindow.cpp:153
 #, kde-format
 msgid "Bin Tags"
-msgstr "Épingler les étiquettes"
+msgstr "Étiquettes des Médias"
 
 #: src/mainwindow.cpp:191
 #, kde-format
@@ -30217,15 +30188,13 @@ msgstr "Affichage temps réel (supprimer des trames si nécessaire)"
 #: src/mainwindow.cpp:1825
 #, kde-format
 msgid "Insert Zone in Project Bin"
-msgstr "Ajouter la zone dans les source du projet"
+msgstr "Ajouter la zone aux Médias"
 
 #: src/mainwindow.cpp:1827
 #, kde-kuit-format
 msgctxt "@info:whatsthis"
 msgid "Creates a new clip in the project bin from the defined zone."
-msgstr ""
-"Crée une nouvelle vidéo dans le dossier du projet à partir d'une zone "
-"définie."
+msgstr "Crée un nouveau clip dans les Médias à partir de la zone définie."
 
 #: src/mainwindow.cpp:1830
 #, kde-format
@@ -30279,11 +30248,7 @@ msgid ""
 "When clicked the zone of the clip currently selected in the project bin is "
 "inserted at the playhead position in the active timeline. Clips at the "
 "insert position are cut and overwritten."
-msgstr ""
-"Lorsque vous cliquez, la zone de la vidéo actuellement sélectionnée dans le "
-"dossier du projet est insérée à la position de la tête de lecture dans la "
-"timeline active. Les vidéos à la position d'insertion sont coupés "
-"et écrasées."
+msgstr "Insère la zone du clip sélectionné dans les Médias à la tête de lecture de la timeline active. Les clips à cet endroit sont coupés et recouverts."
 
 #: src/mainwindow.cpp:1853
 #, kde-format
@@ -30297,11 +30262,7 @@ msgid ""
 "When clicked the zone of the clip currently selected in the project bin is "
 "inserted at the playhead position in the active timeline. Clips at the "
 "insert position are cut and shifted to the right."
-msgstr ""
-"Lorsque vous cliquez, la zone de la vidéo actuellement sélectionnée dans le "
-"dossier du projet est insérée à la position de la tête de lecture dans la "
-"timeline active. Les vidéos en position d'insertion sont coupées "
-"et décalées vers la droite."
+msgstr "Insère la zone du clip sélectionné dans les Médias à la tête de lecture de la timeline active. Les clips à cet endroit sont coupés et décalés vers la droite."
 
 #: src/mainwindow.cpp:1857
 #, kde-format
@@ -30526,7 +30487,7 @@ msgstr "Extraire le clip"
 #: src/mainwindow.cpp:1971
 #, kde-format
 msgid "Save Clip Part to Bin"
-msgstr "Enregistrer une partie de la vidéo dans le dossier du projet"
+msgstr "Enregistrer une partie du clip dans les Médias"
 
 #: src/mainwindow.cpp:1976
 #, kde-format
@@ -30571,12 +30532,12 @@ msgstr "Modification de l'échelle de temps"
 #: src/mainwindow.cpp:2019
 #, kde-format
 msgid "Clip in Project Bin"
-msgstr "Clip dans les sources du projet"
+msgstr "Clip dans les Médias"
 
 #: src/mainwindow.cpp:2024
 #, kde-format
 msgid "Search Bin Clip…"
-msgstr "Rechercher une séquence vidéo du projet…"
+msgstr "Rechercher un clip dans les Médias…"
 
 #. KoraCut : un des trois modes d'affichage du chutier.
 #: src/bin/bin.cpp
@@ -30666,7 +30627,7 @@ msgstr "Couper le clip"
 #: src/mainwindow.cpp:2034
 #, kde-format
 msgid "Replace with Bin Selection"
-msgstr "Remplacer par la sélection du chutier"
+msgstr "Remplacer par la sélection des Médias"
 
 #: src/mainwindow.cpp:2038
 #, kde-format
@@ -31158,7 +31119,7 @@ msgstr "Impossible d'insérer la zone"
 #: src/mainwindow.cpp:3436
 #, kde-format
 msgid "No clip selected in project bin"
-msgstr "Aucun clip sélectionné dans les sources du projet"
+msgstr "Aucun clip sélectionné dans les Médias"
 
 #: src/mainwindow.cpp:3443 src/timeline2/model/timelinefunctions.cpp:818
 #: src/timeline2/view/timelinecontroller.cpp:3653
@@ -31297,7 +31258,7 @@ msgstr "Portées"
 #: src/mainwindow.cpp:4157
 #, kde-format
 msgid "Project Bins"
-msgstr "Dossiers de projets"
+msgstr "Panneaux Médias"
 
 #: src/mainwindow.cpp:4234
 #, kde-format
@@ -32145,7 +32106,7 @@ msgstr "Le clip n'a aucun effet"
 #: src/monitor/monitor.cpp:2733
 #, kde-format
 msgid "Select a clip in project bin to compare effect"
-msgstr "Sélectionner un clip dans les sources du projet pour comparer l'effet"
+msgstr "Sélectionne un clip dans les Médias pour comparer l'effet"
 
 #: src/monitor/monitor.cpp:2775
 #, kde-format
@@ -33631,7 +33592,7 @@ msgstr[1] "Créer des signets"
 #: src/project/dialogs/noteswidget.cpp:50
 #, kde-format
 msgid "Assign timestamps to current Bin Clip"
-msgstr "Assigner des repères de temps à la source du projet courant"
+msgstr "Associer les horodatages au clip courant des Médias"
 
 #: src/project/dialogs/noteswidget.cpp:162
 #, kde-format
@@ -34183,8 +34144,7 @@ msgstr "Notes de projet"
 #: src/project/notesplugin.cpp:159
 #, kde-format
 msgid "Reassign selected timecodes to current Bin clip"
-msgstr ""
-"Réassigner les repères de temps sélectionnés vers le clip source courant."
+msgstr "Associer les horodatages sélectionnés au clip courant des Médias"
 
 #: src/project/notesplugin.cpp:163
 #, kde-format
@@ -34212,9 +34172,7 @@ msgstr ""
 #: src/project/notesplugin.cpp:214
 #, kde-format
 msgid "Cannot add note, no clip selected in project bin"
-msgstr ""
-"Impossible d'ajouter une remarque. Aucun clip sélectionné dans les sources "
-"du projet."
+msgstr "Impossible d'ajouter une note : aucun clip sélectionné dans les Médias"
 
 #: src/project/notesplugin.cpp:244
 #, kde-format
@@ -35523,7 +35481,7 @@ msgstr "Vecteurscope"
 #: src/timeline2/model/builders/meltBuilder.cpp:61
 #, kde-format
 msgid "Found an invalid sequence clip in Bin"
-msgstr "Une vidéo non valable de séquences a été trouvée dans le dossier."
+msgstr "Une séquence non valable a été trouvée dans les Médias"
 
 #: src/timeline2/model/builders/meltBuilder.cpp:303
 #: src/timeline2/model/builders/meltBuilder.cpp:548
@@ -35628,9 +35586,7 @@ msgstr ""
 #: src/timeline2/model/builders/meltBuilder.cpp:841
 #, kde-format
 msgid "%1 Timeline clip (%2) without bin reference found and removed."
-msgstr ""
-"La vidéo %1 de la timeline (%2) a été trouvée sans référence "
-"d'emplacement et a été supprimée."
+msgstr "%1 clip de la timeline (%2) sans clip correspondant dans les Médias, trouvé et retiré."
 
 #: src/timeline2/model/builders/meltBuilder.cpp:786
 #, kde-format
@@ -35643,20 +35599,17 @@ msgstr ""
 #: src/timeline2/model/builders/meltBuilder.cpp:842
 #, kde-format
 msgid "Project corrupted. Clip %1 (%2) not found in project bin."
-msgstr "Projet corrompu. Clip %1 (%2) introuvable dans les sources du projet."
+msgstr "Projet abîmé. Le clip %1 (%2) est introuvable dans les Médias."
 
 #: src/timeline2/model/builders/meltBuilder.cpp:838
 #, kde-format
 msgid "%1 Timeline clip (%2) with incorrect bin reference found and recovered."
-msgstr ""
-"La vidéo %1 de la timeline (%2) avec une référence d'emplacement "
-"incorrect a été trouvée et a été récupérée."
+msgstr "%1 clip de la timeline (%2) relié au mauvais clip des Médias, trouvé et réparé."
 
 #: src/timeline2/model/builders/meltBuilder.cpp:839
 #, kde-format
 msgid "Invalid clip %1 (%2) not found in project bin, recovered."
-msgstr ""
-"Clip non valable %1 (%2) introuvable dans les sources du projet, récupéré."
+msgstr "Clip non valable %1 (%2) introuvable dans les Médias, récupéré."
 
 #: src/timeline2/model/builders/meltBuilder.cpp:921
 #: src/timeline2/model/builders/meltBuilder.cpp:954
@@ -35986,7 +35939,7 @@ msgstr "Coller"
 #: src/timeline2/model/timelinefunctions.cpp:2567
 #, kde-format
 msgid "Could not add bin clip"
-msgstr "Impossible d'ajouter les clips sources"
+msgstr "Impossible d'ajouter le clip aux Médias"
 
 #: src/timeline2/model/timelinefunctions.cpp:2623
 #, kde-format
@@ -36983,7 +36936,7 @@ msgstr ""
 #: src/timeline2/view/timelinecontroller.cpp:3725
 #, kde-format
 msgid "Clip not found in project bin"
-msgstr "Clip introuvable dans le chutier du projet"
+msgstr "Clip introuvable dans les Médias"
 
 #: src/timeline2/view/timelinecontroller.cpp:3733
 #, kde-format
@@ -37093,7 +37046,7 @@ msgstr "Restaurer l'audio"
 msgid ""
 "No replacement clip selected in project bin. Select a clip in the bin and "
 "try this action again, or import a new clip."
-msgstr ""
+msgstr "Aucun clip de remplacement sélectionné dans les Médias. Sélectionne un clip dans les Médias et recommence, ou importe un nouveau clip."
 
 #: src/timeline2/view/timelinecontroller.cpp:4629
 #: src/timeline2/view/timelinecontroller.cpp:4685
@@ -37260,10 +37213,7 @@ msgstr "Ajouter une séquence à la timeline. "
 msgid ""
 "Add Timeline Sequence. This will create a new timeline for editing. Each "
 "timeline corresponds to a Sequence Clip in the Project Bin"
-msgstr ""
-"Ajouter une séquence à la timeline. Ceci créera une nouvelle "
-"timeline pour l'édition. Chaque timeline correspond à "
-"une séquence vidéo dans le dossier du projet."
+msgstr "Ajouter une séquence. Elle ouvre une nouvelle timeline de montage ; chaque timeline correspond à un clip de séquence dans les Médias."
 
 #: src/timeline2/view/timelinetabs.cpp:173
 #, kde-format
@@ -38502,13 +38452,7 @@ msgid ""
 "will be replaced by the first parameter value</li><li><b>{param2}</b> will "
 "be replaced by the second parameter value</li><li><b>{output}</b> will be "
 "replaced by the output file name</li></ul>"
-msgstr ""
-"Dans les arguments, les options suivantes sont disponibles : "
-"<ul><li><b>{source}</b> sera remplacé par l'emplacement du fichier source de "
-"la vidéo du projet,</li><li><b>{param1}</b> sera remplacé par la première "
-"valeur du paramètre,</li><li><b>{param2}</b> sera remplacé par la deuxième "
-"valeur du paramètre,</li><li><b>{output}</b> sera remplacé par le nom du "
-"fichier de sortie.</li></ul>"
+msgstr "Dans les arguments, ces options sont disponibles : <ul><li><b>{source}</b> est remplacé par le chemin du fichier du clip</li><li><b>{param1}</b> par la valeur du premier paramètre</li><li><b>{param2}</b> par la valeur du deuxième paramètre</li><li><b>{output}</b> par le nom du fichier de sortie</li></ul>"
 
 #. i18n: ectx: property (title), widget (QGroupBox, groupBox_2)
 #: src/ui/clipjobmanager_ui.ui:93
@@ -38578,7 +38522,7 @@ msgstr "Description de tâche"
 #: src/ui/clipjobmanager_ui.ui:292
 #, kde-format
 msgid "Project Bin behavior on completion"
-msgstr "Comportement du dossier du projet converti à terminaison"
+msgstr "Dans les Médias, une fois la tâche finie"
 
 #. i18n: ectx: property (text), widget (QRadioButton, radio_replace)
 #: src/ui/clipjobmanager_ui.ui:298
@@ -41893,7 +41837,7 @@ msgstr "Conserver les fichiers de journaux"
 #: src/ui/renderwidget_ui.ui:892
 #, kde-format
 msgid "Add to Project Bin"
-msgstr "Ajouter au dossier du projet"
+msgstr "Ajouter aux Médias"
 
 #. i18n: ectx: attribute (title), widget (QWidget, jobTab)
 #: src/ui/renderwidget_ui.ui:914
@@ -49887,7 +49831,7 @@ msgstr "claude (si Claude Code est installé), - pour le shell seul"
 #. KoraCut, la porte de commande (document 18, 24 septembre 2026)
 msgctxt "@action undo text"
 msgid "Create bin folder %1"
-msgstr "Créer le dossier %1 dans le chutier"
+msgstr "Créer le dossier %1 dans les Médias"
 
 #. KoraCut, la porte de commande (document 18, 24 septembre 2026)
 msgctxt "@action undo text"
@@ -52218,7 +52162,7 @@ msgstr "Avancé"
 
 msgctxt "@info preferences section help"
 msgid "The formats offered by the Convert menu of the media bin. Choose one to see and change its settings."
-msgstr "Les formats proposés par le menu Convertir du chutier. Choisis-en un pour voir et changer ses paramètres."
+msgstr "Les formats proposés par le menu Convertir des Médias. Choisis-en un pour voir et changer ses réglages."
 
 msgctxt "@title preferences sidebar group"
 msgid "AI and Agents"
@@ -54221,7 +54165,7 @@ msgstr "Fermer"
 #: src/koracut/voix/koracutvoiceoverdialog.cpp:162
 msgctxt "@action:button"
 msgid "Keep in the Bin Only"
-msgstr "Seulement dans le chutier"
+msgstr "Seulement dans les Médias"
 
 #: src/koracut/voix/koracutvoiceoverdialog.cpp:163
 msgctxt "@action:button"
@@ -54353,8 +54297,8 @@ msgstr[1] "%1 voix posées sur la timeline."
 msgctxt "@info"
 msgid "%1 voice added to the bin."
 msgid_plural "%1 voices added to the bin."
-msgstr[0] "%1 voix ajoutée au chutier."
-msgstr[1] "%1 voix ajoutées au chutier."
+msgstr[0] "%1 voix ajoutée aux Médias."
+msgstr[1] "%1 voix ajoutées aux Médias."
 
 #: KoraCut chantier 10
 msgctxt "@title:window nom court d'un panneau"
@@ -55220,7 +55164,7 @@ msgstr "Le plan a été retiré pendant l'analyse."
 #, kde-format
 msgctxt "@info"
 msgid "The original file of this shot is no longer in the bin."
-msgstr "Le fichier d'origine de ce plan n'est plus dans le chutier."
+msgstr "Le fichier d'origine de ce plan n'est plus dans les Médias."
 
 #: data/effects/avfilter/avfilter_tremolo.xml:8
 #, kde-format
