@@ -1095,6 +1095,13 @@ void MainWindow::init()
     m_porte = new KoraCutPorte(this);
     // À la sortie, la porte se ferme et retire son fichier, même si la fenêtre n'est pas détruite (SIGTERM, Quitter).
     connect(qApp, &QCoreApplication::aboutToQuit, m_porte, &KoraCutPorte::close);
+    // Une instance pilotée par un agent le dit dans son titre et ne se ferme pas sans prévenir (1er octobre 2026).
+    connect(m_porte, &KoraCutPorte::turnsChanged, this, &MainWindow::koraCutRefreshPilotedTitle);
+#if KORACUT_AGENTS
+    connect(m_agentSession, &KoraCutAgentSession::turnStarted, this, &MainWindow::koraCutRefreshPilotedTitle);
+    connect(m_agentSession, &KoraCutAgentSession::turnFinished, this, &MainWindow::koraCutRefreshPilotedTitle);
+    connect(m_agentSession, &KoraCutAgentSession::turnCancelled, this, &MainWindow::koraCutRefreshPilotedTitle);
+#endif
     KoraCutPorteContext porteContext;
     porteContext.window = this;
     KoraCutPorteMethodes::registerAll(m_porte, porteContext);
@@ -3204,6 +3211,18 @@ bool MainWindow::queryClose()
         }
         m_windowClosing = true;
         return true;
+    }
+    if (const QStringList atWork = koraCutAgentsAtWork(); !atWork.isEmpty() && !qEnvironmentVariableIsSet("KORACUT_SHOT") &&
+        !qApp->property("koracut_sans_fenetre").toBool() && !qApp->property("koracut_quitter_porte").toBool()) {
+        // Un agent monte en ce moment : fermer arrêterait son tour à moitié (instances fermées sans prévenir, 1er octobre 2026).
+        // app.quitter, demandé par l'agent lui-même, passe sans question.
+        if (KMessageBox::warningContinueCancel(this,
+                                               i18nc("@info %1 is the list of agents at work",
+                                                     "An agent is editing this project right now (%1). If KoraCut closes, its turn stops halfway. Close anyway?",
+                                                     atWork.join(QStringLiteral(", "))),
+                                               QString(), KGuiItem(i18nc("@action:button", "Close anyway")), KStandardGuiItem::cancel()) != KMessageBox::Continue) {
+            return false;
+        }
     }
     if (KoraCutExportQueue::self().count(QStringLiteral("en_cours")) > 0 && !qEnvironmentVariableIsSet("KORACUT_SHOT") &&
         !qApp->property("koracut_sans_fenetre").toBool()) {
@@ -5979,6 +5998,42 @@ void MainWindow::cleanRestart(bool clean, bool forceQuit)
     if (forceQuit) {
         // qApp->quit();
         qApp->exit(m_exitCode);
+    }
+}
+
+QStringList MainWindow::koraCutAgentsAtWork() const
+{
+    QStringList atWork = m_porte ? m_porte->openTurns() : QStringList();
+#if KORACUT_AGENTS
+    if (m_agentSession && m_agentSession->turnOpen()) {
+        atWork.prepend(i18nc("@info the Agents panel, in the list of agents at work", "Agents panel"));
+    }
+#endif
+    return atWork;
+}
+
+void MainWindow::koraCutRefreshPilotedTitle()
+{
+    const QString suffix = QStringLiteral(" · ") + i18nc("@title:window added at the end of the window title while an agent edits", "driven by an agent, do not close");
+    QString title = windowTitle();
+    if (title.endsWith(suffix)) {
+        title.chop(suffix.size());
+    }
+    if (!koraCutAgentsAtWork().isEmpty()) {
+        title += suffix;
+    }
+    if (title != windowTitle()) {
+        m_koraCutTitling = true;
+        setWindowTitle(title);
+        m_koraCutTitling = false;
+    }
+}
+
+void MainWindow::changeEvent(QEvent *event)
+{
+    KXmlGuiWindow::changeEvent(event);
+    if (event->type() == QEvent::WindowTitleChange && !m_koraCutTitling) {
+        koraCutRefreshPilotedTitle();
     }
 }
 

@@ -849,7 +849,10 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
                 if (save && pCore->currentDoc() && pCore->currentDoc()->isModified() && !pCore->currentDoc()->url().isEmpty()) {
                     pCore->projectManager()->saveFile();
                 }
+                // Demandé par la porte : pas de question « un agent est en train de monter » (c'est lui qui ferme).
+                qApp->setProperty("koracut_quitter_porte", true);
                 window->close();
+                qApp->setProperty("koracut_quitter_porte", false);
             });
             return Reply::value(QJsonObject{{QStringLiteral("ok"), true}});
         },

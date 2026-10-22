@@ -1181,6 +1181,7 @@ bool KoraCutPorte::beginTurn(quint64 clientId, const QString &client, const QStr
     if (st->turn->title.size() > 60) {
         st->turn->title = st->turn->title.left(59) + QChar(0x2026);
     }
+    Q_EMIT turnsChanged();
     return true;
 }
 
@@ -1192,6 +1193,7 @@ int KoraCutPorte::endTurn(quint64 clientId, QString &error, bool abandon)
         return -1;
     }
     std::unique_ptr<Turn> turn = std::move(c->state->turn);
+    Q_EMIT turnsChanged();
     const int actions = int(turn->commands.size());
     if (actions == 0) {
         return 0;
@@ -1257,6 +1259,18 @@ bool KoraCutPorte::turnOpen(quint64 clientId) const
 {
     Client *c = clientById(clientId);
     return c && c->state && c->state->turn;
+}
+
+QStringList KoraCutPorte::openTurns() const
+{
+    QStringList turns;
+    for (auto it = m_states.cbegin(); it != m_states.cend(); ++it) {
+        if (it.value() && it.value()->turn) {
+            turns << QStringLiteral("%1 : %2").arg(it.key(), it.value()->turn->title);
+        }
+    }
+    turns.sort();
+    return turns;
 }
 
 std::shared_ptr<DocUndoStack> KoraCutPorte::undoStack() const

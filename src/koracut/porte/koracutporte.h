@@ -145,6 +145,8 @@ public:
     /** @brief Ferme le tour : ses commandes deviennent une étape « <client> : <titre> ». Rend le nombre d'actions. */
     int endTurn(quint64 clientId, QString &error, bool abandon = false);
     bool turnOpen(quint64 clientId) const;
+    /** @brief Les tours ouverts, « <client> : <titre> » : la fenêtre le dit dans son titre et avant de se fermer. */
+    QStringList openTurns() const;
     /** @brief Exécute @p fn comme une commande du client @p client (son nom) : dans son tour s'il en a un
      *  ouvert, sans fenêtre à choix. Pour une méthode qui agit après une pause (montage visible,
      *  25 septembre 2026) : execute() a déjà rendu la main quand le geste se fait. */
@@ -181,6 +183,8 @@ Q_SIGNALS:
     void clientOpened(const QString &client);
     void clientClosed(const QString &client);
     void listeningChanged(bool listening);
+    /** @brief Un tour s'est ouvert ou fermé (openTurns()). */
+    void turnsChanged();
 
 private:
     struct Method;

@@ -55872,3 +55872,23 @@ msgstr "Laisser l'agent travailler sans demander l'accord à chaque geste (ffmpe
 msgctxt "@info"
 msgid "Analyzing the sound of the clip…"
 msgstr "Analyse du son du clip…"
+
+msgctxt "@info %1 is the list of agents at work"
+msgid ""
+"An agent is editing this project right now (%1). If KoraCut closes, its turn "
+"stops halfway. Close anyway?"
+msgstr ""
+"Un agent est en train de monter ce projet (%1). Si KoraCut se ferme, son tour "
+"s'arrête à moitié. Fermer quand même ?"
+
+msgctxt "@action:button"
+msgid "Close anyway"
+msgstr "Fermer quand même"
+
+msgctxt "@info the Agents panel, in the list of agents at work"
+msgid "Agents panel"
+msgstr "panneau Agents"
+
+msgctxt "@title:window added at the end of the window title while an agent edits"
+msgid "driven by an agent, do not close"
+msgstr "pilotée par un agent, ne pas fermer"

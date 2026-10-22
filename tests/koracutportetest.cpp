@@ -293,7 +293,13 @@ TEST_CASE("Porte : les méthodes sur un vrai projet", "[KoraCutPorte]")
 
     SECTION("Un tour groupe trois commandes en une étape")
     {
+        int turnsChanged = 0;
+        QObject::connect(&porte, &KoraCutPorte::turnsChanged, [&turnsChanged]() { ++turnsChanged; });
+        CHECK(porte.openTurns().isEmpty());
         REQUIRE(porte.call(client, QStringLiteral("historique.tour"), {{QStringLiteral("faire"), QStringLiteral("debut")}, {QStringLiteral("titre"), QStringLiteral("trois coupes")}}).ok());
+        // La fenêtre le dit dans son titre et avant de se fermer (1er octobre 2026).
+        CHECK(turnsChanged == 1);
+        CHECK(porte.openTurns() == QStringList{QStringLiteral("test : trois coupes")});
         CHECK(code(porte.call(client, QStringLiteral("historique.tour"), {{QStringLiteral("faire"), QStringLiteral("debut")}})) == QStringLiteral("tour_ouvert"));
         for (int pos : {10, 20, 30}) {
             const int target = timeline->getClipByPosition(v1, pos);
@@ -304,6 +310,8 @@ TEST_CASE("Porte : les méthodes sur un vrai projet", "[KoraCutPorte]")
         const KoraCutPorte::Reply end = porte.call(client, QStringLiteral("historique.tour"), {{QStringLiteral("faire"), QStringLiteral("fin")}});
         REQUIRE(end.ok());
         CHECK(end.result.toObject().value(QStringLiteral("actions")).toInt() == 3);
+        CHECK(turnsChanged == 2);
+        CHECK(porte.openTurns().isEmpty());
         REQUIRE(undoStack->count() == 1);
         CHECK(undoStack->text(0) == QStringLiteral("test : trois coupes"));
         undoStack->undo();

@@ -284,6 +284,8 @@ protected:
     bool queryClose() override;
     bool m_windowClosing{false};
     void closeEvent(QCloseEvent *) override;
+    /** @brief KoraCut : garde la mention « pilotée par un agent » au bout du titre, quel que soit le code qui le change. */
+    void changeEvent(QEvent *event) override;
     QSize sizeHint() const override;
     bool eventFilter(QObject *object, QEvent *event) override;
 
@@ -323,6 +325,11 @@ private:
     KDDockWidgets::QtWidgets::DockWidget *m_agentDock{nullptr};
     /** @brief KoraCut, document 18 : la porte de commande et son panneau Console. */
     KoraCutPorte *m_porte{nullptr};
+    /** @brief Les tours d'agent ouverts (porte et panneau Agents), « <client> : <titre> ». */
+    QStringList koraCutAgentsAtWork() const;
+    /** @brief Ajoute ou retire « pilotée par un agent, ne pas fermer » au bout du titre de la fenêtre. */
+    void koraCutRefreshPilotedTitle();
+    bool m_koraCutTitling{false};
     KoraCutConsolePanel *m_consolePanel{nullptr};
     KDDockWidgets::QtWidgets::DockWidget *m_consoleDock{nullptr};
     /** KoraCut, chantier 10 : le panneau Diagnostic (i/s, images sautées, décodeur, proxys, essai de la machine). */
