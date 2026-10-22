@@ -121,6 +121,15 @@ Rectangle {
     // KoraCut (22 octobre 2026, KC-011) : une seule liaison par plan sur le plan survolé ou tiré, au lieu de cinq :
     // chaque survol change dragProxy.draggedItem, et tous les plans réévaluaient leurs cinq liaisons.
     readonly property bool koraIsDragged: dragProxy.draggedItem === clipRoot.clipId
+    // KoraCut, 22 octobre 2026 (document 28) : les vignettes et les formes d'onde d'un plan qui vient d'être créé
+    // attendent 120 ms. Pendant un glisser d'une piste à l'autre, le plan est recréé sur chaque piste traversée et
+    // n'y reste qu'un instant : il passe sans rien installer, ce qui coûtait jusqu'à 30 ms par piste.
+    property bool koraThumbsArmed: false
+    Timer {
+        interval: 120
+        running: true
+        onTriggered: clipRoot.koraThumbsArmed = true
+    }
     opacity: dragProxyArea.drag.active && clipRoot.koraIsDragged ? 0.8 : 1.0
     enabled: !clipDropArea.containsDrag && !compoArea.containsDrag
 
@@ -527,7 +536,7 @@ Rectangle {
             //clip: true
             asynchronous: true
             visible: status == Loader.Ready
-            active: clipRoot.visible
+            active: clipRoot.visible && clipRoot.koraThumbsArmed
                     && !(clipRoot.hideClipViews
                          || clipRoot.itemType == K.ClipType.Unknown
                          || clipRoot.itemType === K.ClipType.Color
@@ -1436,25 +1445,33 @@ Rectangle {
                     NumberAnimation { property: "opacity"; duration: 250}
                 }
 
-                Rectangle {
+                // KoraCut, 22 octobre 2026 : les pastilles qui ne servent que dans un cas (débogage, décalage,
+                // effets, proxy, remap) ne sont créées que dans ce cas. Chaque plan en créait une douzaine
+                // d'objets, dont un ToolButton complet, à chaque création du plan : c'est ce qui coûtait au
+                // changement de piste pendant un glisser (document 28). Le Loader garde l'id de la pastille,
+                // les ancrages des voisins sont les mêmes.
+                Loader {
                     // Debug: Clip Id background
                     id: debugCidRect
-                    color: 'magenta'
-                    width: debugCid.width + (2 * itemBorder.border.width)
-                    height: debugCid.height
-                    visible: K.KdenliveSettings.uiDebugMode
+                    active: K.KdenliveSettings.uiDebugMode
+                    visible: active
                     anchors.left: parent.left
                     anchors.leftMargin: clipRoot.timeremap ? debugCidRect.height : 0
-                    Text {
-                        // Clip ID text
-                        id: debugCid
-                        text: clipRoot.clipId
-                        font: K.UiUtils.smallestReadableFont
-                        anchors {
-                            left: debugCidRect.left
-                            leftMargin: itemBorder.border.width
+                    sourceComponent: Rectangle {
+                        color: 'magenta'
+                        width: debugCid.width + (2 * itemBorder.border.width)
+                        height: debugCid.height
+                        Text {
+                            // Clip ID text
+                            id: debugCid
+                            text: clipRoot.clipId
+                            font: K.UiUtils.smallestReadableFont
+                            anchors {
+                                left: parent.left
+                                leftMargin: itemBorder.border.width
+                            }
+                            color: 'white'
                         }
-                        color: 'white'
                     }
                 }
                 // KoraCut : le bandeau de nom. Le nom s'écrivait en grand en travers du haut du
@@ -1516,153 +1533,151 @@ Rectangle {
                     }
                 }
 
-                Rectangle {
+                Loader {
                     // Offset info
                     id: offsetRect
-                    color: 'darkgreen'
-                    width: offsetLabel.width + radius
                     height: labelRect.height
-                    radius: height/3
                     anchors.left: proxyRect.visible ? proxyRect.right : labelRect.right
-                    visible: labelRect.visible && clipRoot.positionOffset != 0
-                    MouseArea {
-                        id: offsetArea
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        anchors.fill: parent
-                        onClicked: {
-                            clearAndMove(clipRoot.positionOffset)
+                    active: labelRect.visible && clipRoot.positionOffset != 0
+                    visible: active
+                    sourceComponent: Rectangle {
+                        color: 'darkgreen'
+                        width: offsetLabel.width + radius
+                        height: labelRect.height
+                        radius: height/3
+                        MouseArea {
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            anchors.fill: parent
+                            onClicked: {
+                                clearAndMove(clipRoot.positionOffset)
+                            }
+                            onEntered: {
+                                var text = clipRoot.positionOffset < 0 ? KI18n.i18n("Offset: -%1", clipRoot.timeline.simplifiedTC(-clipRoot.positionOffset))
+                                                              : KI18n.i18n("Offset: %1", clipRoot.timeline.simplifiedTC(clipRoot.positionOffset))
+                                text += KI18n.i18n(" <b>Click</b> to align clips")
+                                clipRoot.timeline.showToolTip(text)
+                            }
+                            onExited: {
+                                clipRoot.timeline.showToolTip()
+                            }
+                            Text {
+                                id: offsetLabel
+                                text: clipRoot.positionOffset
+                                font: K.UiUtils.smallestReadableFont
+                                anchors {
+                                    horizontalCenter: parent.horizontalCenter
+                                    topMargin: 1
+                                    leftMargin: 1
+                                }
+                                color: 'white'
+                                style: Text.Outline
+                                styleColor: 'black'
+                            }
                         }
-                        onEntered: {
-                            var text = clipRoot.positionOffset < 0 ? KI18n.i18n("Offset: -%1", clipRoot.timeline.simplifiedTC(-clipRoot.positionOffset))
-                                                          : KI18n.i18n("Offset: %1", clipRoot.timeline.simplifiedTC(clipRoot.positionOffset))
-                            text += KI18n.i18n(" <b>Click</b> to align clips")
-                            clipRoot.timeline.showToolTip(text)
-                        }
-                        onExited: {
-                            clipRoot.timeline.showToolTip()
+                    }
+                }
+
+                Loader {
+                    // effect names background
+                    id: effectsRect
+                    anchors.top: labelRect.bottom
+                    anchors.left: labelRect.left
+                    active: labelRect.visible && clipRoot.effectNames != '' && container.showDetails
+                    visible: active
+                    sourceComponent: Rectangle {
+                        id: effectsBack
+                        color: '#555555'
+                        width: effectLabel.width + effectsToggle.width + 4
+                        height: effectLabel.height
+                        Rectangle {
+                            // effects toggle button background
+                            id: effectsToggle
+                            color: clipRoot.isStackEnabled ? '#fdbc4b' : 'black'
+                            visible: clipRoot.width > 2.5 * effectLabel.height
+                            width: visible ? effectsBack.height : 0
+                            height: effectsBack.height
+                            ToolButton {
+                                id: effectButton
+                                height: effectsBack.height
+                                width: effectsBack.height
+                                onClicked: {
+                                    clipRoot.timeline.setEffectsEnabled(clipRoot.clipId, !clipRoot.isStackEnabled)
+                                }
+
+                                icon {
+                                    name: 'tools-wizard'
+                                    color: clipRoot.isStackEnabled ? 'black' : 'white'
+                                    height: effectLabel.height
+                                    width: effectLabel.height
+                                }
+                                anchors {
+                                    top: parent.top
+                                    left: parent.left
+                                    leftMargin: 1
+                                }
+                            }
                         }
                         Text {
-                            id: offsetLabel
-                            text: clipRoot.positionOffset
-                            font: K.UiUtils.smallestReadableFont
+                            // Effect names text
+                            id: effectLabel
+                            text: clipRoot.effectNames
+                            font {
+                                family: K.UiUtils.smallestReadableFont.family
+                                pointSize: K.UiUtils.smallestReadableFont.pointSize
+                                strikeout: !clipRoot.isStackEnabled
+                            }
                             anchors {
-                                horizontalCenter: parent.horizontalCenter
-                                topMargin: 1
-                                leftMargin: 1
+                                top: effectsToggle.top
+                                left: effectsToggle.right
+                                leftMargin: 2
+                                rightMargin: 2
                             }
                             color: 'white'
-                            style: Text.Outline
                             styleColor: 'black'
                         }
                     }
                 }
-
-                Rectangle {
-                    // effect names background
-                    id: effectsRect
-                    color: '#555555'
-                    width: effectLabel.width + effectsToggle.width + 4
-                    height: effectLabel.height
-                    anchors.top: labelRect.bottom
-                    anchors.left: labelRect.left
-                    visible: labelRect.visible && clipRoot.effectNames != '' && container.showDetails
-                    Rectangle {
-                        // effects toggle button background
-                        id: effectsToggle
-                        color: clipRoot.isStackEnabled ? '#fdbc4b' : 'black'
-                        visible: clipRoot.width > 2.5 * effectLabel.height
-                        width: visible ? effectsRect.height : 0
-                        height: effectsRect.height
-                        ToolButton {
-                            id: effectButton
-                            height: effectsRect.height
-                            width: effectsRect.height
-                            onClicked: {
-                                clipRoot.timeline.setEffectsEnabled(clipRoot.clipId, !clipRoot.isStackEnabled)
-                            }
-
-                            icon {
-                                name: 'tools-wizard'
-                                color: clipRoot.isStackEnabled ? 'black' : 'white'
-                                height: effectLabel.height
-                                width: effectLabel.height
-                            }
-                            anchors {
-                                top: parent.top
-                                left: parent.left
-                                leftMargin: 1
-                            }
-                        }
-                    }
-                    Text {
-                        // Effect names text
-                        id: effectLabel
-                        text: clipRoot.effectNames
-                        font {
-                            family: K.UiUtils.smallestReadableFont.family
-                            pointSize: K.UiUtils.smallestReadableFont.pointSize
-                            strikeout: !clipRoot.isStackEnabled
-                        }
-                        visible: effectsRect.visible
-                        anchors {
-                            top: effectsToggle.top
-                            left: effectsToggle.right
-                            leftMargin: 2
-                            rightMargin: 2
-                        }
-                        color: 'white'
-                        styleColor: 'black'
-                    }
-               }
-               Rectangle{
-                    //proxy 
+                Loader {
+                    //proxy
                     id: proxyRect
-                    color: '#fdbc4b'
-                    width: labelRect.height
-                    height: labelRect.height
                     anchors.top: labelRect.top
                     anchors.left: labelRect.right
-                    visible: !clipRoot.isAudio && clipRoot.clipStatus === K.FileStatus.StatusProxy || clipRoot.clipStatus === K.FileStatus.StatusProxyOnly
-                    Text {
-                        // Proxy P
-                        id: proxyLabel
-                        text: KI18n.i18nc("@label The first letter of Proxy, used as abbreviation", "P")
-                        font.pointSize: fontMetrics.font.pointSize +1
-                        visible: proxyRect.visible
-                        anchors {
-                            top: proxyRect.top
-                            left: proxyRect.left
-                            leftMargin: (labelRect.height-proxyLabel.width)/2
-                            topMargin: (labelRect.height-proxyLabel.height)/2
+                    active: !clipRoot.isAudio && clipRoot.clipStatus === K.FileStatus.StatusProxy || clipRoot.clipStatus === K.FileStatus.StatusProxyOnly
+                    visible: active
+                    sourceComponent: Rectangle {
+                        color: '#fdbc4b'
+                        width: labelRect.height
+                        height: labelRect.height
+                        Text {
+                            // Proxy P
+                            text: KI18n.i18nc("@label The first letter of Proxy, used as abbreviation", "P")
+                            font.pointSize: fontMetrics.font.pointSize +1
+                            anchors.centerIn: parent
+                            color: 'black'
+                            styleColor: 'black'
                         }
-                        color: 'black'
-                        styleColor: 'black'
                     }
                 }
-                Rectangle{
+                Loader {
                     //remap
-                    id:remapRect
-                    color: '#cc0033'
-                    width: labelRect.height
-                    height: labelRect.height
+                    id: remapRect
                     anchors.top: labelRect.top
                     anchors.left: nameContainer.left
-                    visible: clipRoot.timeremap
-                    Text {
-                        // Remap R
-                        id: remapLabel
-                        text: "R"
-                        font.pointSize: fontMetrics.font.pointSize +1
-                        visible: remapRect.visible
-                        anchors {
-                            top: remapRect.top
-                            left: remapRect.left
-                            leftMargin: (labelRect.height-proxyLabel.width)/2
-                            topMargin: (labelRect.height-proxyLabel.height)/2
+                    active: clipRoot.timeremap
+                    visible: active
+                    sourceComponent: Rectangle {
+                        color: '#cc0033'
+                        width: labelRect.height
+                        height: labelRect.height
+                        Text {
+                            // Remap R
+                            text: "R"
+                            font.pointSize: fontMetrics.font.pointSize +1
+                            anchors.centerIn: parent
+                            color: 'white'
+                            styleColor: 'white'
                         }
-                        color: 'white'
-                        styleColor: 'white'
                     }
                 }
             }
