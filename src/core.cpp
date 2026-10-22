@@ -16,6 +16,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "capture/mediacapture.h"
 #include "config-kdenlive.h"
 #include "core.h"
+#include "koracut/koracutperformance.h"
 #include "koracut/koracuthwdecode.h"
 #include <QFileInfo>
 #include <KSharedConfig>
@@ -1904,7 +1905,13 @@ std::unique_ptr<Mlt::Producer> Core::getMasterProducerInstance()
 {
     if (m_guiConstructed && m_mainWindow->getCurrentTimeline()) {
         const QString scene = m_projectManager->projectSceneList(QString(), true).first;
+        // KoraCut (22 octobre 2026) : cette copie de la timeline (filtre, vitesse, stabilisation sur le master) vit
+        // aussi longtemps que la tâche. Sa place dans le cache des décodeurs est prise avant elle et rendue quand le
+        // producteur se ferme (donnée détruite après ses enfants), sans quoi MLT ferme un décodeur que le moniteur
+        // tient encore (document 6).
+        auto *room = new KoraCutPerformance::DecoderCacheRoom(scene);
         std::unique_ptr<Mlt::Producer> producer(new Mlt::Producer(pCore->getProjectProfile(), "xml-string", scene.toUtf8().constData()));
+        producer->set("_koracut_decoder_room", room, 0, [](void *data) { delete static_cast<KoraCutPerformance::DecoderCacheRoom *>(data); });
         return producer;
     }
     return nullptr;

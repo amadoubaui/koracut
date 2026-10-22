@@ -18,6 +18,7 @@
 #include "doc/docundostack.hpp"
 #include "doc/kdenlivedoc.h"
 #include "jobs/audiolevels/generators.h"
+#include "koracut/koracutperformance.h"
 #include "koracut/koracutagenttools.h"
 #include "koracut/script/koracutscript.h"
 
@@ -667,5 +668,25 @@ TEST_CASE("Forme d'onde d'une séquence : la copie XML a sa place dans le cache 
         during = std::max(during, mlt_service_cache_get_size(nullptr, "producer_avformat"));
     }, canceled, 10);
     CHECK(during > before);
+    CHECK(mlt_service_cache_get_size(nullptr, "producer_avformat") == before);
+}
+
+TEST_CASE("Copie du master : la place dans le cache suit la vie du producteur", "[KoraCutScript]")
+{
+    // 22 octobre 2026 : Core::getMasterProducerInstance attache sa garde au producteur qu'il rend (les tâches
+    // de filtre, de vitesse et de stabilisation le gardent toute leur durée). Même mécanique, sur un producteur simple.
+    pCore->setCurrentProfile(QStringLiteral("dv_pal"));
+    const int before = mlt_service_cache_get_size(nullptr, "producer_avformat");
+    {
+        auto *room = new KoraCutPerformance::DecoderCacheRoom(4);
+        auto producer = std::make_unique<Mlt::Producer>(pCore->getProjectProfile(), "color", "red");
+        REQUIRE(producer->is_valid());
+        producer->set("_koracut_decoder_room", room, 0, [](void *data) { delete static_cast<KoraCutPerformance::DecoderCacheRoom *>(data); });
+        CHECK(mlt_service_cache_get_size(nullptr, "producer_avformat") == before + 4);
+        auto copy = std::make_unique<Mlt::Producer>(*producer); // une autre référence : la garde reste
+        producer.reset();
+        CHECK(mlt_service_cache_get_size(nullptr, "producer_avformat") == before + 4);
+        copy.reset();
+    }
     CHECK(mlt_service_cache_get_size(nullptr, "producer_avformat") == before);
 }

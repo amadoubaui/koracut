@@ -16,6 +16,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "clipmodel.hpp"
 #include "compositionmodel.hpp"
 #include "core.h"
+#include "koracut/koracutperformance.h"
 #include "doc/kdenlivedoc.h"
 #include "effects/effectstack/model/effectstackmodel.hpp"
 #include "groupsmodel.hpp"
@@ -2705,6 +2706,8 @@ bool TimelineFunctions::pasteClips(const std::shared_ptr<TimelineItemModel> &tim
                     // Now process
                     waitingBinIds << subClipId;
                     clipsImported = true;
+                    // KoraCut : la place de la copie dans le cache des décodeurs, le temps de la charger (document 6).
+                    const KoraCutPerformance::DecoderCacheRoom subRoom(subDoc.toString());
                     QReadLocker lock(&pCore->xmlMutex);
                     std::shared_ptr<Mlt::Producer> xmlProd(new Mlt::Producer(pCore->getProjectProfile(), "xml-string", subDoc.toString().toUtf8().constData()));
                     lock.unlock();
@@ -2734,6 +2737,7 @@ bool TimelineFunctions::pasteClips(const std::shared_ptr<TimelineItemModel> &tim
             // Now process main sequence
             waitingBinIds << clipId;
             clipsImported = true;
+            const KoraCutPerformance::DecoderCacheRoom room(doc.toString());
             QReadLocker lock(&pCore->xmlMutex);
             std::shared_ptr<Mlt::Producer> xmlProd(new Mlt::Producer(pCore->getProjectProfile(), "xml-string", doc.toString().toUtf8().constData()));
             lock.unlock();
