@@ -20,6 +20,8 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "mainwindow.h"
 
 #include <KMessageBox>
+#include <kddockwidgets/core/DockWidget.h>
+#include <kddockwidgets/core/DockRegistry.h>
 #include <QButtonGroup>
 #include <QDialog>
 #include <QFile>
@@ -451,6 +453,11 @@ bool LayoutManagement::slotLoadLayout(LayoutInfo layout, bool onlyIfNoPrevious)
             KoraCutWorkspace::closeDocksAbsentFrom(lu.readAll());
         }
     }
+    // KoraCut (22 octobre 2026, KC-011, réponse KC-012) : le panneau Agents s'ouvre par la pastille « Agents » de la
+    // barre du haut, pas en onglet de chaque module (Amadou Ba voyait les agents deux fois). On ne le garde après le
+    // changement de module que s'il était au premier plan, c'est-à-dire si quelqu'un parlait aux agents.
+    KDDockWidgets::Core::DockWidget *agents = KDDockWidgets::DockRegistry::self()->dockByName(QStringLiteral("agents"));
+    const bool agentsInUse = agents && agents->isOpen() && agents->isCurrentTab();
     const bool restore = !file.isEmpty() && dockLayout.restoreFromFile(file);
     if (!restore) {
         pCore->displayBinMessage(i18n("The layout %1 could not be restored, should be removed and recreated.", layout.displayName), KMessageWidget::Warning);
@@ -471,6 +478,9 @@ bool LayoutManagement::slotLoadLayout(LayoutInfo layout, bool onlyIfNoPrevious)
         pCore->window()->setSingleMonitor(KdenliveSettings::singleMonitor());
     }
     KoraCutWorkspace::dockStrayPanels();
+    if (agents && agents->isOpen() && !agentsInUse) {
+        agents->forceClose();
+    }
     if (!KdenliveSettings::showtitlebars()) {
         Q_EMIT pCore->hideBars(!KdenliveSettings::showtitlebars());
     }
