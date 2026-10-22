@@ -1032,6 +1032,9 @@ void MainWindow::init()
 #if KORACUT_AGENTS
     // KoraCut, chantier 3 (23 septembre 2026) : le panneau Agents, onglet de l'inspecteur. Le service
     // décide, l'application exécute les outils ; tout un tour s'annule d'un seul Annuler.
+    // L'écran de démarrage le dit, maintenant que les agents existent dans l'application (chantier 1, charte).
+    Q_EMIT pCore->loadingMessageNewStage(
+        i18nc("@info:progress splash screen, the six agents", "Waking the agents… Editor, Colorist, Sound designer, Mixer, Retoucher, Composer"));
     m_agentClient = new KoraCutAgentClient(this);
     m_agentSession = new KoraCutAgentSession(m_agentClient, this);
     m_agentSession->setCallBudget(KdenliveSettings::koracut_agents_budget());

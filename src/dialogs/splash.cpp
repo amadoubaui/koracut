@@ -162,6 +162,17 @@ void Splash::showProgressMessage(const QString &message, int)
 {
     QMetaObject::invokeMethod(m_rootObject, "displayProgress", Qt::DirectConnection, Q_ARG(QVariant, message));
     qApp->processEvents();
+    // KoraCut, outil de développement : KORACUT_SHOT_SPLASH_MESSAGE=<mot> capture l'écran de démarrage dans
+    // KORACUT_SHOT_SPLASH quand un message qui contient ce mot s'affiche (un message passe trop vite pour la
+    // capture à 2,5 s). 22 octobre 2026.
+    const QString wanted = qEnvironmentVariable("KORACUT_SHOT_SPLASH_MESSAGE");
+    if (!wanted.isEmpty() && message.contains(wanted)) {
+        if (auto *window = qobject_cast<QQuickWindow *>(m_rootObject)) {
+            const QString path = qEnvironmentVariable("KORACUT_SHOT_SPLASH");
+            window->grabWindow().save(path);
+            qWarning() << "KORACUT-SPLASH message" << message << path;
+        }
+    }
 }
 
 void Splash::clearHistory()
