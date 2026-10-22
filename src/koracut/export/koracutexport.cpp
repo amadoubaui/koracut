@@ -170,6 +170,7 @@ QJsonObject Settings::toJson() const
                        {QStringLiteral("canaux"), channels},
                        {QStringLiteral("normaliser"), normalize},
                        {QStringLiteral("lufs"), lufs},
+                       {QStringLiteral("garder_gain"), keepGain},
                        {QStringLiteral("crete"), peak},
                        {QStringLiteral("sous_titres"), subtitles},
                        {QStringLiteral("dossier"), folder},
@@ -199,6 +200,7 @@ Settings Settings::fromJson(const QJsonObject &o)
     s.channels = o.value(QStringLiteral("canaux")).toInt(2);
     s.normalize = o.value(QStringLiteral("normaliser")).toBool(false);
     s.lufs = o.value(QStringLiteral("lufs")).toInt(-14);
+    s.keepGain = o.value(QStringLiteral("garder_gain")).toBool(false);
     s.peak = o.value(QStringLiteral("crete")).toDouble(-1.);
     s.subtitles = o.value(QStringLiteral("sous_titres")).toString(QStringLiteral("incruster"));
     s.folder = o.value(QStringLiteral("dossier")).toString();
@@ -698,6 +700,10 @@ Enqueued enqueue(const Settings &s, bool held, const QString &wantedPath, int in
     request.setTwoPass(false);
     request.setAudioFilePerTrack(false);
     request.setLoudnessTarget(s.audio && s.normalize ? s.lufs : 0);
+    if (const auto kept = KoraCutLoudness::lastGain(); s.audio && s.normalize && s.keepGain && kept) {
+        // Le gain du dernier export nivelé : une version où une voix manque garde le niveau de la musique.
+        request.setFixedGain(*kept);
+    }
     request.setBounds(first, last);
     const std::vector<RenderRequest::RenderJob> jobs = request.process();
     if (!request.errorMessages().isEmpty() || jobs.empty()) {

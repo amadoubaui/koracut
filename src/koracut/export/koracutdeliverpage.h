@@ -167,6 +167,7 @@ private:
     QComboBox *m_sampleRate{nullptr};
     QComboBox *m_channels{nullptr};
     QCheckBox *m_normalize{nullptr};
+    QCheckBox *m_keepGain{nullptr};
     QSpinBox *m_lufs{nullptr};
     QLabel *m_peak{nullptr};
     // Fichier

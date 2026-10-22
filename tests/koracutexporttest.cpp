@@ -120,8 +120,10 @@ TEST_CASE("Module Export : les modèles et leurs réglages", "[KoraCutExport]")
         Settings s = Settings::forModel(*model(QStringLiteral("instagram_reels")), vertical, 25.);
         s.name = QStringLiteral("{projet} - {sequence} - {modele} {version}");
         s.subtitles = QStringLiteral("fichier");
+        s.keepGain = true;
         const Settings back = Settings::fromJson(s.toJson());
         CHECK(back.toJson() == s.toJson());
+        CHECK(back.keepGain);
         CHECK(expandName(s.name, s, QStringLiteral("Recette"), QStringLiteral("Séquence 1"), 2) == QStringLiteral("Recette - Séquence 1 - Instagram Reels v2"));
         CHECK(expandName(QStringLiteral("a/b:c"), s, QString(), QString(), 1) == QStringLiteral("a-b-c"));
         CHECK(expandName(QStringLiteral("{projet}"), s, QStringLiteral("P"), QString(), 3) == QStringLiteral("P v3"));

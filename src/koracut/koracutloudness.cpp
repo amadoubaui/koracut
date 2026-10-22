@@ -302,6 +302,30 @@ Measure measureImpl(const QString &xml, double fps, int start, int endInclusive,
 
 namespace {
 Plan prepareWith(QDomDocument &doc, int in, int out, int targetLufs, std::optional<double> fixedGain);
+
+// Le projet retient le gain de son dernier export nivelé (22 octobre 2026) : la page Export propose ensuite
+// « Même gain que le dernier export », pour qu'une autre version garde le même niveau de musique.
+void rememberGain(double gainDb)
+{
+    if (pCore && pCore->currentDoc()) {
+        pCore->currentDoc()->setDocumentProperty(lastGainProperty(), number(gainDb, 2));
+    }
+}
+}
+
+QString lastGainProperty()
+{
+    return QStringLiteral("koracut:export_gain_db");
+}
+
+std::optional<double> lastGain()
+{
+    if (!pCore || !pCore->currentDoc()) {
+        return std::nullopt;
+    }
+    bool ok = false;
+    const double gain = pCore->currentDoc()->getDocumentProperty(lastGainProperty()).toDouble(&ok);
+    return ok ? std::optional<double>(gain) : std::nullopt;
 }
 
 Plan prepare(QDomDocument &doc, int in, int out, int targetLufs)
@@ -441,6 +465,7 @@ Plan prepareWith(QDomDocument &doc, int in, int out, int targetLufs, std::option
         }
     }
     appendFilter(doc, target, QStringLiteral("koracut_loudness"), QStringLiteral("volume"), {{QStringLiteral("level"), number(plan.gainDb, 2)}});
+    rememberGain(plan.gainDb);
     if (plan.limiter) {
         appendLimiter(doc, target, plan.limiterService);
     }

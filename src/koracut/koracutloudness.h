@@ -99,6 +99,11 @@ Plan prepare(QDomDocument &doc, int in, int out, int targetLufs);
  */
 Plan prepareGain(QDomDocument &doc, int in, int out, double gainDb);
 
+/** La propriété de document où le projet retient le gain de son dernier export nivelé. */
+QString lastGainProperty();
+/** Le gain du dernier export nivelé du projet courant, s'il y en a eu un. */
+std::optional<double> lastGain();
+
 /** Le plan en JSON, pour les réponses d'outils. */
 QJsonObject planJson(const Plan &plan);
 

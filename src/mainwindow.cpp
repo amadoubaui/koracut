@@ -2331,6 +2331,19 @@ void MainWindow::koraCutDevScreenshot()
                                 }
                             }
                         }
+                        // Puis la fenêtre principale (onglets Vidéo, Audio, Fichier de la page Export), sans la barre des
+                        // modules, dont les boutons portent les mêmes noms.
+                        for (QAbstractButton *b : findChildren<QAbstractButton *>()) {
+                            bool inTopBar = false;
+                            for (QWidget *p = b->parentWidget(); p && !inTopBar; p = p->parentWidget()) {
+                                inTopBar = p->inherits("KoraCutTopBar");
+                            }
+                            if (!inTopBar && b->isVisible() && b->text().remove(QLatin1Char('&')) == name.mid(7)) {
+                                qWarning() << "KoraCut: bouton cliqué" << name.mid(7);
+                                b->click();
+                                return;
+                            }
+                        }
                         qWarning() << "KoraCut: bouton introuvable" << name.mid(7);
                         return;
                     }

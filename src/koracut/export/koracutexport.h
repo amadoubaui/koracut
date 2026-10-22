@@ -83,6 +83,7 @@ struct Settings
     int channels{2};
     bool normalize{false};
     int lufs{-14};
+    bool keepGain{false}; ///< même gain que le dernier export nivelé du projet, au lieu de viser lufs
     double peak{-1.};
     QString subtitles{QStringLiteral("incruster")}; ///< incruster, sans, fichier (un .srt à côté)
     QString folder;                                 ///< vide : Exports/ à côté du projet

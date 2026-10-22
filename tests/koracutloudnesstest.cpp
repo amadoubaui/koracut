@@ -183,6 +183,9 @@ TEST_CASE("Le niveau sonore à l'export : mesure, gain fixe, rendu", "[KoraCutLo
         const QJsonObject json = KoraCutLoudness::planJson(plan);
         CHECK(json.value(QStringLiteral("methode")).toString() == QStringLiteral("gain_mesure"));
         CHECK(json.value(QStringLiteral("cible_lufs")).toInt() == -14);
+        // Le projet retient ce gain : la page Export propose « Même gain que le dernier export ».
+        REQUIRE(KoraCutLoudness::lastGain().has_value());
+        CHECK(std::abs(*KoraCutLoudness::lastGain() - plan.gainDb) < 0.01);
         // Un gain fixe (celui d'un export précédent, 22 octobre 2026) : posé tel quel, pas recalculé vers une cible.
         {
             QDomDocument fixed;

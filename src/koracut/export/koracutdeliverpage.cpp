@@ -8,6 +8,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "core.h"
 #include "doc/kdenlivedoc.h"
 #include "koracut/koracutemptystate.h"
+#include "koracut/koracutloudness.h"
 #include "koracut/koracutmetrics.h"
 #include "koracut/koracutthemes.h"
 #include "koracutexportqueue.h"
@@ -38,6 +39,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLabel>
+#include <QLocale>
 #include <QLineEdit>
 #include <QMenu>
 #include <QPainter>
@@ -1122,6 +1124,9 @@ QWidget *KoraCutExportSettingsPanel::audioTab()
     m_lufs->setRange(-30, -6);
     m_lufs->setSuffix(QStringLiteral(" LUFS"));
     f->addRow(i18nc("@label:spinbox", "Target loudness"), m_lufs);
+    m_keepGain = new QCheckBox(i18nc("@option:check", "Same gain as the last export"), w);
+    m_keepGain->setToolTip(i18nc("@info:tooltip", "For another version of the same edit (without the voice, shorter): the music keeps the level of the last levelled export instead of being raised to the target."));
+    f->addRow(QString(), m_keepGain);
     m_peak = secondary(i18nc("@info", "-1.0 dBTP (limited at -1.5 before encoding)"), w);
     f->addRow(i18nc("@label true peak", "True peak"), m_peak);
     f->addRow(QString(), secondary(i18nc("@info", "-14 LUFS for YouTube and social networks, -16 for a podcast, -23 for television."), w));
@@ -1210,6 +1215,7 @@ void KoraCutExportSettingsPanel::showSettings(const Settings &s)
     select(m_channels, s.channels);
     m_normalize->setChecked(s.normalize);
     m_lufs->setValue(s.lufs);
+    m_keepGain->setChecked(s.keepGain);
     m_loading = false;
     updateEnabled();
     refreshSummary();
@@ -1247,6 +1253,7 @@ Settings KoraCutExportSettingsPanel::read() const
     s.channels = m_channels->currentData().toInt();
     s.normalize = m_normalize->isChecked();
     s.lufs = m_lufs->value();
+    s.keepGain = m_keepGain->isChecked() && KoraCutLoudness::lastGain().has_value();
     return s;
 }
 
@@ -1279,7 +1286,12 @@ void KoraCutExportSettingsPanel::updateEnabled()
     m_sampleRate->setEnabled(audio);
     m_channels->setEnabled(audio);
     m_normalize->setEnabled(audio);
-    m_lufs->setEnabled(audio && m_normalize->isChecked());
+    const auto kept = KoraCutLoudness::lastGain();
+    m_keepGain->setEnabled(audio && m_normalize->isChecked() && kept.has_value());
+    m_keepGain->setText(kept ? i18nc("@option:check %1 gain in dB", "Same gain as the last export (%1 dB)",
+                                     (*kept >= 0 ? QStringLiteral("+") : QString()) + QLocale().toString(*kept, 'f', 1))
+                             : i18nc("@option:check", "Same gain as the last export"));
+    m_lufs->setEnabled(audio && m_normalize->isChecked() && !(m_keepGain->isEnabled() && m_keepGain->isChecked()));
 }
 
 void KoraCutExportSettingsPanel::refreshSummary()
