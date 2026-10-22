@@ -300,12 +300,28 @@ Measure measureImpl(const QString &xml, double fps, int start, int endInclusive,
 }
 } // namespace
 
+namespace {
+Plan prepareWith(QDomDocument &doc, int in, int out, int targetLufs, std::optional<double> fixedGain);
+}
+
 Plan prepare(QDomDocument &doc, int in, int out, int targetLufs)
+{
+    return prepareWith(doc, in, out, targetLufs, std::nullopt);
+}
+
+Plan prepareGain(QDomDocument &doc, int in, int out, double gainDb)
+{
+    return prepareWith(doc, in, out, 0, std::clamp(gainDb, -kMaxGainDb, kMaxGainDb));
+}
+
+namespace {
+Plan prepareWith(QDomDocument &doc, int in, int out, int targetLufs, std::optional<double> fixedGain)
 {
     Plan plan;
     plan.target = targetLufs;
+    plan.fixedGain = fixedGain.has_value();
     QDomElement target = mainTractor(doc);
-    if (target.isNull() || targetLufs == 0) {
+    if (target.isNull() || (targetLufs == 0 && !fixedGain)) {
         plan.note = QStringLiteral("Pas de tractor principal dans la scène du rendu : rien posé.");
         return plan;
     }
@@ -346,6 +362,13 @@ Plan prepare(QDomDocument &doc, int in, int out, int targetLufs)
         pCore->displayMessage(i18nc("@info:status", "Measuring sound level…"), ProcessingJobMessage);
         m = run([xml, fps, first, last]() { return measure(xml, fps, first, last); });
     }
+    if (fixedGain && (!m.ok || m.silent)) {
+        // Un gain donné se pose même sans mesure : c'est lui qu'on veut, pas une cible.
+        plan.gainDb = *fixedGain;
+        appendFilter(doc, target, QStringLiteral("koracut_loudness"), QStringLiteral("volume"), {{QStringLiteral("level"), number(plan.gainDb, 2)}});
+        plan.note = QStringLiteral("Gain fixe posé sans mesure (mixage silencieux ou illisible) : pas de limiteur de crête.");
+        return plan;
+    }
     if (!m.ok || m.silent) {
         // Repli : l'ancien filtre adaptatif, et on le dit.
         plan.fallback = true;
@@ -361,7 +384,7 @@ Plan prepare(QDomDocument &doc, int in, int out, int targetLufs)
     plan.measured = true;
     plan.lufs = m.lufs;
     plan.truePeak = m.truePeak;
-    plan.gainDb = std::clamp(double(targetLufs) - m.lufs, -kMaxGainDb, kMaxGainDb);
+    plan.gainDb = fixedGain ? *fixedGain : std::clamp(double(targetLufs) - m.lufs, -kMaxGainDb, kMaxGainDb);
     plan.lufsAfter = m.lufs + plan.gainDb;
     plan.truePeakAfter = m.truePeak + plan.gainDb;
 
@@ -389,7 +412,7 @@ Plan prepare(QDomDocument &doc, int in, int out, int targetLufs)
             double previousLufs = after.lufs;
             // 28 septembre 2026 : le seuil passe d'un demi-point à un dixième (les fichiers sortaient à -14,4 ou
             // -14,5 LUFS pour -14), avec une troisième correction au besoin.
-            for (int step = 0; step < 3 && after.ok && !after.silent && target - after.lufs > 0.1 && plan.gainDb < gainMax; ++step) {
+            for (int step = 0; step < 3 && !fixedGain && after.ok && !after.silent && target - after.lufs > 0.1 && plan.gainDb < gainMax; ++step) {
                 double next = plan.gainDb + (target - after.lufs) * 1.2;
                 if (step > 0 && after.lufs - previousLufs > 0.05) {
                     next = plan.gainDb + (target - after.lufs) * (plan.gainDb - previousGain) / (after.lufs - previousLufs);
@@ -408,7 +431,7 @@ Plan prepare(QDomDocument &doc, int in, int out, int targetLufs)
                 plan.verified = true;
                 plan.lufsAfter = after.lufs;
                 plan.truePeakAfter = after.truePeak;
-                if (target - after.lufs > 1.) {
+                if (!fixedGain && target - after.lufs > 1.) {
                     plan.note = QStringLiteral("Le limiteur retient trop de son pour atteindre %1 LUFS : le fichier sera à %2 LUFS, crête sous -1 dBTP. "
                                                "Des sons courts très forts (pops, whooshes) portent le niveau : les baisser, ou viser moins fort.")
                                     .arg(targetLufs)
@@ -425,10 +448,15 @@ Plan prepare(QDomDocument &doc, int in, int out, int targetLufs)
     qDebug() << "KoraCut, niveau sonore :" << planText(plan);
     return plan;
 }
+} // namespace
 
 QJsonObject planJson(const Plan &plan)
 {
-    QJsonObject o{{QStringLiteral("cible_lufs"), plan.target}, {QStringLiteral("methode"), plan.measured ? QStringLiteral("gain_mesure") : QStringLiteral("adaptatif")}};
+    QJsonObject o{{QStringLiteral("cible_lufs"), plan.target != 0 ? QJsonValue(plan.target) : QJsonValue()},
+                  {QStringLiteral("methode"), plan.fixedGain ? QStringLiteral("gain_fixe") : plan.measured ? QStringLiteral("gain_mesure") : QStringLiteral("adaptatif")}};
+    if (plan.fixedGain && !plan.measured) {
+        o.insert(QStringLiteral("gain_db"), std::round(plan.gainDb * 10.) / 10.);
+    }
     if (plan.measured) {
         o.insert(QStringLiteral("lufs_mesure"), std::round(plan.lufs * 10.) / 10.);
         o.insert(QStringLiteral("crete_vraie_dbtp"), std::round(plan.truePeak * 10.) / 10.);
@@ -450,8 +478,11 @@ QString planText(const Plan &plan)
     if (!plan.measured) {
         return plan.note;
     }
-    QString text = i18nc("@info:status LUFS measured, gain applied, target", "Sound level: %1 LUFS measured, gain %2 dB towards %3 LUFS", number(plan.lufs),
-                         (plan.gainDb >= 0 ? QStringLiteral("+") : QString()) + number(plan.gainDb), plan.target);
+    const QString gain = (plan.gainDb >= 0 ? QStringLiteral("+") : QString()) + number(plan.gainDb);
+    QString text = plan.fixedGain ? i18nc("@info:status LUFS measured, fixed gain, expected LUFS", "Sound level: %1 LUFS measured, fixed gain %2 dB, %3 LUFS expected",
+                                          number(plan.lufs), gain, number(plan.lufsAfter))
+                                  : i18nc("@info:status LUFS measured, gain applied, target", "Sound level: %1 LUFS measured, gain %2 dB towards %3 LUFS",
+                                          number(plan.lufs), gain, plan.target);
     if (plan.limiter) {
         text += i18nc("@info:status appended to the sound level message", ", peak limiter at -1 dBTP");
     }

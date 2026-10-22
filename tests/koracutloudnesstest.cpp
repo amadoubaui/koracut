@@ -183,6 +183,23 @@ TEST_CASE("Le niveau sonore à l'export : mesure, gain fixe, rendu", "[KoraCutLo
         const QJsonObject json = KoraCutLoudness::planJson(plan);
         CHECK(json.value(QStringLiteral("methode")).toString() == QStringLiteral("gain_mesure"));
         CHECK(json.value(QStringLiteral("cible_lufs")).toInt() == -14);
+        // Un gain fixe (celui d'un export précédent, 22 octobre 2026) : posé tel quel, pas recalculé vers une cible.
+        {
+            QDomDocument fixed;
+            fixed.setContent(QStringLiteral("<mlt producer=\"main\"><tractor id=\"main\"/></mlt>"));
+            const KoraCutLoudness::Plan kept = KoraCutLoudness::prepareGain(fixed, 0, last, -3.);
+            INFO(KoraCutLoudness::planText(kept).toStdString());
+            REQUIRE(kept.measured);
+            CHECK(kept.fixedGain);
+            CHECK(kept.gainDb == -3.);
+            CHECK(std::abs(kept.lufs - plan.lufs) < 0.01);
+            const QDomElement keptGain = fixed.elementsByTagName(QStringLiteral("filter")).at(0).toElement();
+            CHECK(keptGain.attribute(QStringLiteral("id")) == QStringLiteral("koracut_loudness"));
+            const QJsonObject keptJson = KoraCutLoudness::planJson(kept);
+            CHECK(keptJson.value(QStringLiteral("methode")).toString() == QStringLiteral("gain_fixe"));
+            CHECK(keptJson.value(QStringLiteral("cible_lufs")).isNull());
+            CHECK(std::abs(keptJson.value(QStringLiteral("gain_db")).toDouble() + 3.) < 0.01);
+        }
         // Une zone au-delà de la fin (rien à mesurer) : repli sur le filtre adaptatif, et on le dit.
         QDomDocument silent;
         silent.setContent(QStringLiteral("<mlt producer=\"main\"><tractor id=\"main\"/></mlt>"));
@@ -240,6 +257,38 @@ TEST_CASE("Le niveau sonore à l'export : mesure, gain fixe, rendu", "[KoraCutLo
             REQUIRE(std::isfinite(lufs));
             CHECK(lufs > -15.);
             CHECK(lufs < -13.);
+
+            // Une autre version avec le même gain (22 octobre 2026) : gain_db reprend celui de la réponse, le fichier
+            // sort au même niveau. niveau_lufs et gain_db ensemble sont refusés.
+            QJsonObject both = args;
+            both.insert(QStringLiteral("gain_db"), -2);
+            both.insert(QStringLiteral("chemin"), folder.filePath(QStringLiteral("les-deux.mp4")));
+            CHECK(call(timeline, QStringLiteral("exporter"), both).value(QStringLiteral("erreur")).toObject().value(QStringLiteral("code")).toString() == QStringLiteral("entree_invalide"));
+            QJsonObject again = args;
+            again.remove(QStringLiteral("niveau_lufs"));
+            again.insert(QStringLiteral("gain_db"), levelling.value(QStringLiteral("gain_db")).toDouble());
+            const QString out2 = folder.filePath(QStringLiteral("meme-gain.mp4"));
+            again.insert(QStringLiteral("chemin"), out2);
+            const QJsonObject r2 = call(timeline, QStringLiteral("exporter"), again);
+            INFO(dump(r2));
+            REQUIRE(r2.value(QStringLiteral("ok")).toBool());
+            CHECK_FALSE(r2.contains(QStringLiteral("niveau_lufs")));
+            CHECK(r2.value(QStringLiteral("nivellement")).toObject().value(QStringLiteral("methode")).toString() == QStringLiteral("gain_fixe"));
+            const QString id2 = r2.value(QStringLiteral("export_id")).toString();
+            timer.restart();
+            etat.clear();
+            while (timer.elapsed() < 180000) {
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+                const QJsonObject s2 = call(timeline, QStringLiteral("etat_exports"), {{QStringLiteral("export_id"), id2}});
+                etat = s2.value(QStringLiteral("exports")).toArray().first().toObject().value(QStringLiteral("etat")).toString();
+                if (etat == QLatin1String("termine") || etat == QLatin1String("echec") || etat == QLatin1String("annule")) {
+                    break;
+                }
+            }
+            REQUIRE(etat == QStringLiteral("termine"));
+            const double lufs2 = integratedLufs(ffmpeg, out2);
+            INFO("LUFS avec le même gain : " << lufs2);
+            CHECK(std::abs(lufs2 - lufs) < 0.3);
         }
     }
 

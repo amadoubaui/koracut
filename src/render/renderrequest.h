@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <optional>
+
 #include <QDomDocument>
 
 #include "bin/model/markerlistmodel.hpp"
@@ -52,6 +54,8 @@ public:
     /** @brief KoraCut : nivelle le son du rendu à @p lufs (mesure du mixage, puis gain fixe et limiteur sur le
      * tractor principal, KoraCutLoudness::prepare). 0 : rien. Cible du guide PIXEWORK selon le type (document 16). */
     void setLoudnessTarget(int lufs);
+    /** @brief KoraCut : un gain fixe en dB à la place d'une cible (celui d'un export précédent). */
+    void setFixedGain(double gainDb);
     /** @brief KoraCut : ce que le nivellement a posé, connu après process(). */
     KoraCutLoudness::Plan loudnessPlan() const { return m_loudnessPlan; }
 
@@ -80,6 +84,7 @@ private:
 
     QString m_overlayData;
     int m_loudnessTarget{0};
+    std::optional<double> m_fixedGain;
     KoraCutLoudness::Plan m_loudnessPlan;
     QString m_aspectRatio;
     bool m_proxyRendering = false;

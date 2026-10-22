@@ -224,6 +224,12 @@
           "maximum": -6,
           "description": "Niveau sonore intégré visé pour le fichier, en LUFS (-14 YouTube et réseaux, -16 podcast, -23 télévision). Absent : le son part tel quel."
         },
+        "gain_db": {
+          "type": "number",
+          "minimum": -24,
+          "maximum": 24,
+          "description": "Un gain fixe en dB à la place de niveau_lufs : le même que celui d'un export précédent (nivellement.gain_db de sa réponse), pour qu'une version où une voix manque ne remonte pas tout le mixage. Un limiteur retient les crêtes au-delà de -1 dBTP. Pas avec niveau_lufs."
+        },
         "sous_titres": {
           "type": "string",
           "enum": [
@@ -328,6 +334,12 @@
                 "minimum": -30,
                 "maximum": -6,
                 "description": "Niveau sonore visé pour ce fichier, en LUFS. Absent : tel quel."
+              },
+              "gain_db": {
+                "type": "number",
+                "minimum": -24,
+                "maximum": 24,
+                "description": "Un gain fixe en dB à la place de niveau_lufs (celui d'un export précédent). Pas avec niveau_lufs."
               },
               "sous_titres": {
                 "type": "string",

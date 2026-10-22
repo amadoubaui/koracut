@@ -364,6 +364,7 @@ struct Prepared
     Range range;
     QString path;
     int lufs = 0;
+    std::optional<double> gainDb; // gain_db : celui d'un export précédent, à la place de lufs
     bool overwrite = false;
     bool subtitles = true; // sous_titres : incruster (défaut) ou sans
     std::vector<RenderRequest::RenderJob> jobs;
@@ -382,6 +383,9 @@ bool buildRequest(const Timeline &timeline, Prepared &p, QJsonObject &failure)
     request.setTwoPass(false);
     request.setAudioFilePerTrack(false);
     request.setLoudnessTarget(p.lufs);
+    if (p.gainDb) {
+        request.setFixedGain(*p.gainDb);
+    }
     if (p.range.guides) {
         request.setGuideParams(timeline->getGuideModel(), true, -1);
     } else {
@@ -449,6 +453,25 @@ bool prepareExport(const Timeline &timeline, const QJsonObject &args, bool overw
         }
         p.lufs = lufs;
     }
+    // Le gain d'un export précédent (22 octobre 2026) : une version où une voix manque, nivelée à -14 LUFS, remontait
+    // tout le mixage (musique 1,3 dB plus forte sur la publicité 05). Avec gain_db, elle garde celui de l'autre version.
+    if (args.contains(QStringLiteral("gain_db"))) {
+        if (args.contains(QStringLiteral("niveau_lufs"))) {
+            failure = error(QStringLiteral("entree_invalide"), QStringLiteral("niveau_lufs ou gain_db, pas les deux."),
+                            QStringLiteral("gain_db reprend le gain d'un export précédent (nivellement.gain_db de sa réponse) ; niveau_lufs vise une cible."));
+            return false;
+        }
+        const double gain = args.value(QStringLiteral("gain_db")).toDouble(0.);
+        if (!args.value(QStringLiteral("gain_db")).isDouble() || gain < -24. || gain > 24.) {
+            failure = error(QStringLiteral("entree_invalide"), QStringLiteral("gain_db est un nombre de -24 à 24 dB."));
+            return false;
+        }
+        if (!p.preset.audio) {
+            failure = error(QStringLiteral("entree_invalide"), QStringLiteral("Ce préréglage n'a pas de son : gain_db ne s'applique pas."));
+            return false;
+        }
+        p.gainDb = gain;
+    }
     return true;
 }
 
@@ -478,6 +501,9 @@ QJsonObject queued(const Prepared &p, KoraCutExportQueue::JobPtr &first)
                   {QStringLiteral("remplace_un_fichier"), first->replaces}};
     if (p.lufs != 0) {
         o.insert(QStringLiteral("niveau_lufs"), p.lufs);
+        o.insert(QStringLiteral("nivellement"), KoraCutLoudness::planJson(p.loudness));
+    } else if (p.gainDb) {
+        o.insert(QStringLiteral("gain_db"), *p.gainDb);
         o.insert(QStringLiteral("nivellement"), KoraCutLoudness::planJson(p.loudness));
     }
     o.insert(QStringLiteral("sous_titres"), p.subtitles ? QStringLiteral("incruster") : QStringLiteral("sans"));

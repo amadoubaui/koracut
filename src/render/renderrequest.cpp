@@ -134,6 +134,11 @@ void RenderRequest::setLoudnessTarget(int lufs)
     m_loudnessTarget = lufs;
 }
 
+void RenderRequest::setFixedGain(double gainDb)
+{
+    m_fixedGain = gainDb;
+}
+
 std::vector<RenderRequest::RenderJob> RenderRequest::process()
 {
     m_errors.clear();
@@ -213,7 +218,10 @@ std::vector<RenderRequest::RenderJob> RenderRequest::process()
     // principal (repli sur dynamic_loudness si la mesure échoue). Avec plusieurs sections entre marqueurs,
     // la mesure porte sur toute la plage : chaque fichier reçoit le même gain.
     m_loudnessPlan = KoraCutLoudness::Plan();
-    if (m_loudnessTarget != 0) {
+    if (m_fixedGain) {
+        m_loudnessPlan = KoraCutLoudness::prepareGain(doc, m_boundingIn, m_boundingOut, *m_fixedGain);
+        modified = true;
+    } else if (m_loudnessTarget != 0) {
         m_loudnessPlan = KoraCutLoudness::prepare(doc, m_boundingIn, m_boundingOut, m_loudnessTarget);
         modified = true;
     }

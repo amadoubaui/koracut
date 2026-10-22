@@ -55904,3 +55904,7 @@ msgid ""
 msgstr ""
 "Une composition Motion a été modifiée après le dernier enregistrement du "
 "projet : ses clips suivent maintenant le fichier (%1)."
+
+msgctxt "@info:status LUFS measured, fixed gain, expected LUFS"
+msgid "Sound level: %1 LUFS measured, fixed gain %2 dB, %3 LUFS expected"
+msgstr "Niveau sonore : %1 LUFS mesurés, gain fixe de %2 dB, %3 LUFS prévus"

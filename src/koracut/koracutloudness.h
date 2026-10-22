@@ -10,6 +10,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QSet>
 #include <QString>
 
+#include <optional>
+
 /**
  * @brief Le niveau sonore à l'export (document 16, « L'export préparé »).
  *
@@ -80,6 +82,7 @@ struct Plan
     double lufsAfter = kSilenceDb;     // LUFS intégré attendu dans le fichier
     double truePeakAfter = kSilenceDb; // crête vraie attendue, avant encodage
     bool fallback = false;     // repli sur dynamic_loudness
+    bool fixedGain = false;    // gain donné (celui d'un export précédent), pas calculé vers une cible
     QString note;              // ce qu'il faut savoir, en français simple
 };
 
@@ -89,6 +92,12 @@ struct Plan
  * La mesure tourne dans un fil, l'interface reste vivante, la barre d'état dit « Mesure du niveau sonore… ».
  */
 Plan prepare(QDomDocument &doc, int in, int out, int targetLufs);
+/**
+ * @brief Pose un gain fixe @p gainDb (celui d'un export précédent, 22 octobre 2026) au lieu d'un gain calculé vers une
+ * cible : une version où une voix manque garde le niveau de la musique. Mesure quand même, pour la crête (limiteur
+ * au-delà de -1 dBTP) et pour dire le niveau prévu.
+ */
+Plan prepareGain(QDomDocument &doc, int in, int out, double gainDb);
 
 /** Le plan en JSON, pour les réponses d'outils. */
 QJsonObject planJson(const Plan &plan);
