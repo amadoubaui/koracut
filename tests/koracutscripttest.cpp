@@ -17,11 +17,13 @@
 #include "core.h"
 #include "doc/docundostack.hpp"
 #include "doc/kdenlivedoc.h"
+#include "jobs/audiolevels/generators.h"
 #include "koracut/koracutagenttools.h"
 #include "koracut/script/koracutscript.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QTemporaryDir>
 #include <QUndoGroup>
 
 #include <framework/mlt.h>
@@ -640,4 +642,30 @@ TEST_CASE("Script : un script par séquence", "[KoraCutScript]")
     timeline.reset();
     timeline2.reset();
     pCore->projectManager()->closeCurrentDocument(false, false);
+}
+
+TEST_CASE("Forme d'onde d'une séquence : la copie XML a sa place dans le cache des décodeurs", "[KoraCutScript]")
+{
+    // 21 octobre 2026 : à l'ouverture du projet promo (quatre séquences), trois formes d'onde de séquences
+    // chargeaient chacune une copie XML de leur timeline dans le pool, sans garde : plantage dans libavformat.
+    pCore->setCurrentProfile(QStringLiteral("dv_pal"));
+    QTemporaryDir dir;
+    REQUIRE(dir.isValid());
+    const QString scene = dir.filePath(QStringLiteral("sequence.mlt"));
+    {
+        QFile f(scene);
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write("<mlt><producer id=\"p\" in=\"0\" out=\"9\"><property name=\"mlt_service\">color</property>"
+                "<property name=\"resource\">red</property><property name=\"length\">10</property></producer>"
+                "<playlist id=\"l\"><entry producer=\"p\" in=\"0\" out=\"9\"/></playlist>"
+                "<tractor id=\"t\"><track producer=\"l\"/></tractor></mlt>");
+    }
+    const int before = mlt_service_cache_get_size(nullptr, "producer_avformat");
+    int during = before;
+    QAtomicInt canceled(0);
+    generateMLT(0, QStringLiteral("xml"), scene, 2, [&during](int, const QVector<int16_t> &) {
+        during = std::max(during, mlt_service_cache_get_size(nullptr, "producer_avformat"));
+    }, canceled, 10);
+    CHECK(during > before);
+    CHECK(mlt_service_cache_get_size(nullptr, "producer_avformat") == before);
 }

@@ -8,11 +8,15 @@
 
 #include "core.h"
 #include "definitions.h"
+#include "koracut/koracutperformance.h"
 #include <KLocalizedString>
 #include <KMessageWidget>
 #include <QDebug>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QVector>
+
+#include <memory>
 
 #include <mlt++/MltFilter.h>
 #include <mlt++/MltFrame.h>
@@ -78,6 +82,16 @@ QVector<int16_t> generateMLT(const size_t streamIdx, const QString &service, con
     QElapsedTimer timer;
     timer.start();
 
+    // KoraCut (22 octobre 2026) : la forme d'onde d'une séquence charge une copie XML de sa timeline, dans
+    // le pool, souvent trois à la fois à l'ouverture d'un projet à plusieurs séquences. Sans place en plus
+    // dans le cache des décodeurs, MLT ferme un décodeur que la lecture tient encore (plantage du
+    // 21 octobre 2026 dans libavformat, document 6). La garde est déclarée avant le producteur.
+    std::unique_ptr<KoraCutPerformance::DecoderCacheRoom> room;
+    if (service.contains(QLatin1String("xml")) || resource.endsWith(QLatin1String(".mlt")) || resource.endsWith(QLatin1String(".kdenlive")) ||
+        resource.endsWith(QLatin1String(".koracut"))) {
+        QFile scene(resource);
+        room = std::make_unique<KoraCutPerformance::DecoderCacheRoom>(scene.open(QIODevice::ReadOnly) ? QString::fromUtf8(scene.readAll()) : QString());
+    }
     // Create a new, separate producer for this clip. It will have the same fps as the current project profile
     Mlt::Producer aProd(pCore->getProjectProfile(), service.toUtf8().constData(), resource.toUtf8().constData());
     if (!aProd.is_valid()) {
