@@ -10,6 +10,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "bin/projectfolder.h"
 #include "bin/projectitemmodel.h"
 #include "core.h"
+#include "mainwindow.h"
 #include "doc/kdenlivedoc.h"
 #include "kdenlivesettings.h"
 #include "timeline2/model/timelineitemmodel.hpp"
@@ -407,6 +408,20 @@ void KoraCutStabilizer::applyLevel(const Waiting &waiting, const QString &source
     }
 }
 
+namespace {
+// Le plan garde son identifiant mais change de média : l'Inspecteur, s'il le montre, se remet à jour (titre).
+void refreshInspector(const std::shared_ptr<TimelineItemModel> &timeline, int clipId)
+{
+    if (!timeline || !pCore->window()) {
+        return;
+    }
+    const ObjectId owner(KdenliveObjectType::TimelineClip, clipId, timeline->uuid());
+    if (pCore->window()->effectStackOwner() == owner) {
+        pCore->showEffectStackFromId(owner);
+    }
+}
+} // namespace
+
 void KoraCutStabilizer::replace(const Waiting &waiting, const QString &newBinId)
 {
     auto timeline = timelineFor(waiting.timeline);
@@ -417,6 +432,7 @@ void KoraCutStabilizer::replace(const Waiting &waiting, const QString &newBinId)
     const QString currentId = timeline->getClipBinId(waiting.clipId);
     if (currentId != newBinId) {
         timeline->processTimelineReplacement({waiting.clipId}, currentId, newBinId, -1, false, true);
+        refreshInspector(timeline, waiting.clipId);
     }
     if (auto clip = pCore->projectItemModel()->getClipByBinID(newBinId); clip && clip->getProducerProperty(kLevelProperty).isEmpty()) {
         clip->setProducerProperty(kLevelProperty, waiting.level);
@@ -447,6 +463,7 @@ KoraCutStabilizer::Status KoraCutStabilizer::remove(const std::shared_ptr<Timeli
         return status;
     }
     timeline->processTimelineReplacement({cid}, currentId, source, -1, false, true);
+    refreshInspector(timeline, cid);
     status.ok = true;
     status.done = true;
     return status;

@@ -319,6 +319,10 @@ void AssetPanel::showEffectStack(const QString &itemName, const std::shared_ptr<
             m_splitButton->setActive(false);
             processSplitEffect(false);
         }
+        // KoraCut : le même plan peut avoir changé de média (stabilisé, remplacé) : le titre suit.
+        if (id.type == KdenliveObjectType::TimelineClip) {
+            m_assetTitle->setText(i18n("%1 effects", itemName));
+        }
         return;
     }
     clear();
