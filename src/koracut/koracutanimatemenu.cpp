@@ -60,6 +60,11 @@ KoraCutAnimateMenu::KoraCutAnimateMenu(QWidget *parent)
     add(m_transition, i18nc("@action transition", "32° Sweep"), QStringLiteral("motion_transition"), QStringLiteral("balayage"));
     add(m_transition, i18nc("@action transition", "Mist"), QStringLiteral("motion_transition"), QStringLiteral("voile"));
     add(m_transition, i18nc("@action transition", "Flash"), QStringLiteral("motion_transition"), QStringLiteral("eclair"));
+
+    m_blurredBackground = new QAction(i18nc("@action timeline clip", "Blurred Background"), this);
+    m_blurredBackground->setToolTip(i18nc("@info:tooltip", "Shows the whole shot in the middle, over a blurred, enlarged copy of itself on the track below."));
+    m_blurredBackground->setData(QStringList{QStringLiteral("fond_flou"), QString()});
+    connect(m_blurredBackground, &QAction::triggered, this, [this]() { apply(m_blurredBackground); });
 }
 
 QAction *KoraCutAnimateMenu::add(QMenu *menu, const QString &label, const QString &tool, const QString &style)
@@ -72,6 +77,9 @@ QAction *KoraCutAnimateMenu::add(QMenu *menu, const QString &label, const QStrin
 
 QAction *KoraCutAnimateMenu::find(const QString &tool, const QString &style) const
 {
+    if (m_blurredBackground->data().toStringList() == QStringList{tool, style}) {
+        return m_blurredBackground;
+    }
     for (QMenu *menu : {m_animate, m_transition}) {
         for (QAction *action : menu->actions()) {
             if (action->data().toStringList() == QStringList{tool, style}) {
@@ -90,12 +98,16 @@ void KoraCutAnimateMenu::prepare(const std::shared_ptr<TimelineItemModel> &timel
     const bool video = clip && !timeline->isAudioTrack(timeline->getClipTrackId(cid));
     m_animate->menuAction()->setVisible(video);
     m_transition->menuAction()->setVisible(video);
+    m_blurredBackground->setVisible(false);
     if (!video) {
         return;
     }
     // La machine à écrire ne vaut que pour un titre de KoraCut.
     const auto bin = pCore->projectItemModel() ? pCore->projectItemModel()->getClipByBinID(timeline->getClipBinId(cid)) : nullptr;
     m_typewriter->setVisible(bin && bin->clipType() == ClipType::Text);
+    // Le fond flou ne sert qu'à un plan qui n'a pas le format du projet (un rush debout dans un projet horizontal).
+    const QSize source = bin ? bin->frameSize() : QSize();
+    m_blurredBackground->setVisible(bin && bin->clipType() != ClipType::Text && !source.isEmpty() && source != pCore->getCurrentFrameSize());
     // Une transition se pose sur une coupe : un plan doit suivre, collé, sur la même piste.
     const int end = timeline->getClipPosition(cid) + timeline->getClipPlaytime(cid);
     const int next = timeline->getClipByPosition(timeline->getClipTrackId(cid), end);
@@ -112,7 +124,9 @@ QJsonObject KoraCutAnimateMenu::apply(QAction *action)
     const QString tool = data.value(0);
     const QString style = data.value(1);
     QJsonObject args{{QStringLiteral("style"), style}};
-    if (tool == QLatin1String("transition_app") || tool == QLatin1String("motion_transition")) {
+    if (tool == QLatin1String("fond_flou")) {
+        args = QJsonObject{{QStringLiteral("clip_id"), m_clip}};
+    } else if (tool == QLatin1String("transition_app") || tool == QLatin1String("motion_transition")) {
         args.insert(QStringLiteral("clip_avant"), m_clip);
         // Le rendu HyperFrames se fait en fond : le clip arrive sur la piste « Transitions » quand il est prêt.
         args.insert(QStringLiteral("attendre"), false);
@@ -130,7 +144,9 @@ QJsonObject KoraCutAnimateMenu::apply(QAction *action)
     const QJsonObject failure = result.value(QStringLiteral("erreur")).toObject();
     const QString code = failure.value(QStringLiteral("code")).toString();
     QString text;
-    if (code == QLatin1String("pas_de_matiere")) {
+    if (tool == QLatin1String("fond_flou") && (code == QLatin1String("piste_introuvable") || code == QLatin1String("place_occupee"))) {
+        text = i18nc("@info:status", "The blurred background goes on the video track below this clip: move the clip up one track, or free the space below it.");
+    } else if (code == QLatin1String("pas_de_matiere")) {
         text = i18nc("@info:status", "Not enough footage around the cut for this transition. Try Zoom, Push or Fade to Black, which need none.");
     } else if (code == QLatin1String("entree_invalide") && failure.value(QStringLiteral("message")).toString().contains(QLatin1String("plus long"))) {
         text = i18nc("@info:status", "This clip is too short for this animation or transition.");

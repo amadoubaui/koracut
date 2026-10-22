@@ -29,6 +29,8 @@ public:
     explicit KoraCutAnimateMenu(QWidget *parent);
     QMenu *animateMenu() const { return m_animate; }
     QMenu *transitionMenu() const { return m_transition; }
+    /** @brief « Fond flou » (22 octobre 2026) : un plan d'un autre format en entier, sur sa copie floutée (outil fond_flou). */
+    QAction *blurredBackgroundAction() const { return m_blurredBackground; }
     /** @brief À appeler juste avant d'ouvrir le menu du clip @p cid : ce qui ne s'applique pas est masqué ou grisé. */
     void prepare(const std::shared_ptr<TimelineItemModel> &timeline, int cid);
     /** @brief Le choix @p action appliqué au clip préparé (le menu le fait au clic ; les tests et les captures aussi). */
@@ -40,6 +42,7 @@ private:
     QMenu *m_animate;
     QMenu *m_transition;
     QAction *m_typewriter{nullptr};
+    QAction *m_blurredBackground{nullptr};
     std::weak_ptr<TimelineItemModel> m_timeline;
     int m_clip{-1};
     QAction *add(QMenu *menu, const QString &label, const QString &tool, const QString &style);

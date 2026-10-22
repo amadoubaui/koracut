@@ -112,6 +112,7 @@ void TimelineWidget::setTimelineMenu(QMenu *clipMenu, QMenu *compositionMenu, QM
     m_koraCutAnimate = new KoraCutAnimateMenu(this);
     m_timelineClipMenu->addMenu(m_koraCutAnimate->animateMenu());
     m_timelineClipMenu->addMenu(m_koraCutAnimate->transitionMenu());
+    m_timelineClipMenu->addAction(m_koraCutAnimate->blurredBackgroundAction());
     // KoraCut : la couleur du clip, comme dans Resolve et Premiere (document 13, 24 septembre 2026).
     m_koraCutColors = new KoraCutColorMenu(this);
     m_timelineClipMenu->addMenu(m_koraCutColors->clipMenu());
