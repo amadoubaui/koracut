@@ -209,6 +209,9 @@ public:
      * son rendu passe en tête de la file des rendus à refaire. @return vrai s'il est un rendu Motion à refaire. */
     bool restoreBinClip(const QString &binId);
     /** @brief Les rendus absents qui attendent d'être refaits, en fond (un à la fois, jamais pendant la lecture). */
+    /** @brief Ce que la dernière ouverture a changé parce que le HTML ne disait plus la même chose que le projet
+     *  enregistré (« <élément> : <avant> → <après> images ») ; dit aussi dans le chutier (22 octobre 2026). */
+    QStringList openingChanges() const { return m_openingChanges; }
     int restoreQueueSize() const { return m_restore.size() + (m_restoring.isEmpty() ? 0 : 1); }
 
     /** @brief Pour les essais : une ligne KORACUT-MOTION par élément. */
@@ -329,6 +332,9 @@ private:
     QTimer *m_reconcile;
     QTimer *m_rescan;
     bool m_applying{false};
+    /** Vrai pendant la mise en accord d'une ouverture : les durées changées y sont notées. */
+    bool m_noticing{false};
+    QStringList m_openingChanges;
     QString m_lastOpened;
     QString m_panelProject;
     QList<QMetaObject::Connection> m_timelineConnections;

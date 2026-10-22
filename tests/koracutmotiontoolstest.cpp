@@ -1204,6 +1204,37 @@ TEST_CASE("Motion : un rendu parti avec le cache se refait sans fenêtre", "[Kor
     mirror->renderer()->waitForIdle(20000);
     waitMs(800);
 
+    // Le HTML changé après le dernier enregistrement du projet (22 octobre 2026) : à l'ouverture, le clip suit le
+    // fichier, et le changement de durée est dit (avant : 186 → 92 images sans rien dire, publicité 01).
+    CHECK(mirror->openingChanges().isEmpty());
+    {
+        const QString indexPath = tmp.path() + QStringLiteral("/motion/reprise/index.html");
+        mirror->clear();
+        QString html = readAll(indexPath);
+        const QString before = QStringLiteral("<section id=\"titre-1\" class=\"clip\" data-start=\"0\" data-duration=\"4\"");
+        REQUIRE(html.contains(before));
+        html.replace(before, QStringLiteral("<section id=\"titre-1\" class=\"clip\" data-start=\"0\" data-duration=\"2\""));
+        // rouvrir() enregistre d'abord le projet : il garde l'ancienne durée, le miroir étant arrêté.
+        REQUIRE(rouvrir());
+        QFile file(indexPath);
+        REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        file.write(html.toUtf8());
+        file.close();
+        mirror->setDocument(ouvert.get(), timeline);
+        const int shorter = qRound(2 * pCore->getCurrentFps());
+        const int cid3 = mirror->clipFor(QStringLiteral("reprise"), QStringLiteral("titre-1"));
+        REQUIRE(cid3 >= 0);
+        CHECK(timeline->getClipPlaytime(cid3) == shorter);
+        INFO(mirror->openingChanges().join(QStringLiteral(" | ")).toStdString());
+        REQUIRE(mirror->openingChanges().size() == 1);
+        CHECK(mirror->openingChanges().constFirst().startsWith(QStringLiteral("titre-1")));
+        CHECK(mirror->openingChanges().constFirst().contains(QString::number(length)));
+        CHECK(mirror->openingChanges().constFirst().contains(QString::number(shorter)));
+        REQUIRE(waitFor([&]() { return mirror->restoreQueueSize() == 0; }, 30000));
+        mirror->renderer()->waitForIdle(20000);
+        waitMs(800);
+    }
+
     // La composition a disparu : le rendu absent reste un problème, l'ouverture (sans fenêtre possible) est abandonnée.
     const QString motionDir = tmp.path() + QStringLiteral("/motion/reprise");
     mirror->clear();

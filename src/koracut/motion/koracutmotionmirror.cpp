@@ -25,6 +25,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "timeline2/model/timelineitemmodel.hpp"
 
 #include <KLocalizedString>
+#include <KMessageWidget>
 
 #include <QDebug>
 #include <QDir>
@@ -319,9 +320,26 @@ void KoraCutMotionMirror::rescan()
         qWarning() << "KoraCut: motion, dossier" << root << "compositions" << m_entries.size();
         Q_EMIT projectsChanged();
     }
+    // Un HTML modifié sans que le projet soit enregistré (9 octobre 2026 : un texte de la publicité 01 passé de 186
+    // à 92 images sans rien dire) : le HTML fait foi, mais la personne l'apprend à l'ouverture.
+    const bool opening = m_entries.size() == fresh.size() && !fresh.isEmpty();
+    if (opening) {
+        m_openingChanges.clear();
+        m_noticing = true;
+    }
     for (const QString &name : std::as_const(fresh)) {
         // À l'ouverture, on complète sans étape d'annulation : ce n'est pas un geste.
         applyFromFile(name, false);
+    }
+    if (opening) {
+        m_noticing = false;
+        if (!m_openingChanges.isEmpty()) {
+            qWarning() << "KoraCut: motion, durées changées à l'ouverture" << m_openingChanges;
+            pCore->displayBinMessage(i18nc("@info %1 is a list of changed lengths",
+                                           "A Motion composition was edited after the project was last saved: its clips now follow the file (%1).",
+                                           m_openingChanges.join(QStringLiteral(", "))),
+                                     KMessageWidget::Information, {}, true);
+        }
     }
 }
 
@@ -1108,6 +1126,10 @@ bool KoraCutMotionMirror::applyFromFile(const QString &name, bool logUndo, const
                 const int current = tl->getClipPlaytime(cid);
                 if (tl->requestItemResize(cid, size, true, true, *undo, *redo)) {
                     changed = true;
+                    if (m_noticing) {
+                        // Le HTML a changé sans que le projet soit enregistré : le clip suit le fichier, et c'est dit.
+                        m_openingChanges << i18nc("@info %1 element id, %2 and %3 lengths in frames", "%1: %2 → %3 frames", e.id, current, wantedLength);
+                    }
                     entry.pendingLength.remove(e.id);
                 } else if (wantedLength > current) {
                     // Plus long que le rendu en place (15 octobre 2026) : le clip attend le nouveau rendu, ou
