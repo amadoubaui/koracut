@@ -8,7 +8,9 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "layouts/layoutcollection.h"
 #include "kdenlivesettings.h"
 #include <KConfigGroup>
+#include <KLazyLocalizedString>
 #include <KLocalizedString>
+#include <QHash>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -182,7 +184,19 @@ void LayoutCollection::loadLayouts()
                     continue;
                 }
             } else {
-                layout = LayoutInfo(layoutId, isDefault ? i18n(displayName.toUtf8().constData()) : displayName);
+                // KoraCut : les noms des plans livrés sont écrits en français dans les .json (« Montage », « Étalonnage ») ;
+                // ils sont traduits par leur identifiant, en anglais dans la source (22 octobre 2026). Le nom du .json
+                // reste tel quel : il peut servir de clé à un plan enregistré.
+                QString shown = displayName;
+                if (isDefault) {
+                    static const QHash<QString, KLazyLocalizedString> names{{QStringLiteral("montage"), kli18nc("@item workspace layout name", "Editing")},
+                                                                    {QStringLiteral("etalonnage"), kli18nc("@item workspace layout name", "Color")},
+                                                                    {QStringLiteral("audio"), kli18nc("@item workspace layout name", "Audio")},
+                                                                    {QStringLiteral("vfx"), kli18nc("@item workspace layout name", "VFX")},
+                                                                    {QStringLiteral("export"), kli18nc("@item workspace layout name", "Export")}};
+                    shown = names.contains(layoutId) ? names.value(layoutId).toString() : i18n(displayName.toUtf8().constData());
+                }
+                layout = LayoutInfo(layoutId, shown);
             }
             layout.isDefault = isDefault;
             if (isCompact) {

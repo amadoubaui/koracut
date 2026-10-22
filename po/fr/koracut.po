@@ -55950,3 +55950,23 @@ msgid ""
 msgstr ""
 "Le fond flou se pose sur la piste vidéo du dessous : monte le plan d'une "
 "piste, ou libère la place sous lui."
+
+msgctxt "@item workspace layout name"
+msgid "Editing"
+msgstr "Montage"
+
+msgctxt "@item workspace layout name"
+msgid "Color"
+msgstr "Étalonnage"
+
+msgctxt "@item workspace layout name"
+msgid "Audio"
+msgstr "Audio"
+
+msgctxt "@item workspace layout name"
+msgid "VFX"
+msgstr "VFX"
+
+msgctxt "@item workspace layout name"
+msgid "Export"
+msgstr "Export"
