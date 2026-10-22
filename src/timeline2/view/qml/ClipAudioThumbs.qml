@@ -25,6 +25,14 @@ Row {
     opacity: parentClip.clipState === K.PlaylistState.Disabled ? 0.2 : 1
     anchors.fill: parent
 
+    // KoraCut, 22 octobre 2026 (KC-011) : pendant un zoom, la forme d'onde déjà peinte est étirée (une
+    // transformation, rien à repeindre) ; elle n'est repeinte qu'au zoom posé, 150 ms après le dernier cran
+    // (root.koraThumbScale). Avant, chaque cran repeignait chaque forme d'onde visible, en logiciel.
+    readonly property real paintScale: root.koraThumbScale > 0 ? root.koraThumbScale : waveform.timeScale
+    readonly property real stretch: waveform.timeScale / waveform.paintScale
+    readonly property real paintWidth: waveform.width / waveform.stretch
+    transform: Scale { xScale: waveform.stretch }
+
     Timer {
         id: waveTimer
         interval: 50; running: false; repeat: false
@@ -44,7 +52,7 @@ Row {
         waveTimer.start()
     }
 
-    onTimeScaleChanged: {
+    onPaintScaleChanged: {
         processReload()
     }
 
@@ -54,13 +62,13 @@ Row {
         if (!waveform.visible || !K.KdenliveSettings.audiothumbnails) {
             return
         }
-        var total = Math.ceil(waveform.width / waveform.maxWidth)
+        var total = Math.ceil(waveform.paintWidth / waveform.maxWidth)
         var chunks = total
         var updatedOffset = 0
         if (chunks > 10) {
             // Having too many chunks causes major slowdowns. In this case, we use an offset and only allow up to 10 chunks
             waveform.usesOffset = true
-            updatedOffset = Math.max(0, Math.floor(waveform.parentClip.scrollStart / waveform.maxWidth - 2))
+            updatedOffset = Math.max(0, Math.floor(waveform.parentClip.scrollStart / waveform.stretch / waveform.maxWidth - 2))
             if (updatedOffset < waveform.offset || updatedOffset > (waveform.offset + 5) || total != waveform.totalChunks) {
                 // Enforce repaint
                 //waveformRepeater.model = 0
@@ -89,13 +97,13 @@ Row {
         id: waveformRepeater
         K.TimelineWaveform {
             required property int index
-            width: waveform.maxWidth < waveform.width ? (index + waveform.offset == waveform.totalChunks - 1 ? waveform.width % waveform.maxWidth : waveform.maxWidth) : Math.round(waveform.width)
+            width: waveform.maxWidth < waveform.paintWidth ? (index + waveform.offset == waveform.totalChunks - 1 ? waveform.paintWidth % waveform.maxWidth : waveform.maxWidth) : Math.round(waveform.paintWidth)
             height: waveform.height
             channels: waveform.parentClip.audioChannels
             binId: waveform.parentClip.binId
             audioStream: waveform.parentClip.audioStream
             isOpaque: true
-            scaleFactor: waveform.timeScale
+            scaleFactor: waveform.paintScale
             format: K.KdenliveSettings.displayallchannels
             normalize: K.KdenliveSettings.normalizechannels
             speed: waveform.parentClip.speed
