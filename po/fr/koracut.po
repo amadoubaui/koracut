@@ -55926,3 +55926,7 @@ msgstr ""
 "Pour une autre version du même montage (sans la voix, plus courte) : la "
 "musique garde le niveau du dernier export normalisé au lieu d'être remontée à "
 "la cible."
+
+msgctxt "@action undo text"
+msgid "Blurred background"
+msgstr "Fond flou"

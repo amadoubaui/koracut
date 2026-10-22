@@ -836,6 +836,37 @@
     "x_confirmation": false
   },
   {
+    "name": "fond_flou",
+    "description": "Met un plan d'un autre format (horizontal dans un projet vertical, ou l'inverse) en entier au centre, sur une copie de lui-même agrandie pour remplir l'image et floutée, en un seul appel et une seule étape d'annulation. La copie (vidéo seule, même portion du média) va sur la piste vidéo juste en dessous du plan, qui doit être libre à cet endroit. Jamais de déformation : le plan garde son rapport et tient en entier, le fond est rogné. À préférer au recadrage serré quand il couperait ce qui compte (deux personnes aux bords, un paysage) ; pour une interview serrée, transformer_clip plein cadre suffit. Renvoie { ok, clip_id, fond_clip_id, piste_fond, plan: { x_px, y_px, largeur_px, hauteur_px }, fond: { … }, flou }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Identifiant du clip vidéo du plan, lu dans etat_timeline (champ id)."
+        },
+        "flou": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 100,
+          "description": "Force du flou du fond (sigma du flou gaussien). Défaut : 40, un fond où l'on devine les formes sans détail."
+        },
+        "piste_fond": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "La piste vidéo où poser le fond. Défaut : la piste vidéo juste en dessous du plan."
+        }
+      },
+      "required": [
+        "clip_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "copie posée par TimelineModel::requestClipInsertion (« V<media>/<entrée>/<sortie> »), effets data/effects/qtblend.xml et avfilter.gblur posés par EffectStackModel::appendEffect ; src/koracut/koracutagenttoolsmontage.cpp:fondFlou",
+    "x_confirmation": false
+  },
+  {
     "name": "stabiliser",
     "description": "Stabilise un plan filmé à la main, comme le bouton « Stabiliser » de la section Outils. leger : lisse les petites secousses, image à peine recadrée. moyen (conseillé) : image posée. fort : la plus stable, comme sur un rail, recadre davantage les bords. aucun : remet le média d'origine. La première fois, le mouvement du média est analysé en arrière-plan (quelques secondes par minute de vidéo) : la réponse dit etat en_cours et pourcent ; rappeler l'outil avec le même niveau pour savoir où il en est. Ensuite, changer de niveau est immédiat (etat fait). Le plan garde sa place, son entrée, sa sortie et ses effets ; seule l'image est touchée, pas le son. Vitesse du plan à 100 % seulement. Renvoie { ok, clip_id (le clip vidéo), niveau, etat (en_cours, fait ou retire), pourcent? }.",
     "input_schema": {

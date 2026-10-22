@@ -26,6 +26,7 @@
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QImage>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -322,5 +323,90 @@ TEST_CASE("Flouter une zone : le flou suivi, le rectangle fixe, l'annulation", "
         }
     }
 
+    pCore->projectManager()->closeCurrentDocument(false, false);
+}
+
+TEST_CASE("Fond flou : un plan d'un autre format en entier, sur sa copie floutée", "[KoraCutFlou]")
+{
+    // 22 octobre 2026 : fond_flou remplace quatre appels (ajouter_clip, deux transformer_clip, ajouter_effet).
+    std::shared_ptr<DocUndoStack> undoStack = std::make_shared<DocUndoStack>(nullptr);
+    KdenliveDoc document(undoStack);
+    pCore->projectManager()->testSetDocument(&document);
+    QDateTime documentDate = QDateTime::currentDateTime();
+    KdenliveTests::updateTimeline(false, QString(), QString(), documentDate, 0);
+    auto timeline = document.getTimeline(document.uuid());
+    pCore->projectManager()->testSetActiveTimeline(timeline);
+    auto binModel = pCore->projectItemModel();
+    const QSize frame = pCore->getCurrentFrameSize();
+    REQUIRE(frame.width() > frame.height()); // un projet horizontal
+
+    // Une image debout, 540 × 960.
+    QTemporaryDir dir;
+    REQUIRE(dir.isValid());
+    const QString picture = dir.filePath(QStringLiteral("debout.png"));
+    QImage image(540, 960, QImage::Format_RGB32);
+    image.fill(QColor(200, 80, 40));
+    REQUIRE(image.save(picture));
+    bool ready = false;
+    QString binId;
+    {
+        Fun undo = []() { return true; };
+        Fun redo = []() { return true; };
+        binId = ClipCreator::createClipFromFile(picture, binModel->getRootFolder()->clipId(), binModel, undo, redo, [&ready](const QString &) { ready = true; });
+    }
+    REQUIRE_FALSE(binId.isEmpty());
+    QElapsedTimer timer;
+    timer.start();
+    while (!ready && timer.elapsed() < 20000) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+    REQUIRE(ready);
+    QList<int> videoTracks = timeline->getTracksIds(false);
+    std::sort(videoTracks.begin(), videoTracks.end(), [&timeline](int a, int b) { return timeline->getTrackPosition(a) < timeline->getTrackPosition(b); });
+    REQUIRE(videoTracks.size() >= 2);
+    int clip = -1;
+    REQUIRE(timeline->requestClipInsertion(binId, videoTracks.at(1), 10, clip));
+    const int length = timeline->getClipPlaytime(clip);
+
+    // Sur la piste du bas : pas de piste en dessous.
+    int bottom = -1;
+    REQUIRE(timeline->requestClipInsertion(binId, videoTracks.at(0), 5000, bottom));
+    CHECK(errorCode(call(timeline, QStringLiteral("fond_flou"), {{QStringLiteral("clip_id"), bottom}})) == QStringLiteral("piste_introuvable"));
+
+    const int steps = undoStack->index();
+    const QJsonObject r = call(timeline, QStringLiteral("fond_flou"), {{QStringLiteral("clip_id"), clip}, {QStringLiteral("flou"), 30}});
+    INFO(dump(r));
+    REQUIRE(r.value(QStringLiteral("ok")).toBool());
+    CHECK(undoStack->index() == steps + 1); // une seule étape
+    const int copy = r.value(QStringLiteral("fond_clip_id")).toInt(-1);
+    REQUIRE(timeline->isClip(copy));
+    CHECK(timeline->getClipTrackId(copy) == videoTracks.at(0));
+    CHECK(timeline->getClipPosition(copy) == 10);
+    CHECK(timeline->getClipPlaytime(copy) == length);
+    // Le plan tient en entier, en hauteur, centré ; le fond remplit l'image, en largeur. Rapport gardé.
+    const QJsonObject front = r.value(QStringLiteral("plan")).toObject();
+    const QJsonObject back = r.value(QStringLiteral("fond")).toObject();
+    CHECK(front.value(QStringLiteral("hauteur_px")).toInt() == frame.height());
+    CHECK(std::abs(front.value(QStringLiteral("largeur_px")).toInt() - qRound(540. * frame.height() / 960.)) <= 1);
+    CHECK(front.value(QStringLiteral("x_px")).toInt() == (frame.width() - front.value(QStringLiteral("largeur_px")).toInt()) / 2);
+    CHECK(back.value(QStringLiteral("largeur_px")).toInt() == frame.width());
+    CHECK(back.value(QStringLiteral("y_px")).toInt() < 0);
+    // Les effets : un Transformer sur le plan, un Transformer et le flou sur le fond.
+    const auto frontStack = timeline->getClipEffectStackModel(clip);
+    const auto backStack = timeline->getClipEffectStackModel(copy);
+    REQUIRE(effectOf(frontStack, QStringLiteral("qtblend")));
+    REQUIRE(effectOf(backStack, QStringLiteral("qtblend")));
+    const auto blur = effectOf(backStack, QStringLiteral("avfilter.gblur"));
+    REQUIRE(blur);
+    CHECK(blur->filter().get_double("av.sigma") == 30.);
+    CHECK(rowOf(backStack, QStringLiteral("qtblend")) < rowOf(backStack, QStringLiteral("avfilter.gblur")));
+    // La place est prise maintenant : un second appel le dit.
+    CHECK(errorCode(call(timeline, QStringLiteral("fond_flou"), {{QStringLiteral("clip_id"), clip}})) == QStringLiteral("place_occupee"));
+    // Annuler retire la copie et les deux Transformer.
+    undoStack->undo();
+    CHECK_FALSE(timeline->isClip(copy));
+    CHECK_FALSE(effectOf(frontStack, QStringLiteral("qtblend")));
+
+    timeline.reset();
     pCore->projectManager()->closeCurrentDocument(false, false);
 }

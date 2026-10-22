@@ -985,6 +985,127 @@ QJsonObject transformerClip(const Timeline &timeline, const Args &args)
 }
 
 // ---------------------------------------------------------------------------------------------
+// fond_flou (montage.json), 22 octobre 2026 : un plan d'un autre format (horizontal dans un projet vertical,
+// ou l'inverse) tenu en entier au centre, sur une copie de lui-même agrandie et floutée. Avant, quatre
+// appels (ajouter_clip, deux transformer_clip, ajouter_effet) et un calcul de cadre à la main.
+
+QJsonObject fondFlou(const Timeline &timeline, const Args &args)
+{
+    const int cid = args.value(QStringLiteral("clip_id")).toInt(-1);
+    if (QJsonObject e = clipIdCheck(timeline, cid); !e.isEmpty()) {
+        return e;
+    }
+    const int tid = timeline->getClipTrackId(cid);
+    if (timeline->isAudioTrack(tid)) {
+        return error(QStringLiteral("mauvais_type_de_piste"), QStringLiteral("Un clip audio n'a pas d'image."), QStringLiteral("Donne l'id du clip vidéo du plan."));
+    }
+    const QString binId = timeline->getClipBinId(cid);
+    const auto binClip = pCore->projectItemModel()->getClipByBinID(binId);
+    const QSize source = binClip ? binClip->frameSize() : QSize();
+    const QSize frame = pCore->getCurrentFrameSize();
+    if (source.isEmpty() || frame.isEmpty()) {
+        return error(QStringLiteral("non_disponible"), QStringLiteral("La taille de l'image de ce plan n'est pas connue."));
+    }
+    const int blur = std::clamp(args.value(QStringLiteral("flou")).toInt(40), 5, 100);
+    const int position = timeline->getClipPosition(cid);
+    const int length = timeline->getClipPlaytime(cid);
+
+    // La piste du fond : celle donnée, sinon la piste vidéo juste en dessous du plan.
+    int below = -1;
+    if (args.contains(QStringLiteral("piste_fond"))) {
+        below = args.value(QStringLiteral("piste_fond")).toInt(-1);
+        if (!timeline->isTrack(below) || timeline->isAudioTrack(below) || below == tid) {
+            return error(QStringLiteral("piste_introuvable"), QStringLiteral("piste_fond n'est pas une piste vidéo autre que celle du plan."),
+                         QStringLiteral("Lis les pistes dans etat_timeline."));
+        }
+    } else {
+        const int here = timeline->getTrackPosition(tid);
+        int best = -1;
+        for (int t : timeline->getTracksIds(false)) {
+            const int at = timeline->getTrackPosition(t);
+            if (at < here && at > best) {
+                best = at;
+                below = t;
+            }
+        }
+        if (below < 0) {
+            return error(QStringLiteral("piste_introuvable"), QStringLiteral("Le plan est sur la piste vidéo du bas : il n'y a pas de piste en dessous pour le fond."),
+                         QStringLiteral("Déplace le plan sur une piste plus haute (deplacer_clip), ou donne piste_fond."));
+        }
+    }
+    if (timeline->trackIsLocked(below)) {
+        return error(QStringLiteral("piste_verrouillee"), QStringLiteral("La piste du fond (%1) est verrouillée.").arg(trackLabel(timeline, below)));
+    }
+    for (int item : timeline->getItemsInRange(below, position, position + length - 1, false)) {
+        if (timeline->isClip(item)) {
+            return error(QStringLiteral("place_occupee"),
+                         QStringLiteral("La piste %1 a déjà un clip sous ce plan (id %2).").arg(trackLabel(timeline, below)).arg(item),
+                         QStringLiteral("Libère la place, ajoute une piste (ajouter_piste) ou donne piste_fond."));
+        }
+    }
+
+    // Les deux cadres, sans jamais déformer : le plan tient en entier (centré), le fond remplit l'image.
+    const double fit = std::min(double(frame.width()) / source.width(), double(frame.height()) / source.height());
+    const double cover = std::max(double(frame.width()) / source.width(), double(frame.height()) / source.height());
+    const auto rectFor = [&](double scale) -> QRect {
+        const int w = qRound(source.width() * scale);
+        const int h = qRound(source.height() * scale);
+        return QRect((frame.width() - w) / 2, (frame.height() - h) / 2, w, h);
+    };
+    const QRect front = rectFor(fit);
+    const QRect back = rectFor(cover);
+    if (front.size() == frame) {
+        return error(QStringLiteral("deja_au_format"), QStringLiteral("Ce plan a déjà le format du projet : il remplit l'image, un fond flou ne se verrait pas."));
+    }
+    const auto rectText = [](const QRect &r) { return QStringLiteral("%1 %2 %3 %4 1.000").arg(r.x()).arg(r.y()).arg(r.width()).arg(r.height()); };
+
+    Fun undo = []() { return true; };
+    Fun redo = []() { return true; };
+    // La copie : la même portion du média, vidéo seule, à la même place.
+    const std::pair<int, int> inOut = timeline->getClipInOut(cid);
+    const QString spec = QStringLiteral("V%1/%2/%3").arg(binId).arg(inOut.first).arg(inOut.second);
+    int copy = -1;
+    if (!timeline->requestClipInsertion(spec, below, position, copy, true, true, false, undo, redo) || copy < 0) {
+        undo();
+        return error(QStringLiteral("place_occupee"), QStringLiteral("La copie du plan n'a pas pu être posée sur la piste %1.").arg(trackLabel(timeline, below)));
+    }
+    // Le fond : plein cadre, flouté.
+    const std::shared_ptr<EffectStackModel> backStack = timeline->getClipEffectStackModel(copy);
+    if (!appendEffect(backStack, QStringLiteral("qtblend"), {{QStringLiteral("rect"), rectText(back)}}, undo, redo) ||
+        !appendEffect(backStack, QStringLiteral("avfilter.gblur"), {{QStringLiteral("av.sigma"), QString::number(blur)}}, undo, redo)) {
+        undo();
+        return error(QStringLiteral("non_disponible"), QStringLiteral("Le Transformer ou le flou (avfilter.gblur) n'a pas pu être posé sur le fond."));
+    }
+    // Le plan : tenu en entier au centre (son Transformer s'il en a un, sinon un nouveau).
+    const std::shared_ptr<EffectStackModel> frontStack = timeline->getClipEffectStackModel(cid);
+    std::shared_ptr<EffectItemModel> transform;
+    for (const auto &e : visibleEffects(frontStack)) {
+        if (e->getAssetId() == QLatin1String("qtblend")) {
+            transform = e;
+            break;
+        }
+    }
+    if (transform) {
+        setParametersWithUndo(transform, {{QStringLiteral("rect"), rectText(front)}}, undo, redo);
+    } else if (!appendEffect(frontStack, QStringLiteral("qtblend"), {{QStringLiteral("rect"), rectText(front)}}, undo, redo)) {
+        undo();
+        return error(QStringLiteral("non_disponible"), QStringLiteral("Le Transformer n'a pas pu être posé sur le plan."));
+    }
+    pCore->pushUndo(undo, redo, i18nc("@action undo text", "Blurred background"));
+    const auto rectJson = [](const QRect &r) {
+        return QJsonObject{{QStringLiteral("x_px"), r.x()}, {QStringLiteral("y_px"), r.y()}, {QStringLiteral("largeur_px"), r.width()}, {QStringLiteral("hauteur_px"), r.height()}};
+    };
+    return QJsonObject{{QStringLiteral("ok"), true},
+                       {QStringLiteral("clip_id"), cid},
+                       {QStringLiteral("fond_clip_id"), copy},
+                       {QStringLiteral("piste_fond"), below},
+                       {QStringLiteral("plan"), rectJson(front)},
+                       {QStringLiteral("fond"), rectJson(back)},
+                       {QStringLiteral("flou"), blur},
+                       {QStringLiteral("conseil"), QStringLiteral("Le flou double le coût du plan à la lecture : sur une machine modeste, un rendu d'aperçu (rendre_apercu) aide.")}};
+}
+
+// ---------------------------------------------------------------------------------------------
 // sous_titres_poser (montage.json), 24 septembre 2026 : le montage Tek Tech a buté dessus. Les
 // cartons de sous-titres vont sur la piste de sous-titres native de la séquence (libass, brûlés à
 // l'export), avec des styles ASS nommés, un accent sur les mots entre *étoiles* et une entrée animée.
@@ -1248,6 +1369,7 @@ QMap<QString, Tool> montageTools()
         {QStringLiteral("ajouter_effet"), ajouterEffet},   {QStringLiteral("regler_effet"), reglerEffet},
         {QStringLiteral("supprimer_effet"), supprimerEffet}, {QStringLiteral("poser_keyframe"), poserKeyframe},
         {QStringLiteral("transformer_clip"), transformerClip}, {QStringLiteral("sous_titres_poser"), sousTitresPoser},
+        {QStringLiteral("fond_flou"), fondFlou},
     };
 }
 
