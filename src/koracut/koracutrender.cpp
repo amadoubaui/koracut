@@ -20,6 +20,7 @@
 #include "monitor/monitorproxy.h"
 #include "timeline2/model/timelineitemmodel.hpp"
 #include "timeline2/view/previewmanager.h"
+#include "timeline2/view/qmltypes/thumbnailprovider.h"
 #include "timeline2/view/timelinecontroller.h"
 #include "timeline2/view/timelinewidget.h"
 #include "utils/machineprofile.h"
@@ -34,6 +35,8 @@
 #include <QDirIterator>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QPointer>
+#include <QQuickWindow>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QMenu>
@@ -690,7 +693,193 @@ QJsonObject measureDrag(Monitor *monitor, int duration)
     }
     return drag;
 }
+// La fluidité de la timeline elle-même (22 octobre 2026, KC-011) : zoom, défilement, glisser d'un plan, à 60
+// événements par seconde, comme une main. « images_par_seconde » : ce que la timeline a vraiment dessiné pendant le
+// geste (QQuickWindow::afterRendering : la timeline est un QQuickWidget, dessiné hors écran) ; « image_max_ms » : le plus long écart entre deux images, la saccade qu'on voit ;
+// « appel » : ce que chaque événement a pris au fil de l'interface.
+QJsonObject sweepTimeline(TimelineWidget *widget, int steps, const std::function<void(double phase)> &step)
+{
+    // La timeline peut disparaître pendant la boucle (fermeture, changement de séquence) : on s'arrête alors.
+    const QPointer<TimelineWidget> alive(widget);
+    QQuickWindow *window = widget->quickWindow();
+    QList<qint64> frames;
+    QElapsedTimer clock;
+    clock.start();
+    const auto connection = window ? QObject::connect(window, &QQuickWindow::afterRendering, widget, [&]() { frames << clock.nsecsElapsed(); },
+                                                      Qt::DirectConnection)
+                                   : QMetaObject::Connection();
+    QList<double> calls;
+    int n = 0;
+    QEventLoop loop;
+    QTimer timer;
+    timer.setTimerType(Qt::PreciseTimer);
+    timer.setInterval(16);
+    QObject::connect(&timer, &QTimer::timeout, &loop, [&]() {
+        if (!alive) {
+            timer.stop();
+            loop.quit();
+            return;
+        }
+        QElapsedTimer call;
+        call.start();
+        step(double(n) / double(steps));
+        calls << double(call.nsecsElapsed()) / 1e6;
+        if (++n >= steps) {
+            timer.stop();
+            loop.quit();
+        }
+    });
+    const qint64 start = clock.nsecsElapsed();
+    timer.start();
+    loop.exec();
+    const double ms = double(clock.nsecsElapsed() - start) / 1e6;
+    // Les dernières images du geste arrivent juste après : un tour de boucle pour les compter.
+    {
+        QEventLoop calm;
+        QTimer::singleShot(100, &calm, &QEventLoop::quit);
+        calm.exec();
+    }
+    QObject::disconnect(connection);
+    double maxGap = 0.;
+    int jank = 0;
+    for (int i = 1; i < frames.size(); ++i) {
+        const double gap = double(frames.at(i) - frames.at(i - 1)) / 1e6;
+        maxGap = std::max(maxGap, gap);
+        if (gap > 34.) {
+            ++jank;
+        }
+    }
+    const QJsonObject callStats = summary(calls);
+    return QJsonObject{{QStringLiteral("evenements"), steps},
+                       {QStringLiteral("duree_ms"), qRound(ms)},
+                       {QStringLiteral("images"), int(frames.size())},
+                       {QStringLiteral("images_par_seconde"), ms > 0. ? qRound(10. * frames.size() * 1000. / ms) / 10. : 0.},
+                       {QStringLiteral("image_max_ms"), qRound(maxGap * 10.) / 10.},
+                       {QStringLiteral("images_en_retard"), jank},
+                       {QStringLiteral("appel"), callStats.value(QStringLiteral("mediane_ms"))},
+                       {QStringLiteral("appel_max_ms"), callStats.value(QStringLiteral("max_ms"))}};
+}
 } // namespace
+
+QJsonObject measureTimelineFluidity()
+{
+    TimelineWidget *widget = pCore && pCore->window() ? pCore->window()->getCurrentTimeline() : nullptr;
+    if (!widget || !widget->model() || !widget->controller()) {
+        return QJsonObject{{QStringLiteral("ok"), false}};
+    }
+    const QPointer<TimelineWidget> guard(widget);
+    TimelineController *controller = widget->controller();
+    const auto model = widget->model();
+    QJsonObject result{{QStringLiteral("ok"), true}, {QStringLiteral("plans"), int(model->getClipsCount())}, {QStringLiteral("largeur"), widget->width()}};
+    // Le zoom : deux allers-retours d'un facteur 4 autour du zoom de départ, comme un pincement continu.
+    const double scale = controller->scaleFactor();
+    result.insert(QStringLiteral("zoom"), sweepTimeline(widget, 120, [controller, scale](double phase) {
+        controller->setScaleFactorOnMouse(scale * std::pow(2., 2. * std::sin(phase * 4. * M_PI)), false);
+    }));
+    if (!guard) {
+        return result;
+    }
+    // Le pincement par le zoom continu (KC-011) : deux événements par image, comme un trackpad à 120 Hz ; les deux
+    // sont regroupés en un seul changement d'échelle.
+    if (guard) {
+        result.insert(QStringLiteral("pincement"), sweepTimeline(widget, 120, [controller](double phase) {
+            const double factor = std::pow(2., 0.5 * 4. * M_PI / 120. * std::cos(phase * 4. * M_PI));
+            controller->koraCutZoomBy(std::sqrt(factor), false);
+            controller->koraCutZoomBy(std::sqrt(factor), false);
+        }));
+        QEventLoop calm;
+        QTimer::singleShot(50, &calm, &QEventLoop::quit);
+        calm.exec();
+        result.insert(QStringLiteral("pincement_echelle_finale"), qRound(1000. * controller->scaleFactor() / scale) / 1000.);
+        if (MainWindow *window = pCore->window()) {
+            result.insert(QStringLiteral("niveau_curseur"), window->koraCutZoomLevel());
+        }
+        controller->setScaleFactorOnMouse(scale, false);
+    }
+    // Ce que le zoom coûte après le geste : les vignettes redemandées et décodées pendant qu'il se pose.
+    {
+        const int requests = ThumbnailProvider::koraCutRequests();
+        const int decodes = ThumbnailProvider::koraCutDecodes();
+        controller->setScaleFactorOnMouse(scale * 1.7, false);
+        QEventLoop settle;
+        QTimer::singleShot(1500, &settle, &QEventLoop::quit);
+        settle.exec();
+        controller->setScaleFactorOnMouse(scale, false);
+        QEventLoop back;
+        QTimer::singleShot(1500, &back, &QEventLoop::quit);
+        back.exec();
+        QJsonObject zoom = result.value(QStringLiteral("zoom")).toObject();
+        zoom.insert(QStringLiteral("vignettes_demandees_apres"), ThumbnailProvider::koraCutRequests() - requests);
+        zoom.insert(QStringLiteral("vignettes_decodees_apres"), ThumbnailProvider::koraCutDecodes() - decodes);
+        result.insert(QStringLiteral("zoom"), zoom);
+    }
+    if (!guard) {
+        return result;
+    }
+    // Le défilement et le glisser se font zoomés (six fois le zoom de départ, au moins 2 pixels par image) : au zoom
+    // « tout voir », il n'y a rien à faire défiler et un plan bouge d'un pixel.
+    const double close = std::max(scale * 6., 2.);
+    controller->setScaleFactorOnMouse(close, false);
+    // Le défilement : de gauche à droite puis retour, sur toute la longueur de la séquence.
+    const int span = std::max(0, int(model->duration() * close) - widget->width());
+    result.insert(QStringLiteral("defilement"), sweepTimeline(widget, 120, [controller, span](double phase) {
+        controller->setScrollPos(int(span * (phase < 0.5 ? phase * 2. : (1. - phase) * 2.)));
+    }));
+    if (!guard) {
+        return result;
+    }
+    controller->setScrollPos(0);
+    // Glisser un plan : un plan vidéo qui a 3 s de libre derrière lui (sinon le dernier d'une piste), poussé vers la
+    // droite puis ramené, par le chemin de la souris (suggestClipMove, sans étape d'annulation), puis remis à sa place.
+    const int reach = int(3 * pCore->getCurrentFps());
+    int clip = -1;
+    for (int tid : model->getTracksIds(false)) {
+        if (model->trackIsLocked(tid)) {
+            continue;
+        }
+        for (int c : model->getItemsInRange(tid, 0, -1, false)) {
+            if (!model->isClip(c)) {
+                continue;
+            }
+            const int end = model->getClipPosition(c) + model->getClipPlaytime(c);
+            bool free = true;
+            for (int other : model->getItemsInRange(tid, end, end + reach, false)) {
+                free = free && (other == c || !model->isClip(other));
+            }
+            if (free) {
+                clip = c;
+                break;
+            }
+        }
+        if (clip >= 0) {
+            break;
+        }
+    }
+    if (clip >= 0) {
+        // Le plan au milieu de la vue, pour que son glisser se voie.
+        controller->setScrollPos(std::max(0, int(model->getClipPosition(clip) * close) - widget->width() / 3));
+        QEventLoop settle;
+        QTimer::singleShot(300, &settle, &QEventLoop::quit);
+        settle.exec();
+    }
+    if (clip >= 0) {
+        const int track = model->getClipTrackId(clip);
+        const int origin = model->getClipPosition(clip);
+        result.insert(QStringLiteral("glisser_plan"), sweepTimeline(widget, 120, [model, clip, track, origin, reach](double phase) {
+            const int pos = origin + int(reach * (phase < 0.5 ? phase * 2. : (1. - phase) * 2.));
+            model->suggestClipMove(clip, track, pos, -1, -1);
+        }));
+        if (model->getClipPosition(clip) != origin || model->getClipTrackId(clip) != track) {
+            model->requestClipMove(clip, track, origin, true, true, false);
+        }
+        result.insert(QStringLiteral("plan_remis"), model->getClipPosition(clip) == origin && model->getClipTrackId(clip) == track);
+    }
+    if (guard) {
+        controller->setScaleFactorOnMouse(scale, false);
+        controller->setScrollPos(0);
+    }
+    return result;
+}
 
 void measureGestures(const std::function<void(const QJsonObject &)> &done, int dragOnly)
 {
@@ -932,7 +1121,7 @@ KoraCutRenderButton::KoraCutRenderButton(QWidget *parent)
     : QToolButton(parent)
 {
     setObjectName(QStringLiteral("koracutRenderButton"));
-    setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    setToolButtonStyle(Qt::ToolButtonIconOnly);
     setPopupMode(QToolButton::MenuButtonPopup);
     setAutoRaise(true);
     // La largeur ne saute pas quand le pourcentage change : on réserve celle du plus long libellé.
@@ -942,9 +1131,9 @@ KoraCutRenderButton::KoraCutRenderButton(QWidget *parent)
                                  i18nc("@action:intoolbar render state", "Render up to date")}) {
         widest = std::max(widest, metrics.horizontalAdvance(label));
     }
-    setMinimumWidth(widest + 16 + 36);
+    m_textWidth = widest + 16 + 36;
     m_poll.setInterval(400);
-    connect(&m_poll, &QTimer::timeout, this, &KoraCutRenderButton::refresh);
+    connect(&m_poll, &QTimer::timeout, this, [this]() { refresh(); });
     connect(this, &QToolButton::clicked, this, [this]() {
         PreviewManager *manager = currentPreviewManager();
         if (manager && manager->isRunning()) {
@@ -979,7 +1168,7 @@ void KoraCutRenderButton::hideEvent(QHideEvent *event)
     QToolButton::hideEvent(event);
 }
 
-void KoraCutRenderButton::refresh()
+void KoraCutRenderButton::refresh(bool force)
 {
     // 0 rien à rendre, 1 à rendre, 2 en cours, 3 à jour
     PreviewManager *manager = currentPreviewManager();
@@ -997,13 +1186,17 @@ void KoraCutRenderButton::refresh()
             state = 3;
         }
     }
-    if (state == m_state && percent == m_percent) {
+    if (!force && state == m_state && percent == m_percent) {
         return;
     }
     m_state = state;
     m_percent = percent;
     const double fps = pCore ? std::max(1., pCore->getCurrentFps()) : 25.;
     const int toRender = qRound(dirtyCount * KdenliveSettings::timelinechunks() / fps);
+    // KoraCut (22 octobre 2026, KC-011) : l'icône seule au repos (le libellé est dans l'infobulle) ; le pourcentage
+    // à côté de l'icône seulement pendant un rendu, avec une largeur réservée pour qu'il ne saute pas.
+    setToolButtonStyle(state == 2 ? Qt::ToolButtonTextBesideIcon : Qt::ToolButtonIconOnly);
+    setMinimumWidth(state == 2 ? m_textWidth : 0);
     switch (state) {
     case 2:
         setIcon(QIcon::fromTheme(QStringLiteral("preview-render-off")));

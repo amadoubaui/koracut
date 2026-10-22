@@ -6,6 +6,8 @@
 */
 
 #include "thumbnailprovider.h"
+
+#include <atomic>
 #include "bin/projectclip.h"
 #include "bin/projectitemmodel.h"
 #include "core.h"
@@ -62,6 +64,21 @@ QImage koraCutWithoutBars(const QImage &image, const std::shared_ptr<ProjectClip
 }
 } // namespace
 
+namespace {
+std::atomic<int> s_requests{0};
+std::atomic<int> s_decodes{0};
+} // namespace
+
+int ThumbnailProvider::koraCutRequests()
+{
+    return s_requests;
+}
+
+int ThumbnailProvider::koraCutDecodes()
+{
+    return s_decodes;
+}
+
 ThumbnailProvider::ThumbnailProvider()
     : QQuickImageProvider(QQmlImageProviderBase::Image, QQmlImageProviderBase::ForceAsynchronousImageLoading)
 {
@@ -72,6 +89,7 @@ ThumbnailProvider::~ThumbnailProvider() = default;
 QImage ThumbnailProvider::requestImage(const QString &id, QSize *size, const QSize &requestedSize)
 {
     QImage result;
+    ++s_requests;
     // id is binID/#frameNumber
     QString binId = id.section('/', 0, 0);
     bool ok;
@@ -101,6 +119,7 @@ QImage ThumbnailProvider::requestImage(const QString &id, QSize *size, const QSi
                     prod->attach(padder);
                     prod->attach(converter);
                 }
+                ++s_decodes;
                 result = makeThumbnail(std::move(prod), frameNumber, requestedSize);
                 ThumbnailCache::get()->storeThumbnail(binId, frameNumber, result, false);
                 result = koraCutWithoutBars(result, binClip);

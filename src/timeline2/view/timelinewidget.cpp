@@ -29,6 +29,8 @@
 #include <QActionGroup>
 #include <QFontDatabase>
 #include <QNativeGestureEvent>
+#include <limits>
+#include <cmath>
 #include <QMenu>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -49,6 +51,11 @@ TimelineWidget::TimelineWidget(const QUuid uuid, QWidget *parent)
     setResizeMode(QQuickWidget::SizeRootObjectToView);
     setVisible(false);
     setFont(QFontDatabase::systemFont(QFontDatabase::SmallestReadableFont));
+    {
+        // Le zoom continu (KC-011) reste dans la plage du curseur : du niveau le plus serré au plus large.
+        const double pixelScale = QFontMetrics(font()).maxWidth() * 2;
+        timelineController.koraCutSetZoomBounds(pixelScale / comboScale[20], pixelScale / comboScale[0]);
+    }
     setFocusPolicy(Qt::StrongFocus);
     m_favEffects = new QMenu(i18n("Insert an effect..."), this);
     m_favCompositions = new QMenu(i18n("Insert a composition..."), this);
@@ -250,18 +257,9 @@ bool TimelineWidget::event(QEvent *event)
         if (gesture->gestureType() == Qt::BeginNativeGesture) {
             m_pinchAccumulated = 0.;
         } else if (gesture->gestureType() == Qt::ZoomNativeGesture) {
-            // Un cran de zoom tous les 0,12 d'agrandissement : assez fin pour suivre les doigts,
-            // assez large pour ne pas traverser les 21 niveaux en un geste.
-            const double step = 0.12;
-            m_pinchAccumulated += gesture->value();
-            while (m_pinchAccumulated >= step) {
-                m_pinchAccumulated -= step;
-                pCore->window()->slotZoomIn(true);
-            }
-            while (m_pinchAccumulated <= -step) {
-                m_pinchAccumulated += step;
-                pCore->window()->slotZoomOut(true);
-            }
+            // Zoom continu (22 octobre 2026, KC-011) : l'échelle suit les doigts au lieu de sauter d'un niveau à l'autre
+            // (les niveaux vont de ×1,3 à ×2,5). Même sensibilité qu'avant : ×1,5 pour 0,12 d'agrandissement.
+            timelineController.koraCutZoomBy(std::pow(1.5, gesture->value() / 0.12), true);
             event->accept();
             return true;
         }
@@ -582,12 +580,19 @@ void TimelineWidget::slotResetContextPos(QAction *)
 
 int TimelineWidget::zoomForScale(double value) const
 {
-    int scale = int(100 / value);
-    int ix = 13;
-    while (comboScale[ix] > scale && ix > 0) {
-        ix--;
+    // KoraCut (22 octobre 2026) : le niveau du curseur le plus proche de l'échelle, avec la même conversion que
+    // slotChangeZoom (le zoom continu pose des échelles entre deux niveaux).
+    const double pixelScale = QFontMetrics(font()).maxWidth() * 2;
+    int best = 0;
+    double bestGap = std::numeric_limits<double>::max();
+    for (int ix = 0; ix <= 20; ++ix) {
+        const double gap = std::abs(std::log(pixelScale / comboScale[ix]) - std::log(std::max(value, 1e-9)));
+        if (gap < bestGap) {
+            bestGap = gap;
+            best = ix;
+        }
     }
-    return ix;
+    return best;
 }
 
 void TimelineWidget::focusTimeline()

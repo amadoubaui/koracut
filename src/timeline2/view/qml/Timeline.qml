@@ -282,15 +282,9 @@ Rectangle {
     // KoraCut : le zoom. Au trackpad on compte les pixels parcourus, à la souris les crans.
     function zoomByWheelStep(wheel, fromTrackpad) {
         if (fromTrackpad) {
-            root.pixelAccumulatedDelta += root.wheelPixels(wheel).y
-            while (root.pixelAccumulatedDelta >= root.pixelsPerZoomStep) {
-                root.pixelAccumulatedDelta -= root.pixelsPerZoomStep
-                root.zoomIn(true)
-            }
-            while (root.pixelAccumulatedDelta <= -root.pixelsPerZoomStep) {
-                root.pixelAccumulatedDelta += root.pixelsPerZoomStep
-                root.zoomOut(true)
-            }
+            // Zoom continu (22 octobre 2026, KC-011) : ×1,5 pour un ancien cran de pixels, sans sauter de niveau.
+            root.pixelAccumulatedDelta = 0
+            root.timeline.koraCutZoomBy(Math.pow(1.5, root.wheelPixels(wheel).y / root.pixelsPerZoomStep), true)
             return
         }
         root.pixelAccumulatedDelta = 0
@@ -707,6 +701,14 @@ function getTrackColor(audio, header) {
     property int spacerClickFrame: -1
     property bool spacerGuides: false
     property real timeScale: root.timeline.scaleFactor
+    // KoraCut, 22 octobre 2026 (KC-011) : le zoom des vignettes suit celui de la timeline 150 ms après le dernier cran.
+    // Pendant un pincement, les cases gardent leur image au lieu d'en redemander une à chaque cran.
+    property real koraThumbScale: root.timeline.scaleFactor
+    Timer {
+        id: koraThumbSettle
+        interval: 150
+        onTriggered: root.koraThumbScale = root.timeScale
+    }
     property int snapping: (K.KdenliveSettings.snaptopoints && (root.timeScale < 2 * K.UiUtils.baseSizeMedium)) ?
                                Math.floor(K.UiUtils.baseSizeMedium / (root.timeScale > 3 ? root.timeScale / 2 : root.timeScale)) : -1
     property var timelineSelection: root.timeline.selection
@@ -776,6 +778,7 @@ function getTrackColor(audio, header) {
     //onCurrentTrackChanged: root.timeline.selection = []
 
     onTimeScaleChanged: {
+        koraThumbSettle.restart()
         if (root.timeline.fullDuration * root.timeScale < scrollView.width) {
             scrollView.contentX = 0
             root.zoomOnMouse = -1

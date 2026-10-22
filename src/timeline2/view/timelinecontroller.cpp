@@ -335,6 +335,36 @@ void TimelineController::setScaleFactorOnMouse(double scale, bool zoomOnMouse)
     }
 }
 
+void TimelineController::koraCutSetZoomBounds(double minScale, double maxScale)
+{
+    m_koraMinScale = minScale;
+    m_koraMaxScale = maxScale;
+}
+
+void TimelineController::koraCutZoomBy(double factor, bool zoomOnMouse)
+{
+    if (!(factor > 0.) || !m_root) {
+        return;
+    }
+    m_koraPendingZoom *= factor;
+    m_koraZoomOnMouse = zoomOnMouse && !KdenliveSettings::timelinemousezoomonplayhead();
+    if (m_koraZoomQueued) {
+        return;
+    }
+    m_koraZoomQueued = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_koraZoomQueued = false;
+        const double next = std::clamp(m_scale * m_koraPendingZoom, m_koraMinScale, m_koraMaxScale);
+        m_koraPendingZoom = 1.;
+        if (std::abs(next - m_scale) < 1e-9) {
+            return;
+        }
+        setScaleFactorOnMouse(next, m_koraZoomOnMouse);
+        // Le curseur de zoom suit, au niveau le plus proche, sans renvoyer de zoom.
+        Q_EMIT updateZoom(next);
+    });
+}
+
 void TimelineController::setScaleFactor(double scale)
 {
     m_scale = scale;

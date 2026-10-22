@@ -17,6 +17,9 @@
 class ThumbnailProvider : public QQuickImageProvider
 {
 public:
+    /** @brief KoraCut, mesure de la fluidité (KC-011) : vignettes demandées et vignettes décodées (pas en cache), depuis le lancement. */
+    static int koraCutRequests();
+    static int koraCutDecodes();
     explicit ThumbnailProvider();
     ~ThumbnailProvider() override;
     QImage requestImage(const QString &id, QSize *size, const QSize &requestedSize) override;

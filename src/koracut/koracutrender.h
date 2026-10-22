@@ -62,6 +62,8 @@ void measurePlayback(int from, int seconds, const std::function<void(const QJson
  * jusqu'à l'image affichée qui le montre. Modifie la séquence (rogne puis remet) : banc d'essai seulement.
  * @p dragOnly > 0 : seulement le glisser de la tête de lecture, ce nombre de fois (une réponse par passe). */
 void measureGestures(const std::function<void(const QJsonObject &)> &done, int dragOnly = 0);
+/** @brief La fluidité de la timeline (zoom, défilement, glisser d'un plan) : images dessinées par seconde et saccades (KC-011). */
+QJsonObject measureTimelineFluidity();
 
 /** @brief Attend (en faisant tourner la boucle d'événements) que le rendu d'aperçu de la
  * séquence courante soit fini, au plus @p timeoutMs. Vrai s'il est fini. */
@@ -83,13 +85,15 @@ public:
     explicit KoraCutRenderButton(QWidget *parent = nullptr);
     /** @brief L'action du clic quand rien ne tourne, et celle qui arrête le rendu. */
     void setActions(QAction *render, QAction *stop);
+    /** @brief Relit l'état du rendu ; @p force réapplique le style même si l'état n'a pas changé (la barre l'a changé). */
+    void refresh(bool force = false);
 
 protected:
     void showEvent(QShowEvent *event) override;
     void hideEvent(QHideEvent *event) override;
 
 private:
-    void refresh();
+    int m_textWidth{0}; ///< la largeur du plus long libellé, réservée pendant un rendu
     QTimer m_poll;
     QPointer<QAction> m_render;
     QPointer<QAction> m_stop;

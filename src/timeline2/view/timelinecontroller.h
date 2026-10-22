@@ -174,6 +174,11 @@ public:
     /** @brief set current timeline's zoom factor
      */
     void setScaleFactorOnMouse(double scale, bool zoomOnMouse);
+    /** @brief KoraCut (22 octobre 2026, KC-011) : zoom continu, comme Resolve et CapCut. Multiplie l'échelle par @p factor
+     *  au lieu de sauter d'un niveau du curseur à l'autre ; les demandes d'un même tour de boucle (un pincement envoie
+     *  plus d'événements qu'il n'y a d'images) sont regroupées en un seul changement. Borné aux niveaux extrêmes. */
+    Q_INVOKABLE void koraCutZoomBy(double factor, bool zoomOnMouse);
+    void koraCutSetZoomBounds(double minScale, double maxScale);
     void setScaleFactor(double scale);
     /** @brief Returns the project's duration (tractor)
      */
@@ -901,6 +906,11 @@ private:
     QPoint m_zone;
     int m_activeTrack;
     double m_scale;
+    double m_koraMinScale{0.0001};
+    double m_koraMaxScale{1000.};
+    double m_koraPendingZoom{1.};
+    bool m_koraZoomOnMouse{true};
+    bool m_koraZoomQueued{false};
     QAction *m_disablePreview;
     std::shared_ptr<AudioCorrelation> m_audioCorrelator;
     QMutex m_metaMutex;

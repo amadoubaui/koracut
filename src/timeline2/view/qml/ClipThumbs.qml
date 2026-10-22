@@ -29,6 +29,16 @@ Item {
     property bool fixedThumbs: parentClip.itemType === K.ClipType.Image || parentClip.itemType === K.ClipType.Text || parentClip.itemType === K.ClipType.TextTemplate
     property int thumbWidth: Math.max(1, Math.round(thumbRow.height * Math.max(K.Core.getCurrentDar(), 1.0)))
     property bool enableCache: parentClip.itemType === K.ClipType.Video || parentClip.itemType === K.ClipType.AV
+    // KoraCut, 22 octobre 2026 (KC-011) : en mode « toutes les images », seules les cases visibles existent (plus une de
+    // chaque côté), au lieu d'une par case sur toute la largeur du plan, et leurs images sont calées sur une grille qui
+    // ne dépend que du zoom posé : un cran de zoom ne recrée plus toutes les cases ni ne redemande toutes les images.
+    readonly property bool allFrames: parentTrack.trackThumbsFormat === 1
+    readonly property int totalSlots: Math.ceil(thumbRow.width / thumbRow.thumbWidth)
+    readonly property bool inOutLayout: !allFrames || totalSlots < 3
+    readonly property int firstSlot: Math.max(0, Math.floor(Math.max(0, thumbRow.parentClip.scrollStart) / thumbRow.thumbWidth) - 1)
+    readonly property int lastSlot: Math.min(totalSlots - 1, Math.ceil((Math.max(0, thumbRow.parentClip.scrollStart) + scrollView.width) / thumbRow.thumbWidth) + 1)
+    // Le pas de la grille : une puissance de deux au moins égale au nombre d'images de média par case, au zoom posé.
+    readonly property int frameStep: Math.pow(2, Math.max(0, Math.ceil(Math.log(Math.max(1, thumbRow.thumbWidth / root.koraThumbScale)) / Math.LN2)))
 
     Repeater {
         id: thumbRepeater
@@ -41,8 +51,8 @@ Item {
                 // in/out : 2 montre l'image de début et de fin, 1 seulement la première si la place manque
                 return thumbRow.width > 2 * thumbRow.thumbWidth ? 2 : 1;
             case 1:
-                // All frames : autant d'images que la place en tient
-                return Math.ceil(thumbRow.width / thumbRow.thumbWidth);
+                // All frames : les cases visibles seulement (un plan étroit garde son début et sa fin)
+                return thumbRow.inOutLayout ? (thumbRow.width > 2 * thumbRow.thumbWidth ? 2 : 1) : Math.max(0, thumbRow.lastSlot - thumbRow.firstSlot + 1);
             case 2:
                 // In frame only
                 return 1;
@@ -68,31 +78,30 @@ Item {
         Image {
             id: thumbImage
             required property int index
+            // La case de cette image dans le plan : son rang parmi les cases visibles, plus la première visible.
+            readonly property int slot: thumbRow.inOutLayout ? index : thumbRow.firstSlot + index
             width: thumbRepeater.imageWidth
             height: thumbRow.height
             // Première et dernière image aux deux bouts ; sinon une case après l'autre.
-            x: thumbRepeater.count < 3 && index > 0 ? thumbRow.width - width : index * width
+            x: thumbRow.inOutLayout && index > 0 ? thumbRow.width - width : slot * width
             fillMode: Image.PreserveAspectCrop
             asynchronous: true
             cache: thumbRow.enableCache
             property int currentThumbFrame: thumbRow.fixedThumbs
                                        ? 0
-                                       : thumbRepeater.count < 3
+                                       : thumbRow.inOutLayout
                                          ? (index === 0 ? thumbRepeater.thumbStartFrame : thumbRepeater.thumbEndFrame)
-                                         : Math.floor(clipRoot.inPoint * thumbRow.initialSpeed + Math.round((index) * width / timeline.scaleFactor)* clipRoot.speed)
-            source: thumbRepeater.count < 3
-                    ? (thumbRow.parentClip.baseThumbPath + currentThumbFrame)
-                    : (index * width < thumbRow.parentClip.scrollStart - width || index * width > thumbRow.parentClip.scrollStart + scrollView.width)
-                      ? '' : thumbRow.parentClip.baseThumbPath + currentThumbFrame
+                                         : Math.max(thumbRepeater.thumbStartFrame, thumbRow.frameStep * Math.floor(Math.floor(clipRoot.inPoint * thumbRow.initialSpeed + Math.round(slot * width / root.koraThumbScale) * clipRoot.speed) / thumbRow.frameStep))
+            source: thumbRow.parentClip.baseThumbPath + currentThumbFrame
             onStatusChanged: {
-                if (status === Image.Ready && (index === 0  || index === thumbRepeater.count - 1)) {
+                if (status === Image.Ready && thumbRow.inOutLayout && (index === 0  || index === thumbRepeater.count - 1)) {
                     thumbPlaceholder.source = source
                 }
             }
             Image {
                 // L'image d'avant reste affichée pendant que la nouvelle se charge.
                 id: thumbPlaceholder
-                visible: parent.status != Image.Ready && (thumbImage.index === 0  || thumbImage.index === thumbRepeater.count - 1)
+                visible: parent.status != Image.Ready && thumbRow.inOutLayout && (thumbImage.index === 0  || thumbImage.index === thumbRepeater.count - 1)
                 anchors.fill: parent
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
