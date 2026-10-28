@@ -403,7 +403,9 @@ endif()
 
 # KoraCut (21 octobre 2026) : sous Windows, le qmllint de Qt 6.12 (MSYS2) rend un code d'échec alors qu'il ne
 # signale que des avertissements ; il ne bloque donc la compilation que sur macOS et Linux, où il garde son rôle.
-if(NOT WIN32)
+# KoraCut (28 octobre 2026) : le Qt 6.12 de Craft fait pareil sur macOS (code 255, 437 avertissements, aucune
+# erreur) : à partir de 6.12, qmllint ne bloque plus nulle part ; la cible all_qmllint reste à lancer à la main.
+if(NOT WIN32 AND Qt6_VERSION VERSION_LESS 6.12)
     add_dependencies(koracut all_qmllint)
 endif()
 
