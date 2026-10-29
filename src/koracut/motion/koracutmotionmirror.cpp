@@ -90,6 +90,14 @@ void giveAutomaticName(const std::shared_ptr<ProjectClip> &bin, const QString &n
 // pas être un nom de projet (sanitizeName n'y laisse pas d'astérisque).
 const QLatin1String kSharedAnimations("*animations");
 const QLatin1String kSharedTransitions("*transitions");
+
+// Une composition qui ne se pose plus seule (data-koracut-retire) : un élément seul dont le clip a été
+// supprimé, ou une composition d'un seul tenant remplacée par un rush (remplacer_clip, ajouter_clip en mode
+// ecraser, 29 octobre 2026). Le fichier reste sur le disque, sans clip.
+bool retiredComposition(const KoraCutMotion::Composition &c)
+{
+    return c.retired && (c.isElement() || (c.elements.size() == 1 && c.elements.first().kind == KoraCutMotion::Kind::Whole));
+}
 } // namespace
 
 KoraCutMotionMirror::KoraCutMotionMirror(QObject *parent)
@@ -1074,7 +1082,8 @@ bool KoraCutMotionMirror::applyFromFile(const QString &name, bool logUndo, const
     QList<int> indexes;
     bool hasAudio = false;
     const bool single = comp.isElement();
-    for (const Element &e : single ? QList<Element>() : comp.elements) {
+    // Une composition retirée (remplacée par un rush) n'a plus de piste à recevoir non plus.
+    for (const Element &e : (single || retiredComposition(comp)) ? QList<Element>() : comp.elements) {
         // Une piste n'est créée que pour un élément qui n'a pas encore de clip : si la personne a rangé les clips
         // d'une composition sur une autre piste (plusieurs scènes sur une piste « Scènes »), rien n'est recréé.
         if (clipFor(name, e.id) >= 0) {
@@ -1110,7 +1119,7 @@ bool KoraCutMotionMirror::applyFromFile(const QString &name, bool logUndo, const
             continue;
         }
         const int cid = clipFor(name, e.id);
-        if (single && comp.retired && cid < 0) {
+        if (retiredComposition(comp) && cid < 0) {
             // Son clip a été supprimé de la timeline : la composition reste sur le disque, sans clip.
             continue;
         }
@@ -1300,7 +1309,7 @@ void KoraCutMotionMirror::onRendered(const QString &project, const QString &elem
     // Le nom montré dans le chutier et la timeline : la composition entière porte le nom du projet
     // Motion, un élément son texte, son fichier ou son id.
     const QString shown = element.kind == Kind::Whole ? KoraCutMotionCatalog::binClipName(entry.sync->composition(), project) : element.displayName();
-    const bool retired = entry.sync->composition().isElement() && entry.sync->composition().retired;
+    const bool retired = retiredComposition(entry.sync->composition());
     const QString existing = findBinClip(project, elementId);
     auto existingBin = existing.isEmpty() ? nullptr : pCore->projectItemModel()->getClipByBinID(existing);
     if (existingBin && (existingBin->clipStatus() == FileStatus::StatusWaiting ||
@@ -1667,6 +1676,16 @@ QStringList KoraCutMotionMirror::reconcileRemovals(const std::shared_ptr<Timelin
             }
             continue;
         }
+        if (retiredComposition(single)) {
+            // Une composition d'un seul tenant remplacée par un rush (retireForReplacement) : son clip revenu
+            // (Annuler, ou reposé depuis le chutier) la remet. Sans clip, elle reste retirée.
+            const QString id = single.elements.first().id;
+            if (clipFor(name, id) >= 0 && entry.sync->writeElement(id, {{QStringLiteral("data-koracut-retire"), QString()}})) {
+                entry.placed.insert(id);
+                rewritten << name;
+            }
+            continue;
+        }
         // 1. Un clip revenu (Annuler d'une suppression) dont l'élément avait quitté le HTML : on le remet.
         for (bool audio : {false, true}) {
             for (int tid : tl->getTracksIds(audio)) {
@@ -1711,6 +1730,54 @@ QStringList KoraCutMotionMirror::reconcileRemovals(const std::shared_ptr<Timelin
         }
     }
     return rewritten;
+}
+
+bool KoraCutMotionMirror::retireForReplacement(int clipId, std::function<bool()> &undo, std::function<bool()> &redo, QString *error)
+{
+    using namespace KoraCutMotion;
+    const ClipInfo info = clipInfo(clipId);
+    if (info.project.isEmpty() || !m_entries.contains(info.project)) {
+        return true;
+    }
+    const Composition &comp = m_entries.value(info.project).sync->composition();
+    if (comp.isElement() || comp.elements.size() != 1 || comp.elements.first().kind != Kind::Whole || comp.elements.first().id != info.elementId) {
+        // Élément seul (marqué retiré par reconcileRemovals) ou élément d'une composition à plusieurs (il quitte le HTML).
+        return true;
+    }
+    const QString project = info.project;
+    const QString id = info.elementId;
+    QPointer<KoraCutMotionMirror> self(this);
+    auto mark = [self, project, id](bool retired) {
+        if (!self || !self->m_entries.contains(project)) {
+            return false;
+        }
+        Entry &entry = self->m_entries[project];
+        if (!entry.sync->writeElement(id, {{QStringLiteral("data-koracut-retire"), retired ? QStringLiteral("1") : QString()}})) {
+            return false;
+        }
+        if (retired) {
+            entry.placed.remove(id);
+        }
+        Q_EMIT self->elementsChanged(project);
+        return true;
+    };
+    if (!mark(true)) {
+        if (error) {
+            // Un message pour les outils d'agents, en français comme les leurs.
+            *error = QStringLiteral("Le fichier de la composition Motion « %1 » est en train de changer ailleurs : réessaie dans un instant.").arg(project);
+        }
+        return false;
+    }
+    Fun localRedo = [mark]() {
+        mark(true);
+        return true;
+    };
+    Fun localUndo = [mark]() {
+        mark(false);
+        return true;
+    };
+    merge(undo, redo, localUndo, localRedo);
+    return true;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2320,7 +2387,7 @@ bool KoraCutMotionMirror::waitForPlacement(const QString &project, int ms)
         }
         const Entry &entry = m_entries[project];
         const KoraCutMotion::Composition &comp = entry.sync->composition();
-        if (comp.isElement() && comp.retired) {
+        if (retiredComposition(comp)) {
             return false;
         }
         for (const KoraCutMotion::Element &e : comp.elements) {

@@ -98,6 +98,13 @@ bool startsRender(const QString &tool, const QJsonObject &input)
     return tool == QLatin1String("modeles_export") && (action == QLatin1String("exporter") || action == QLatin1String("lancer_file"));
 }
 
+// ajouter_clip en mode ecraser (29 octobre 2026) retire ou raccourcit les clips de la zone : il demande l'accord
+// comme supprimer_clip, sauf s'il figure dans un plan accepté. Les autres modes ne retirent rien.
+bool overwritesClips(const QString &tool, const QJsonObject &input)
+{
+    return tool == QLatin1String("ajouter_clip") && input.value(QStringLiteral("mode")).toString() == QLatin1String("ecraser");
+}
+
 bool neverCoveredByPlan(const QString &tool, const QJsonObject &input)
 {
     return tool == QLatin1String("exporter") || tool == QLatin1String("exporter_serie") || input.value(QStringLiteral("ecraser")).toBool(false) ||
@@ -444,7 +451,7 @@ void KoraCutAgentSession::onMessage(const QJsonObject &message)
         QSet<QString> tools;
         for (const QJsonValue &step : message.value(QStringLiteral("etapes")).toArray()) {
             for (const QJsonValue &t : step.toObject().value(QStringLiteral("outils")).toArray()) {
-                if (m_confirmationTools.contains(t.toString())) {
+                if (m_confirmationTools.contains(t.toString()) || t.toString() == QLatin1String("ajouter_clip")) {
                     tools.insert(t.toString());
                 }
             }
@@ -469,7 +476,7 @@ void KoraCutAgentSession::handleToolCall(const QJsonObject &message)
     if (m_turn->calls > m_budget) {
         result = toolError(QStringLiteral("budget_epuise"), QStringLiteral("Le budget de %1 appels de ce tour est épuisé.").arg(m_budget),
                            QStringLiteral("Arrête-toi et résume ce qui est fait et ce qui reste."));
-    } else if ((m_confirmationTools.contains(tool) || startsRender(tool, input)) && !m_turn->approvedCalls.contains(callId) &&
+    } else if ((m_confirmationTools.contains(tool) || startsRender(tool, input) || overwritesClips(tool, input)) && !m_turn->approvedCalls.contains(callId) &&
                (neverCoveredByPlan(tool, input) || !m_turn->approvedTools.contains(tool))) {
         // La personne décide dans le panneau ; le service reviendra avec le même appel_id si elle dit oui.
         m_turn->pending.insert(callId, QJsonObject{{QStringLiteral("agent"), agent}, {QStringLiteral("outil"), tool}, {QStringLiteral("entree"), input}});

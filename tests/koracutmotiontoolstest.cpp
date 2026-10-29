@@ -1506,6 +1506,64 @@ TEST_CASE("Motion : plusieurs plans pleins cadres sur la piste des rushs", "[Kor
     mirror->renderer()->waitForIdle(20000);
     waitMs(800);
 
+    // 4 bis (29 octobre 2026). Après le tournage, le rush prend la place du plan 3 (8 à 10 s). Écraser une partie
+    //    seulement d'un plan Motion est refusé (il serait coupé en deux) ; remplacer_clip le remplace en une étape,
+    //    et le miroir ne le remet pas par-dessus, même après une écriture du HTML. Annuler le remet, Rétablir le
+    //    retire. La réouverture (5.) le garde retiré.
+    const QString index3 = tmp.path() + QStringLiteral("/motion/plan-3/index.html");
+    const QString shotBin = KdenliveTests::createProducer(pCore->getProjectProfile(), "green", binModel, at(5), true);
+    REQUIRE(clipOf(QStringLiteral("plan-3")) == c3);
+    undoIndex = undoStack->index();
+    r = call(timeline, QStringLiteral("ajouter_clip"), {{QStringLiteral("media_id"), shotBin}, {QStringLiteral("piste_id"), v1}, {QStringLiteral("position"), at(9)},
+                                                         {QStringLiteral("sortie"), at(1)}, {QStringLiteral("partie"), QStringLiteral("video")}, {QStringLiteral("mode"), QStringLiteral("ecraser")}});
+    INFO(dumpJson(r));
+    CHECK(errorCode(r) == QStringLiteral("clip_motion"));
+    CHECK(r.value(QStringLiteral("clip_id")).toInt(-1) == c3);
+    CHECK(timeline->getClipPlaytime(c3) == at(2));
+    CHECK(undoStack->index() == undoIndex);
+    r = call(timeline, QStringLiteral("remplacer_clip"), {{QStringLiteral("clip_id"), c3}, {QStringLiteral("media_id"), shotBin}, {QStringLiteral("entree"), at(1)}});
+    INFO(dumpJson(r));
+    REQUIRE(r.value(QStringLiteral("ok")).toBool());
+    const int shot = r.value(QStringLiteral("clip_id")).toInt();
+    CHECK(timeline->getClipTrackId(shot) == v1);
+    CHECK(timeline->getClipPosition(shot) == at(8));
+    CHECK(timeline->getClipPlaytime(shot) == at(2));
+    CHECK(timeline->getClipIn(shot) == at(1));
+    CHECK(r.value(QStringLiteral("motion_retirees")).toArray() == QJsonArray{QStringLiteral("plan-3")});
+    CHECK(undoStack->index() == undoIndex + 1);
+    CHECK(readAll(index3).contains(QLatin1String("data-koracut-retire=\"1\"")));
+    waitMs(800);
+    CHECK(clipOf(QStringLiteral("plan-3")) < 0);
+    CHECK(timeline->getClipPosition(shot) == at(8));
+    // Une écriture du HTML de l'extérieur (Studio, panneau Code) fait relire la composition : elle ne revient pas.
+    {
+        QFile f(index3);
+        REQUIRE(f.open(QIODevice::Append));
+        f.write("<!-- relu -->\n");
+    }
+    waitMs(1500);
+    mirror->renderer()->waitForIdle(20000);
+    waitMs(800);
+    CHECK(clipOf(QStringLiteral("plan-3")) < 0);
+    CHECK(timeline->getClipByPosition(v1, at(9)) == shot);
+    CHECK(compositionOf(call(timeline, QStringLiteral("motion_lister"), {{QStringLiteral("retirees"), true}}), QStringLiteral("plan-3")).value(QStringLiteral("retiree")).toBool());
+    // Annuler : le plan Motion revient à sa place, la marque tombe ; Rétablir : le rush, et la marque.
+    undoStack->undo();
+    waitMs(800);
+    CHECK_FALSE(timeline->isClip(shot));
+    REQUIRE(clipOf(QStringLiteral("plan-3")) >= 0);
+    CHECK(timeline->getClipPosition(clipOf(QStringLiteral("plan-3"))) == at(8));
+    CHECK(timeline->getClipTrackId(clipOf(QStringLiteral("plan-3"))) == v1);
+    CHECK_FALSE(readAll(index3).contains(QLatin1String("data-koracut-retire")));
+    undoStack->redo();
+    waitMs(800);
+    CHECK(clipOf(QStringLiteral("plan-3")) < 0);
+    CHECK(readAll(index3).contains(QLatin1String("data-koracut-retire=\"1\"")));
+    REQUIRE(timeline->getClipByPosition(v1, at(9)) > -1);
+    CHECK(timeline->getClipBinId(timeline->getClipByPosition(v1, at(9))) == shotBin);
+    mirror->renderer()->waitForIdle(20000);
+    waitMs(800);
+
     // 5. Enregistrer, fermer, rouvrir : les trois plans et le rush restent sur V1, à leur place, sans piste en plus.
     const int tracksBefore = timeline->getTracksCount();
     pCore->projectManager()->testSaveFileAs(saveFile);
@@ -1533,7 +1591,8 @@ TEST_CASE("Motion : plusieurs plans pleins cadres sur la piste des rushs", "[Kor
             lowest = tid;
         }
     }
-    const QList<std::pair<QString, double>> expected{{QStringLiteral("plan-1"), 0.}, {QStringLiteral("plan-2"), 10.}, {QStringLiteral("plan-3"), 8.}};
+    // Le plan 3 a été remplacé par le rush tourné (4 bis) : il reste retiré, le rush tient sa place.
+    const QList<std::pair<QString, double>> expected{{QStringLiteral("plan-1"), 0.}, {QStringLiteral("plan-2"), 10.}};
     for (const auto &[name, seconds] : expected) {
         INFO(name.toStdString());
         const int cid = clipOf(name);
@@ -1542,6 +1601,11 @@ TEST_CASE("Motion : plusieurs plans pleins cadres sur la piste des rushs", "[Kor
         CHECK(timeline->getClipPosition(cid) == at(seconds));
         CHECK(tracksOf(name) == 0);
     }
+    CHECK(clipOf(QStringLiteral("plan-3")) < 0);
+    CHECK(readAll(index3).contains(QLatin1String("data-koracut-retire=\"1\"")));
+    REQUIRE(timeline->getClipByPosition(lowest, at(9)) > -1);
+    CHECK(timeline->getClipBinId(timeline->getClipByPosition(lowest, at(9))) == shotBin);
+    CHECK(timeline->getClipPosition(timeline->getClipByPosition(lowest, at(9))) == at(8));
     CHECK(timeline->getTrackProperty(lowest, QStringLiteral("kdenlive:koracut_motion")).toString().isEmpty());
     CHECK(timeline->getTrackClipsCount(lowest) == 4);
 

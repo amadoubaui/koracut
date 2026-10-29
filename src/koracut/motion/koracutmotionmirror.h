@@ -216,6 +216,15 @@ public:
     QString projectOfElement(const QString &elementId) const;
     /** @brief Le clip de timeline d'un élément, -1 s'il n'y en a pas. */
     int clipFor(const QString &project, const QString &elementId) const;
+    /** @brief remplacer_clip et ajouter_clip en mode ecraser (29 octobre 2026) : le clip @p clipId va quitter la
+     * timeline pour laisser sa place à un autre (un rush tourné à la place d'un plan de pré-visualisation).
+     * Sans rien dire au miroir, une composition d'un seul tenant reviendrait par-dessus à la relecture suivante.
+     * Elle est donc marquée retirée (data-koracut-retire, gardé dans le fichier, donc à la réouverture) : @p redo
+     * reçoit l'écriture et @p undo l'effacement, à chaîner AVANT le retrait du clip (Annuler remet le clip, puis
+     * la marque tombe). Un élément seul se retire déjà ainsi, un élément d'une composition à plusieurs quitte
+     * le HTML (reconcileRemovals) : rien à ajouter pour eux. Un clip qui n'est pas Motion : rien à faire.
+     * @return faux, avec @p error, si le fichier ne peut pas être écrit (une écriture extérieure attend). */
+    bool retireForReplacement(int clipId, std::function<bool()> &undo, std::function<bool()> &redo, QString *error = nullptr);
 
     /** @brief Un clip du chutier dont le rendu Motion est absent (ménage du cache) et dont on se sert (aperçu) :
      * son rendu passe en tête de la file des rendus à refaire. @return vrai s'il est un rendu Motion à refaire. */

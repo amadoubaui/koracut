@@ -351,6 +351,110 @@ TEST_CASE("Outils d'agent : monter une séquence", "[KoraCutAgentTools]")
         CHECK(clipInState(state, s).value(QStringLiteral("vit")).toInt() == 50);
     }
 
+    SECTION("Écraser, insérer, remplacer (29 octobre 2026)")
+    {
+        const QString blue = KdenliveTests::createProducer(pCore->getProjectProfile(), "blue", binModel, 30, true);
+        auto put = [&](int position) {
+            return call(timeline, QStringLiteral("ajouter_clip"),
+                        {{QStringLiteral("media_id"), red}, {QStringLiteral("piste_id"), v1}, {QStringLiteral("position"), position}, {QStringLiteral("partie"), QStringLiteral("video")}})
+                .value(QStringLiteral("clip_id"))
+                .toInt();
+        };
+        const int a = put(0);
+        REQUIRE(timeline->isClip(a));
+
+        // Écraser au milieu d'un clip : 6 images de bleu à 7, le rouge (0 à 19) est coupé autour. Une étape.
+        int steps = undoStack->index();
+        QJsonObject r = call(timeline, QStringLiteral("ajouter_clip"),
+                             {{QStringLiteral("media_id"), blue}, {QStringLiteral("piste_id"), v1}, {QStringLiteral("position"), 7}, {QStringLiteral("entree"), 0},
+                              {QStringLiteral("sortie"), 6}, {QStringLiteral("partie"), QStringLiteral("video")}, {QStringLiteral("mode"), QStringLiteral("ecraser")}});
+        INFO(QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString());
+        REQUIRE(r.value(QStringLiteral("ok")).toBool());
+        const int b = r.value(QStringLiteral("clip_id")).toInt();
+        CHECK(timeline->getClipPosition(b) == 7);
+        CHECK(timeline->getClipPlaytime(b) == 6);
+        CHECK(timeline->getTrackClipsCount(v1) == 3);
+        CHECK(timeline->getClipPosition(a) == 0);
+        CHECK(timeline->getClipPlaytime(a) == 7);
+        const int right = timeline->getClipByPosition(v1, 13);
+        REQUIRE(right > -1);
+        CHECK(timeline->getClipPosition(right) == 13);
+        CHECK(timeline->getClipPlaytime(right) == 7);
+        CHECK(r.value(QStringLiteral("clips_raccourcis")).toArray().contains(a));
+        CHECK(r.value(QStringLiteral("clips_retires")).toArray().isEmpty());
+        CHECK(undoStack->index() == steps + 1);
+        undoStack->undo();
+        CHECK_FALSE(timeline->isClip(b));
+        CHECK(timeline->getTrackClipsCount(v1) == 1);
+        CHECK(timeline->getClipPlaytime(a) == 20);
+
+        // Écraser une zone vide : comme libre, rien de retiré ni de raccourci.
+        r = call(timeline, QStringLiteral("ajouter_clip"),
+                 {{QStringLiteral("media_id"), blue}, {QStringLiteral("piste_id"), v1}, {QStringLiteral("position"), 100}, {QStringLiteral("partie"), QStringLiteral("video")},
+                  {QStringLiteral("mode"), QStringLiteral("ecraser")}});
+        REQUIRE(r.value(QStringLiteral("ok")).toBool());
+        CHECK(timeline->getClipPosition(r.value(QStringLiteral("clip_id")).toInt()) == 100);
+        CHECK(timeline->getClipPlaytime(r.value(QStringLiteral("clip_id")).toInt()) == 30);
+        CHECK(r.value(QStringLiteral("clips_retires")).toArray().isEmpty());
+        CHECK(r.value(QStringLiteral("clips_raccourcis")).toArray().isEmpty());
+        undoStack->undo();
+
+        // Écraser un clip entier : il est retiré, et dit.
+        r = call(timeline, QStringLiteral("ajouter_clip"),
+                 {{QStringLiteral("media_id"), blue}, {QStringLiteral("piste_id"), v1}, {QStringLiteral("position"), 0}, {QStringLiteral("partie"), QStringLiteral("video")},
+                  {QStringLiteral("mode"), QStringLiteral("ecraser")}});
+        REQUIRE(r.value(QStringLiteral("ok")).toBool());
+        CHECK_FALSE(timeline->isClip(a));
+        CHECK(r.value(QStringLiteral("clips_retires")).toArray().contains(a));
+        undoStack->undo();
+        REQUIRE(timeline->isClip(a));
+
+        // Insérer à 10 : le rouge est coupé, sa seconde moitié recule de 6 images, rien n'est retiré.
+        steps = undoStack->index();
+        r = call(timeline, QStringLiteral("ajouter_clip"),
+                 {{QStringLiteral("media_id"), blue}, {QStringLiteral("piste_id"), v1}, {QStringLiteral("position"), 10}, {QStringLiteral("sortie"), 6},
+                  {QStringLiteral("partie"), QStringLiteral("video")}, {QStringLiteral("mode"), QStringLiteral("inserer")}});
+        INFO(QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString());
+        REQUIRE(r.value(QStringLiteral("ok")).toBool());
+        CHECK(timeline->getClipPosition(r.value(QStringLiteral("clip_id")).toInt()) == 10);
+        CHECK(timeline->getClipPlaytime(a) == 10);
+        const int moved = timeline->getClipByPosition(v1, 16);
+        REQUIRE(moved > -1);
+        CHECK(timeline->getClipPosition(moved) == 16);
+        CHECK(timeline->getClipPlaytime(moved) == 10);
+        CHECK(timeline->getTrackClipsCount(v1) == 3);
+        CHECK(undoStack->index() == steps + 1);
+        undoStack->undo();
+        CHECK(timeline->getTrackClipsCount(v1) == 1);
+        CHECK(timeline->getClipPlaytime(a) == 20);
+
+        // remplacer_clip : le bleu prend la place et la durée du rouge, depuis l'image 5 du bleu. Une étape.
+        steps = undoStack->index();
+        r = call(timeline, QStringLiteral("remplacer_clip"), {{QStringLiteral("clip_id"), a}, {QStringLiteral("media_id"), blue}, {QStringLiteral("entree"), 5}});
+        INFO(QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString());
+        REQUIRE(r.value(QStringLiteral("ok")).toBool());
+        const int c = r.value(QStringLiteral("clip_id")).toInt();
+        CHECK_FALSE(timeline->isClip(a));
+        CHECK(timeline->getClipPosition(c) == 0);
+        CHECK(timeline->getClipPlaytime(c) == 20);
+        CHECK(timeline->getClipIn(c) == 5);
+        CHECK(timeline->getClipTrackId(c) == v1);
+        CHECK(timeline->getClipBinId(c) == blue);
+        CHECK(r.value(QStringLiteral("remplaces")).toArray() == QJsonArray{a});
+        CHECK(undoStack->index() == steps + 1);
+        // Trop court depuis l'image 15 (il en reste 15, il en faut 20) : refusé, l'entrée maximale est dite, rien ne change.
+        r = call(timeline, QStringLiteral("remplacer_clip"), {{QStringLiteral("clip_id"), c}, {QStringLiteral("media_id"), blue}, {QStringLiteral("entree"), 15}});
+        CHECK(errorCode(r) == QStringLiteral("media_trop_court"));
+        CHECK(r.value(QStringLiteral("erreur")).toObject().value(QStringLiteral("conseil")).toString().contains(QStringLiteral("10")));
+        CHECK(r.value(QStringLiteral("duree_media")).toObject().value(QStringLiteral("i")).toInt() == 30);
+        CHECK(timeline->isClip(c));
+        CHECK(undoStack->index() == steps + 1);
+        undoStack->undo();
+        CHECK(timeline->isClip(a));
+        CHECK(timeline->getClipPlaytime(a) == 20);
+        CHECK(timeline->getClipBinId(a) == red);
+    }
+
     SECTION("Lot 3 : fondus")
     {
         const int c = call(timeline, QStringLiteral("ajouter_clip"),

@@ -795,6 +795,120 @@ QJsonObject reglerPiste(const Timeline &timeline, const Args &args)
                        {QStringLiteral("masquee"), trackMasked(timeline, tid)}};
 }
 
+// ---------------------------------------------------------------------------------------------
+// Écraser, insérer, remplacer (29 octobre 2026). Le besoin : après le tournage, poser le rush à la place
+// d'une composition Motion de pré-visualisation (un espace réservé), même piste, même place, même durée,
+// en une étape d'annulation. Les gestes sont ceux de Kdenlive (TimelineFunctions::insertZone, liftZone).
+
+KoraCutMotionMirror *g_motionMirror = nullptr;
+
+// Les pistes que prend un média posé sur @p tid, comme requestClipInsertion : la piste, et pour une image
+// avec son la piste audio associée (plus celles du dessous quand le média a plusieurs flux audio).
+QList<int> tracksTaken(const Timeline &timeline, int tid, const QString &mediaId, const QString &part)
+{
+    QList<int> tracks{tid};
+    const std::shared_ptr<ProjectClip> media = pCore->projectItemModel()->getClipByBinID(mediaId);
+    if (!media || part == QLatin1String("video")) {
+        return tracks;
+    }
+    const int extra = std::max(0, int(media->activeStreams().count()) - 1);
+    if (timeline->isAudioTrack(tid)) {
+        tracks << timeline->getLowerTracksId(tid, TrackType::AudioTrack).mid(0, extra);
+    } else if (media->hasAudioAndVideo()) {
+        const int mirror = timeline->getMirrorTrackId(tid);
+        if (mirror > -1) {
+            tracks << mirror << timeline->getLowerTracksId(mirror, TrackType::AudioTrack).mid(0, extra);
+        }
+    }
+    return tracks;
+}
+
+// Les clips Motion de la zone [start, end) sur ces pistes : @p covered reçoit ceux qu'elle couvre en entier.
+// @return le premier qu'elle ne couvre qu'en partie (il serait coupé, et le miroir ne suit pas un élément en
+// deux morceaux), -1 sinon.
+int motionClipsIn(const Timeline &timeline, const QList<int> &tracks, int start, int end, QList<int> &covered)
+{
+    if (!g_motionMirror) {
+        return -1;
+    }
+    for (int t : tracks) {
+        for (int item : timeline->getItemsInRange(t, start, end, false)) {
+            if (!timeline->isClip(item) || !g_motionMirror->isMotionClip(item)) {
+                continue;
+            }
+            const int pos = timeline->getClipPosition(item);
+            if (pos < start || pos + timeline->getClipPlaytime(item) > end) {
+                return item;
+            }
+            covered << item;
+        }
+    }
+    return -1;
+}
+
+QJsonObject motionCutRefusal(const Timeline &timeline, int cid, const QString &what)
+{
+    const int pos = timeline->getClipPosition(cid);
+    const int len = timeline->getClipPlaytime(cid);
+    QJsonObject e = error(QStringLiteral("clip_motion"),
+                          QStringLiteral("%1 couperait le clip %2 (composition Motion « %3 », de %4 à %5) : un plan Motion ne se coupe pas en deux.")
+                              .arg(what)
+                              .arg(cid)
+                              .arg(g_motionMirror->clipInfo(cid).project, KoraCutAgentTools::timecode(pos, projectFps()), KoraCutAgentTools::timecode(pos + len, projectFps())),
+                          QStringLiteral("Pour le remplacer en entier : remplacer_clip avec clip_id %1. Sinon, couvre-le en entier ou rogne-le d'abord (rogner_clip).").arg(cid));
+    e.insert(QStringLiteral("clip_id"), cid);
+    return e;
+}
+
+// Dit au miroir que ces clips Motion quittent la timeline exprès (retireForReplacement) : à chaîner avant leur
+// retrait. Vide si tout va bien, l'erreur prête à rendre sinon. @p names reçoit les compositions concernées.
+QJsonObject retireMotionClips(const QList<int> &clips, Fun &undo, Fun &redo, QStringList &names)
+{
+    if (!g_motionMirror) {
+        return {};
+    }
+    for (int cid : clips) {
+        QString why;
+        const QString project = g_motionMirror->clipInfo(cid).project;
+        if (!g_motionMirror->retireForReplacement(cid, undo, redo, &why)) {
+            undo();
+            return error(QStringLiteral("motion_occupe"), why, QStringLiteral("Rappelle l'outil dans un instant."));
+        }
+        if (!project.isEmpty() && !names.contains(project)) {
+            names << project;
+        }
+    }
+    return {};
+}
+
+// Vide la zone [start, end) de ces pistes comme l'écrasement de Kdenlive (insertZone avec overwrite) : les
+// groupes qui débordent sur d'autres pistes sont défaits, les clips qui dépassent la zone sont coupés à son
+// bord, ceux du dedans retirés.
+bool liftTracks(const Timeline &timeline, const QList<int> &tracks, int start, int end, Fun &undo, Fun &redo)
+{
+    const QVector<int> list(tracks.cbegin(), tracks.cend());
+    bool ok = TimelineFunctions::breakAffectedGroups(timeline, list, QPoint(start, end), undo, redo);
+    for (int t : tracks) {
+        ok = ok && TimelineFunctions::liftZone(timeline, t, QPoint(start, end), undo, redo);
+    }
+    return ok;
+}
+
+// Insérer (insertZone sans overwrite) : sur ces pistes, un clip à cheval sur la position est coupé, puis tout
+// ce qui suit recule de @p length images.
+bool openSpace(const Timeline &timeline, const QList<int> &tracks, int position, int length, Fun &undo, Fun &redo)
+{
+    const QVector<int> list(tracks.cbegin(), tracks.cend());
+    bool ok = TimelineFunctions::breakAffectedGroups(timeline, list, QPoint(position, position + length), undo, redo);
+    for (int t : tracks) {
+        const int c = timeline->getClipByPosition(t, position);
+        if (ok && c > -1 && timeline->getClipPosition(c) < position) {
+            ok = TimelineFunctions::requestClipCut(timeline, c, position, undo, redo);
+        }
+    }
+    return ok && TimelineFunctions::requestInsertSpace(timeline, QPoint(position, position + length), undo, redo, list);
+}
+
 QJsonObject ajouterClip(const Timeline &timeline, const Args &args)
 {
     const QString mediaId = args.value(QStringLiteral("media_id")).toString();
@@ -813,13 +927,12 @@ QJsonObject ajouterClip(const Timeline &timeline, const Args &args)
     }
     const QString mode = args.value(QStringLiteral("mode")).toString(QStringLiteral("libre"));
     const bool freeTrack = mode == QLatin1String("piste_libre");
-    if (mode != QLatin1String("libre") && !freeTrack && mode != QLatin1String("ecraser") && mode != QLatin1String("inserer")) {
+    // ecraser et inserer (29 octobre 2026) : les gestes de Kdenlive, en une étape d'annulation.
+    const bool overwrite = mode == QLatin1String("ecraser");
+    const bool insert = mode == QLatin1String("inserer");
+    if (mode != QLatin1String("libre") && !freeTrack && !overwrite && !insert) {
         return error(QStringLiteral("entree_invalide"), QStringLiteral("mode « %1 » inconnu.").arg(mode),
-                     QStringLiteral("mode vaut « libre » ou « piste_libre » (« ecraser » et « inserer » ne sont pas encore écrits)."));
-    }
-    if (mode != QLatin1String("libre") && !freeTrack) {
-        return error(QStringLiteral("non_disponible"), QStringLiteral("Les modes « ecraser » et « inserer » ne sont pas encore écrits."),
-                     QStringLiteral("Pose le clip en mode libre à une place vide, ou en mode piste_libre pour une seule partie."));
+                     QStringLiteral("mode vaut « libre », « ecraser », « inserer » ou « piste_libre »."));
     }
     const QString part = args.value(QStringLiteral("partie")).toString(QStringLiteral("video_et_audio"));
     QString binId = mediaId;
@@ -829,6 +942,11 @@ QJsonObject ajouterClip(const Timeline &timeline, const Args &args)
         binId.prepend(QLatin1Char('V'));
     } else if (part != QLatin1String("video_et_audio")) {
         return error(QStringLiteral("entree_invalide"), QStringLiteral("partie vaut « video_et_audio », « video » ou « audio »."));
+    }
+    // La durée du clip posé : sortie - entree, ou le média entier (sa durée par défaut pour une image).
+    int clipLength = -1;
+    if (const std::shared_ptr<ProjectClip> media = pCore->projectItemModel()->getClipByBinID(mediaId)) {
+        clipLength = media->getFramePlaytime();
     }
     if (args.contains(QStringLiteral("entree")) || args.contains(QStringLiteral("sortie"))) {
         // Une image, un titre ou une couleur n'ont pas de fin.
@@ -861,6 +979,7 @@ QJsonObject ajouterClip(const Timeline &timeline, const Args &args)
         }
         // Kdenlive : « id/entrée/sortie », sortie incluse.
         binId += QStringLiteral("/%1/%2").arg(in).arg(out - 1);
+        clipLength = out - in;
     }
     const bool audioTrack = timeline->isAudioTrack(tid);
     if ((part == QLatin1String("audio") && !audioTrack) || (part == QLatin1String("video") && audioTrack)) {
@@ -868,7 +987,78 @@ QJsonObject ajouterClip(const Timeline &timeline, const Args &args)
     }
     int newId = -1;
     bool trackCreated = false;
-    if (freeTrack) {
+    QJsonArray removedClips;
+    QJsonArray shortenedClips;
+    QStringList retiredMotion;
+    if (overwrite || insert) {
+        if (clipLength <= 0) {
+            return error(QStringLiteral("entree_invalide"), QStringLiteral("La durée du média %1 n'est pas connue : il est peut-être encore en chargement.").arg(mediaId),
+                         QStringLiteral("Rappelle l'outil dans un instant, ou donne entree et sortie."));
+        }
+        const int end = position + clipLength;
+        QList<int> tracks;
+        if (overwrite) {
+            // Écraser : seules les pistes que prend le clip (son image, et son son sur la piste associée).
+            tracks = tracksTaken(timeline, tid, mediaId, part);
+            for (int t : std::as_const(tracks)) {
+                if (QJsonObject e = trackIdCheck(timeline, t); !e.isEmpty()) {
+                    return e;
+                }
+            }
+        } else {
+            // Insérer : toutes les pistes non verrouillées reculent ensemble, sinon l'image et le son se décalent.
+            for (bool audio : {false, true}) {
+                for (int t : timeline->getTracksIds(audio)) {
+                    if (!timeline->trackIsLocked(t)) {
+                        tracks << t;
+                    }
+                }
+            }
+        }
+        QList<int> covered;
+        if (overwrite) {
+            if (const int cut = motionClipsIn(timeline, tracks, position, end, covered); cut >= 0) {
+                return motionCutRefusal(timeline, cut, QStringLiteral("Écraser cette zone"));
+            }
+        } else if (g_motionMirror) {
+            // Insérer : seul un clip Motion à cheval sur la position serait coupé ; les autres ne font que reculer.
+            for (int t : std::as_const(tracks)) {
+                const int c = timeline->getClipByPosition(t, position);
+                if (c > -1 && timeline->getClipPosition(c) < position && g_motionMirror->isMotionClip(c)) {
+                    return motionCutRefusal(timeline, c, QStringLiteral("Insérer à cette position"));
+                }
+            }
+        }
+        // Ce que la zone touche, pour le dire : retiré en entier, ou raccourci au bord.
+        if (overwrite) {
+            for (int t : std::as_const(tracks)) {
+                for (int item : timeline->getItemsInRange(t, position, end, false)) {
+                    if (!timeline->isClip(item)) {
+                        continue;
+                    }
+                    const int pos = timeline->getClipPosition(item);
+                    if (pos >= position && pos + timeline->getClipPlaytime(item) <= end) {
+                        removedClips.append(item);
+                    } else {
+                        shortenedClips.append(item);
+                    }
+                }
+            }
+        }
+        Fun undo = []() { return true; };
+        Fun redo = []() { return true; };
+        if (QJsonObject e = retireMotionClips(covered, undo, redo, retiredMotion); !e.isEmpty()) {
+            return e;
+        }
+        const bool cleared = overwrite ? liftTracks(timeline, tracks, position, end, undo, redo) : openSpace(timeline, tracks, position, clipLength, undo, redo);
+        if (!cleared || !timeline->requestClipInsertion(binId, tid, position, newId, true, true, false, undo, redo) || newId == -1) {
+            undo();
+            return error(QStringLiteral("place_occupee"),
+                         QStringLiteral("%1 sur la piste %2 à %3 n'a pas abouti : rien n'a changé.").arg(overwrite ? QStringLiteral("L'écrasement") : QStringLiteral("L'insertion"), trackLabel(timeline, tid)).arg(position),
+                         QStringLiteral("Relis etat_timeline : un groupe ou un fondu croisé peut bloquer. Essaie partie « video », ou une autre place."));
+        }
+        pCore->pushUndo(undo, redo, overwrite ? i18n("Overwrite zone") : i18n("Insert zone"));
+    } else if (freeTrack) {
         // piste_libre (12 octobre 2026) : deux effets sonores qui se chevauchent ne se posent pas sur la même piste.
         // On essaie piste_id, puis les autres pistes du même type dans l'ordre de l'écran, puis on en crée une.
         // Une seule partie : avec image et son, il faudrait deux pistes libres à la fois.
@@ -927,7 +1117,143 @@ QJsonObject ajouterClip(const Timeline &timeline, const Args &args)
     if (freeTrack) {
         placed.insert(QStringLiteral("piste_creee"), trackCreated);
     }
+    if (overwrite) {
+        placed.insert(QStringLiteral("clips_retires"), removedClips);
+        placed.insert(QStringLiteral("clips_raccourcis"), shortenedClips);
+    }
+    if (!retiredMotion.isEmpty()) {
+        placed.insert(QStringLiteral("motion_retirees"), QJsonArray::fromStringList(retiredMotion));
+    }
     return placed;
+}
+
+// remplacer_clip (29 octobre 2026) : un média du chutier prend la place exacte d'un clip (piste, position,
+// durée), comme « Remplacer le clip » de Kdenlive (TimelineController::replaceClip), sans fenêtre et en une
+// étape. L'image et le son d'un même plan sont remplacés ensemble ; une partie que le média n'a pas reste.
+QJsonObject remplacerClip(const Timeline &timeline, const Args &args)
+{
+    const int cid = args.value(QStringLiteral("clip_id")).toInt(-1);
+    if (QJsonObject e = clipIdCheck(timeline, cid); !e.isEmpty()) {
+        return e;
+    }
+    const QString mediaId = args.value(QStringLiteral("media_id")).toString();
+    const std::shared_ptr<ProjectClip> media = mediaId.isEmpty() ? nullptr : pCore->projectItemModel()->getClipByBinID(mediaId);
+    if (!media) {
+        return error(QStringLiteral("id_inconnu"), QStringLiteral("Aucun média n'a l'identifiant « %1 » dans le chutier.").arg(mediaId),
+                     QStringLiteral("Relis lister_medias (champ id)."));
+    }
+    const int position = timeline->getClipPosition(cid);
+    const int length = timeline->getClipPlaytime(cid);
+    int in = 0;
+    if (args.contains(QStringLiteral("entree"))) {
+        in = KoraCutAgentTools::parseTime(args.value(QStringLiteral("entree")), projectFps());
+        if (in < 0) {
+            return error(QStringLiteral("entree_invalide"), QStringLiteral("entree se donne en images (entier) ou en timecode « HH:MM:SS:II »."));
+        }
+    }
+    // Le média doit couvrir toute la durée du clip remplacé : un clip plus court laisserait un trou.
+    const int mediaLength = int(media->frameDuration());
+    if (media->hasLimitedDuration() && mediaLength > 0 && in + length > mediaLength) {
+        const int maxIn = mediaLength - length;
+        QJsonObject e = error(QStringLiteral("media_trop_court"),
+                              QStringLiteral("Le média %1 dure %2 images (%3) : depuis entree = %4, il en reste %5, et le clip %6 en dure %7.")
+                                  .arg(mediaId)
+                                  .arg(mediaLength)
+                                  .arg(KoraCutAgentTools::timecode(mediaLength, projectFps()))
+                                  .arg(in)
+                                  .arg(std::max(0, mediaLength - in))
+                                  .arg(cid)
+                                  .arg(length),
+                              maxIn >= 0 ? QStringLiteral("Donne une entree de %1 au plus.").arg(maxIn)
+                                         : QStringLiteral("Le média est plus court que le clip : raccourcis d'abord le clip à %1 images au plus (rogner_clip), puis remplace-le.").arg(mediaLength));
+        e.insert(QStringLiteral("duree_media"), time(mediaLength));
+        e.insert(QStringLiteral("duree_clip"), time(length));
+        return e;
+    }
+    // Les parties à remplacer : le clip, et son partenaire de groupe s'il est l'autre moitié du même plan
+    // (même place, même durée, l'autre sorte de piste). Une partie que le média n'a pas n'est pas touchée.
+    const bool targetAudio = timeline->isAudioTrack(timeline->getClipTrackId(cid));
+    if ((targetAudio && !media->hasAudio()) || (!targetAudio && !media->hasVideo())) {
+        return error(QStringLiteral("mauvais_type_de_piste"),
+                     QStringLiteral("Le clip %1 est sur une piste %2, et le média %3 n'a pas %4.").arg(cid).arg(targetAudio ? QStringLiteral("audio") : QStringLiteral("vidéo"), mediaId, targetAudio ? QStringLiteral("de son") : QStringLiteral("d'image")),
+                     QStringLiteral("Choisis un clip de la même sorte que le média."));
+    }
+    QList<int> targets{cid};
+    if (timeline->isInGroup(cid)) {
+        for (int partner : timeline->getGroupElements(cid)) {
+            if (partner == cid || !timeline->isClip(partner) || timeline->getClipPosition(partner) != position || timeline->getClipPlaytime(partner) != length) {
+                continue;
+            }
+            const int partnerTrack = timeline->getClipTrackId(partner);
+            const bool partnerAudio = timeline->isAudioTrack(partnerTrack);
+            if (partnerAudio == targetAudio || timeline->trackIsLocked(partnerTrack) || (partnerAudio ? !media->hasAudio() : !media->hasVideo())) {
+                continue;
+            }
+            targets << partner;
+        }
+    }
+    QList<std::pair<int, QString>> placements; // piste, id du chutier avec entrée et sortie
+    const bool both = media->hasAudio() && media->hasVideo();
+    for (int t : std::as_const(targets)) {
+        const int track = timeline->getClipTrackId(t);
+        const bool audio = timeline->isAudioTrack(track);
+        const QString prefix = both ? (audio ? QStringLiteral("A") : QStringLiteral("V")) : QString();
+        placements << std::make_pair(track, QStringLiteral("%1%2/%3/%4").arg(prefix, mediaId).arg(in).arg(in + length - 1));
+    }
+    Fun undo = []() { return true; };
+    Fun redo = []() { return true; };
+    QStringList retiredMotion;
+    if (QJsonObject e = retireMotionClips(targets, undo, redo, retiredMotion); !e.isEmpty()) {
+        return e;
+    }
+    bool ok = true;
+    for (int t : std::as_const(targets)) {
+        if (ok && timeline->isInGroup(t)) {
+            ok = timeline->requestClipUngroup(t, undo, redo);
+        }
+        ok = ok && timeline->requestItemDeletion(t, undo, redo);
+    }
+    std::unordered_set<int> created;
+    int videoId = -1;
+    int audioId = -1;
+    for (const auto &[track, binId] : std::as_const(placements)) {
+        int newId = -1;
+        ok = ok && timeline->requestClipInsertion(binId, track, position, newId, true, true, false, undo, redo) && newId != -1;
+        if (ok) {
+            created.insert(newId);
+            (timeline->isAudioTrack(track) ? audioId : videoId) = newId;
+        }
+    }
+    if (ok && created.size() > 1) {
+        ok = timeline->requestClipsGroup(created, undo, redo, GroupType::AVSplit) > -1;
+    }
+    if (!ok) {
+        undo();
+        return error(QStringLiteral("place_occupee"), QStringLiteral("Le clip %1 n'a pas pu être remplacé : rien n'a changé.").arg(cid),
+                     QStringLiteral("Relis etat_timeline : un fondu croisé ou un groupe peut bloquer."));
+    }
+    pCore->pushUndo(undo, redo, i18n("Replace Clip"));
+    const int mainId = targetAudio ? audioId : videoId;
+    QJsonArray replaced;
+    for (int t : std::as_const(targets)) {
+        replaced.append(t);
+    }
+    QJsonObject result{{QStringLiteral("ok"), true},
+                       {QStringLiteral("clip_id"), mainId},
+                       {QStringLiteral("clip_audio_id"), (!targetAudio && audioId >= 0) ? QJsonValue(audioId) : QJsonValue(QJsonValue::Null)},
+                       {QStringLiteral("remplaces"), replaced},
+                       {QStringLiteral("piste_id"), timeline->getClipTrackId(mainId)},
+                       {QStringLiteral("position"), time(timeline->getClipPosition(mainId))},
+                       {QStringLiteral("duree"), time(timeline->getClipPlaytime(mainId))},
+                       {QStringLiteral("entree"), time(timeline->getClipIn(mainId))}};
+    if (!retiredMotion.isEmpty()) {
+        result.insert(QStringLiteral("motion_retirees"), QJsonArray::fromStringList(retiredMotion));
+    }
+    if (!targetAudio && audioId < 0 && media->hasAudio()) {
+        result.insert(QStringLiteral("remarque"),
+                      QStringLiteral("Le clip remplacé n'avait pas de son : seule l'image du média est posée. Pour son son, ajouter_clip avec partie « audio »."));
+    }
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1162,7 +1488,7 @@ QJsonObject ajouterFondu(const Timeline &timeline, const Args &args)
 // projet, lues et écrites par le miroir (document 19). Les temps de ces outils sont ceux du HTML : des
 // secondes ; seule motion_poser prend une position de timeline (images ou timecode).
 
-KoraCutMotionMirror *g_motionMirror = nullptr;
+// g_motionMirror est défini plus haut (avec ajouter_clip, qui en a besoin pour écraser).
 
 // Le miroir et le projet Motion visé, ou une erreur prête à rendre.
 KoraCutMotionMirror *motionOrFail(const Args &args, QString &project, QJsonObject &failure, bool needProject = true)
@@ -1302,7 +1628,11 @@ QJsonObject projectJson(const Timeline &, KoraCutMotionMirror *mirror, const QSt
     if (!timeline) {
         o.insert(QStringLiteral("sequence_ouverte"), false);
     }
-    // Une composition d'un seul élément (lot 5) : sa sorte, son nom lisible, la coupe qu'elle suit, son retrait.
+    // Retirée : élément seul dont le clip a été supprimé, ou composition remplacée par un rush (remplacer_clip).
+    if (state.retired) {
+        o.insert(QStringLiteral("retiree"), true);
+    }
+    // Une composition d'un seul élément (lot 5) : sa sorte, son nom lisible, la coupe qu'elle suit.
     if (!state.element.isEmpty()) {
         o.insert(QStringLiteral("element_seul"), state.element);
         o.insert(QStringLiteral("affichage"), state.display);
@@ -1311,9 +1641,6 @@ QJsonObject projectJson(const Timeline &, KoraCutMotionMirror *mirror, const QSt
         }
         if (state.cut >= 0) {
             o.insert(QStringLiteral("coupe"), time(int(std::lround(state.cut * projectFps()))));
-        }
-        if (state.retired) {
-            o.insert(QStringLiteral("retiree"), true);
         }
         // Posé sous une transition : il la suit quand la coupe bouge.
         if (const QString followed = mirror->followedTransition(name); !followed.isEmpty()) {
@@ -2127,7 +2454,7 @@ QMap<QString, Tool> buildTools()
         {QStringLiteral("couper_toutes_pistes"), couperToutesPistes}, {QStringLiteral("deplacer_clip"), deplacerClip},
         {QStringLiteral("supprimer_clip"), supprimerClip}, {QStringLiteral("rogner_clip"), rognerClip},
         {QStringLiteral("ajouter_piste"), ajouterPiste}, {QStringLiteral("regler_piste"), reglerPiste}, {QStringLiteral("supprimer_piste"), supprimerPiste},
-        {QStringLiteral("ajouter_clip"), ajouterClip}, {QStringLiteral("lister_medias"), listerMedias},
+        {QStringLiteral("ajouter_clip"), ajouterClip}, {QStringLiteral("remplacer_clip"), remplacerClip}, {QStringLiteral("lister_medias"), listerMedias},
         {QStringLiteral("supprimer_espace"), supprimerEspace}, {QStringLiteral("changer_vitesse_clip"), changerVitesseClip},
         {QStringLiteral("ajouter_fondu"), ajouterFondu},
         {QStringLiteral("motion_lister"), motionLister}, {QStringLiteral("motion_creer"), motionCreer},

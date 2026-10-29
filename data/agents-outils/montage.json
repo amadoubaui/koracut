@@ -1,7 +1,7 @@
 [
   {
     "name": "ajouter_clip",
-    "description": "Pose un média du chutier sur une piste de la timeline. À utiliser pour construire ou compléter un montage. Sans entree ni sortie, le média entier est posé ; avec entree et sortie, seule cette portion de la source est posée (entree et sortie se comptent dans le média source, pas dans la timeline). sortie seule part du début du média, entree seule va jusqu'à sa fin. Une sortie au-delà de la fin du média répond hors_media, avec duree_media (une image, un titre ou une couleur n'ont pas de fin). Mode \"libre\" (défaut) : échoue si la place est déjà occupée. Mode \"ecraser\" : remplace ce qui se trouve à cet endroit sur la piste. Mode \"inserer\" : pousse vers la droite tout ce qui suit, sur toutes les pistes non verrouillées. Mode \"piste_libre\" : prend une autre piste du même type quand la place est occupée, pour une seule partie. Un média vidéo avec son pose aussi sa partie audio sur la piste audio associée, et les deux clips sont groupés. Ne pas utiliser pour un titre (ajouter_titre) ni pour bouger un clip déjà posé (deplacer_clip). Renvoie { ok, clip_id, clip_audio_id (ou null), piste_id, position {i, tc}, duree {i, tc} }.",
+    "description": "Pose un média du chutier sur une piste de la timeline. À utiliser pour construire ou compléter un montage. Sans entree ni sortie, le média entier est posé ; avec entree et sortie, seule cette portion de la source est posée (entree et sortie se comptent dans le média source, pas dans la timeline). sortie seule part du début du média, entree seule va jusqu'à sa fin. Une sortie au-delà de la fin du média répond hors_media, avec duree_media (une image, un titre ou une couleur n'ont pas de fin). Mode \"libre\" (défaut) : échoue si la place est déjà occupée. Mode \"ecraser\" : le clip prend la zone, sur sa piste et sur la piste audio associée s'il pose aussi son son ; ce qui l'occupait est retiré, ou coupé au bord de la zone (comme l'écrasement à la souris), et un plan Motion couvert en entier ne revient pas par-dessus ; demande l'accord de la personne, sauf dans un plan accepté. Mode \"inserer\" : coupe ce qui est à cheval sur la position puis pousse vers la droite tout ce qui suit, sur toutes les pistes non verrouillées (marqueurs et sous-titres ne bougent pas). Un plan Motion qui serait coupé est refusé (clip_motion) : pour poser un rush à la place exacte d'un plan, remplacer_clip. Mode \"piste_libre\" : prend une autre piste du même type quand la place est occupée, pour une seule partie. Un média vidéo avec son pose aussi sa partie audio sur la piste audio associée, et les deux clips sont groupés. Ne pas utiliser pour un titre (ajouter_titre) ni pour bouger un clip déjà posé (deplacer_clip). Renvoie { ok, clip_id, clip_audio_id (ou null), piste_id, position {i, tc}, duree {i, tc} }, plus en mode ecraser clips_retires et clips_raccourcis (identifiants d'avant), et motion_retirees quand des compositions Motion ont quitté la timeline.",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -71,7 +71,7 @@
             "inserer",
             "piste_libre"
           ],
-          "description": "Comportement si la place est occupée. Défaut : libre. piste_libre : si la place est prise sur piste_id, le clip va sur la première autre piste du même type où elle est libre, et une piste est créée s'il n'y en a aucune ; pour une seule partie (partie \"audio\" ou \"video\"), typiquement deux effets sonores qui se chevauchent. La réponse dit la piste réellement prise (piste_id) et si elle vient d'être créée (piste_creee)."
+          "description": "Comportement si la place est occupée. Défaut : libre. ecraser : le clip remplace ce qui occupe la zone (une étape d'annulation). inserer : ce qui suit recule de la durée du clip, sur toutes les pistes non verrouillées. piste_libre : si la place est prise sur piste_id, le clip va sur la première autre piste du même type où elle est libre, et une piste est créée s'il n'y en a aucune ; pour une seule partie (partie \"audio\" ou \"video\"), typiquement deux effets sonores qui se chevauchent. La réponse dit la piste réellement prise (piste_id) et si elle vient d'être créée (piste_creee)."
         }
       },
       "required": [
@@ -81,8 +81,47 @@
       ],
       "additionalProperties": false
     },
-    "x_kdenlive": "src/timeline2/model/timelinemodel.hpp:TimelineModel::requestClipInsertion (mode libre ; le préfixe A ou V devant l'id du chutier donne audio seul ou vidéo seule) ; src/timeline2/model/timelinefunctions.hpp:TimelineFunctions::insertZone (entree/sortie, modes ecraser et inserer via le booléen overwrite). Déjà exposé en D-Bus sous une forme pauvre : MainWindow::addTimelineClip(url).",
+    "x_kdenlive": "src/timeline2/model/timelinemodel.hpp:TimelineModel::requestClipInsertion (mode libre ; le préfixe A ou V devant l'id du chutier donne audio seul ou vidéo seule) ; src/timeline2/model/timelinefunctions.hpp:TimelineFunctions::liftZone et breakAffectedGroups (mode ecraser), requestClipCut et requestInsertSpace (mode inserer), les gestes de TimelineFunctions::insertZone. Déjà exposé en D-Bus sous une forme pauvre : MainWindow::addTimelineClip(url).",
     "x_confirmation": false
+  },
+  {
+    "name": "remplacer_clip",
+    "description": "Remplace un clip de la timeline par un média du chutier : le nouveau clip prend exactement la piste, la position et la durée du clip visé, et le média est coupé à cette durée à partir de entree. À utiliser pour poser le rush tourné à la place d'un plan de pré-visualisation (une composition Motion d'espace réservé, qui ne revient pas ensuite par-dessus, même à la réouverture du projet), ou pour échanger une prise contre une autre sans toucher au reste. L'image et le son d'un même plan (groupés, même place, même durée) sont remplacés ensemble ; si le clip visé n'a que l'image, seule l'image du média est posée (remarque dans la réponse). Les effets, fondus et la vitesse du clip remplacé ne sont pas repris. Si le média est trop court pour couvrir la durée depuis entree, rien ne change : erreur media_trop_court avec duree_media et duree_clip. Une seule étape d'annulation : Annuler remet le clip d'avant, plan Motion compris. Ne pas utiliser pour poser un média à une place vide (ajouter_clip). Demande une confirmation de la personne, sauf si le remplacement figurait dans un plan qu'elle a accepté pendant ce tour. Renvoie { ok, clip_id, clip_audio_id (ou null), remplaces: [clip_id], piste_id, position {i, tc}, duree {i, tc}, entree {i, tc}, motion_retirees (si une composition Motion a quitté la timeline), remarque (si besoin) }.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "clip_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Le clip à remplacer, lu dans etat_timeline (ou clip_id de motion_lister pour un plan Motion)."
+        },
+        "media_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identifiant du média dans le chutier, lu dans lister_medias (champ id)."
+        },
+        "entree": {
+          "description": "Où le média commence, dans la source. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet). Défaut : 0, le début du média.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "clip_id",
+        "media_id"
+      ],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "src/timeline2/view/timelinecontroller.cpp:TimelineController::replaceClip (le geste « Remplacer le clip », sans sa fenêtre) : requestClipUngroup, requestItemDeletion, requestClipInsertion, requestClipsGroup ; src/koracut/motion/koracutmotionmirror.h:KoraCutMotionMirror::retireForReplacement pour un plan Motion.",
+    "x_confirmation": true
   },
   {
     "name": "couper_clip",

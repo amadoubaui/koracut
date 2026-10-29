@@ -2611,7 +2611,9 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
                 done(Reply::fail(QStringLiteral("parametres_invalides"), invalid, QStringLiteral("timeline.outils donne le schéma de chaque outil.")));
                 return;
             }
-            if (confirmTools.contains(name) || args.value(QStringLiteral("ecraser")).toBool(false)) {
+            // ajouter_clip en mode ecraser retire des clips : accord, comme supprimer_clip (29 octobre 2026).
+            const bool overwritesClips = name == QLatin1String("ajouter_clip") && args.value(QStringLiteral("mode")).toString() == QLatin1String("ecraser");
+            if (confirmTools.contains(name) || args.value(QStringLiteral("ecraser")).toBool(false) || overwritesClips) {
                 Reply gate;
                 const bool always = name == QLatin1String("exporter") || name == QLatin1String("exporter_serie") || args.value(QStringLiteral("ecraser")).toBool(false);
                 if (porte->needsConfirmation(call, QStringLiteral("%1 %2").arg(name, QString::fromUtf8(QJsonDocument(args).toJson(QJsonDocument::Compact))), always, gate)) {
