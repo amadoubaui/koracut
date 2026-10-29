@@ -322,6 +322,28 @@ QString import(const QString &root, const QString &source, const QString &name, 
             }
         }
     }
+    // Les url() écrites dans le HTML lui-même (bloc <style>, attribut style="", masque CSS) : un
+    // fichier cité seulement là manquait au rendu. Même traitement, de la fin vers le début.
+    static const QRegularExpression inlineUrl(QStringLiteral("url\\(\\s*['\"]?([^'\")]+)['\"]?\\s*\\)"));
+    QList<QRegularExpressionMatch> urls;
+    for (auto it = inlineUrl.globalMatch(html); it.hasNext();) {
+        urls.append(it.next());
+    }
+    for (int i = urls.size() - 1; i >= 0; --i) {
+        const QString ref = urls.at(i).captured(1);
+        if (!isLocalPath(ref.trimmed())) {
+            continue;
+        }
+        const QString absolute = QFileInfo(sourceDir + QLatin1Char('/') + ref.trimmed()).absoluteFilePath();
+        if (!QFile::exists(absolute)) {
+            continue;
+        }
+        const QString destination = destinationFor(sourceDir, absolute);
+        copyReferenced(sourceDir, absolute, dir, done);
+        if (destination != ref) {
+            html.replace(urls.at(i).capturedStart(1), ref.size(), destination);
+        }
+    }
     QDir().mkpath(dir + QStringLiteral("/compositions"));
     QDir().mkpath(dir + QStringLiteral("/assets"));
     if (!writeText(index, html)) {

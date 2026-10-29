@@ -410,6 +410,9 @@ TEST_CASE("Motion : projets, gabarit et import", "[KoraCutMotion]")
         QString html = wholeHtml;
         html.replace(QStringLiteral("href=\"shared/stockfinity.css\""), QStringLiteral("href=\"../shared/style.css\""));
         html.replace(QStringLiteral("src=\"assets/gsap.min.js\""), QStringLiteral("src=\"../assets/gsap.min.js\""));
+        writeAll(src + QStringLiteral("/assets/logo.png"), QStringLiteral("png"));
+        writeAll(src + QStringLiteral("/assets/fond.png"), QStringLiteral("png"));
+        html.replace(QStringLiteral("</head>"), QStringLiteral("<style>.logo { mask: url(\"../assets/logo.png\"); }</style>\n<div style=\"background: url(../assets/fond.png)\"></div>\n</head>"));
         writeAll(src + QStringLiteral("/compositions/01-accroche.html"), html);
         QString error;
         const QString index = KoraCutMotionProject::import(root, src + QStringLiteral("/compositions/01-accroche.html"), QStringLiteral("01 accroche"), &error);
@@ -421,6 +424,11 @@ TEST_CASE("Motion : projets, gabarit et import", "[KoraCutMotion]")
         CHECK(QFile::exists(root + QStringLiteral("/01-accroche/shared/style.css")));
         CHECK(QFile::exists(root + QStringLiteral("/01-accroche/assets/gsap.min.js")));
         CHECK(QFile::exists(root + QStringLiteral("/01-accroche/assets/fonts/Inter.woff2")));
+        // Un fichier cité seulement par le CSS écrit dans le HTML (masque d'un logo) est copié aussi.
+        CHECK(imported.contains(QStringLiteral("mask: url(\"assets/logo.png\")")));
+        CHECK(imported.contains(QStringLiteral("style=\"background: url(assets/fond.png)\"")));
+        CHECK(QFile::exists(root + QStringLiteral("/01-accroche/assets/logo.png")));
+        CHECK(QFile::exists(root + QStringLiteral("/01-accroche/assets/fond.png")));
         REQUIRE(KoraCutMotionProject::list(root).size() == 1);
         CHECK(KoraCutMotionProject::list(root).first().name == QStringLiteral("01-accroche"));
         // Deux fois le même nom : refusé, expliqué.
