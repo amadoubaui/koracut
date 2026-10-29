@@ -447,7 +447,7 @@ TEST_CASE("Outils Motion : composition, éléments, rendu simulé, pose", "[Kora
             CHECK(binOf()->getProducerProperty(QStringLiteral("kdenlive:koracut_motion_nom_auto")) == QStringLiteral("Awa Ndiaye, directrice"));
         }
 
-        SECTION("Rogner par la gauche écrit data-koracut-in ; motion_poser déplace et marque une piste")
+        SECTION("Rogner par la gauche écrit data-koracut-in ; motion_poser déplace vers une piste ordinaire")
         {
             const int cid = mirror.clipFor(QStringLiteral("bandeau-essai"), QStringLiteral("titre-1"));
             REQUIRE(cid >= 0);
@@ -468,8 +468,9 @@ TEST_CASE("Outils Motion : composition, éléments, rendu simulé, pose", "[Kora
             CHECK(readAll(indexPath).contains(QLatin1String("data-start=\"2\"")));
             CHECK(undoStack->index() == undoIndex + 1);
 
-            // Une piste vidéo ordinaire devient la piste Motion de la composition.
-            const QString v1 = timeline->getTrackTagById(timeline->getTracksIds(false).first());
+            // Une piste vidéo ordinaire : le clip y va (29 octobre 2026 ; avant, la piste était seulement marquée et
+            // le clip restait sur « Motion · bandeau-essai », avec ok: true). La piste n'est pas marquée, et la piste
+            // Motion restée vide est retirée, dans la même étape.
             int ordinary = -1;
             for (int tid : timeline->getTracksIds(false)) {
                 if (timeline->getTrackProperty(tid, QStringLiteral("kdenlive:koracut_motion")).toString().isEmpty()) {
@@ -478,11 +479,34 @@ TEST_CASE("Outils Motion : composition, éléments, rendu simulé, pose", "[Kora
                 }
             }
             REQUIRE(ordinary >= 0);
-            Q_UNUSED(v1);
-            // Le clip est déjà posé sur sa piste Motion : la marque n'y change rien de plus, l'outil le dit.
+            const int motionTrack = timeline->getClipTrackId(cid);
+            const int tracks = timeline->getTracksCount();
+            const int undoMove = undoStack->index();
+            r = call(timeline, QStringLiteral("motion_poser"), {{QStringLiteral("nom"), QStringLiteral("bandeau-essai")}, {QStringLiteral("piste_id"), ordinary}});
+            INFO(QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString());
+            REQUIRE(r.value(QStringLiteral("ok")).toBool());
+            CHECK(r.value(QStringLiteral("change")).toBool());
+            CHECK(timeline->getClipTrackId(cid) == ordinary);
+            CHECK(timeline->getClipPosition(cid) == int(std::lround(2 * fps)));
+            CHECK(timeline->getTrackProperty(ordinary, QStringLiteral("kdenlive:koracut_motion")).toString().isEmpty());
+            CHECK(r.value(QStringLiteral("pistes_retirees")).toInt() == 1);
+            CHECK_FALSE(timeline->isTrack(motionTrack));
+            CHECK(timeline->getTracksCount() == tracks - 1);
+            CHECK(undoStack->index() == undoMove + 1);
+            // Rappeler la même chose : rien ne bouge, et c'est dit.
             r = call(timeline, QStringLiteral("motion_poser"), {{QStringLiteral("nom"), QStringLiteral("bandeau-essai")}, {QStringLiteral("piste_id"), ordinary}});
             REQUIRE(r.value(QStringLiteral("ok")).toBool());
-            CHECK(timeline->getTrackProperty(ordinary, QStringLiteral("kdenlive:koracut_motion")).toString() == QStringLiteral("bandeau-essai"));
+            CHECK_FALSE(r.value(QStringLiteral("change")).toBool(true));
+            CHECK(r.value(QStringLiteral("deja_pose")).toBool());
+            CHECK(undoStack->index() == undoMove + 1);
+            // Annuler : la piste Motion revient, marquée, avec le clip ; Rétablir refait le tout.
+            undoStack->undo();
+            REQUIRE(timeline->isTrack(motionTrack));
+            CHECK(timeline->getTrackProperty(motionTrack, QStringLiteral("kdenlive:koracut_motion")).toString() == QStringLiteral("bandeau-essai"));
+            CHECK(timeline->getClipTrackId(cid) == motionTrack);
+            undoStack->redo();
+            CHECK(timeline->getClipTrackId(cid) == ordinary);
+            CHECK_FALSE(timeline->isTrack(motionTrack));
             CHECK(errorCode(call(timeline, QStringLiteral("motion_poser"), {{QStringLiteral("nom"), QStringLiteral("bandeau-essai")}, {QStringLiteral("piste_id"), timeline->getTracksIds(true).first()}})) ==
                   QStringLiteral("mauvais_type_de_piste"));
         }
@@ -1244,5 +1268,288 @@ TEST_CASE("Motion : un rendu parti avec le cache se refait sans fenêtre", "[Kor
     KoraCutMotionRenderer::setSimulator({});
     mirror.reset();
     KoraCutAgentTools::setMotionMirror(nullptr);
+    pCore->projectManager()->closeCurrentDocument(false, false);
+}
+
+namespace {
+
+/** Une composition d'un seul tenant, opaque (un plan pas encore tourné), placée par data-koracut-start. */
+QString planHtml(const QString &name, double duration, double start)
+{
+    return QStringLiteral(R"(<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<style> body { margin: 0; background: #111; } .plan { width: 1920px; height: 1080px; background: #2C2C2C; } </style>
+</head>
+<body>
+<div id="root" data-composition-id="%1" data-start="0" data-duration="%2" data-fps="25" data-width="1920" data-height="1080" data-koracut-fond="opaque" data-koracut-start="%3"><div class="plan">%1</div></div>
+<script>
+  window.__timelines = window.__timelines || {};
+  window.__timelines["%1"] = { paused: true };
+</script>
+</body>
+</html>
+)")
+        .arg(name)
+        .arg(duration)
+        .arg(start);
+}
+
+/** Le rendu simulé d'un plan opaque : un MP4 (mpeg4) de la durée de la racine, lue dans index.html. */
+bool fakeOpaqueRender(const KoraCutMotionRenderRequest &request)
+{
+    const QString ffmpeg = ffmpegPath();
+    if (ffmpeg.isEmpty()) {
+        return false;
+    }
+    double seconds = 4.;
+    QFile index(request.projectDir + QStringLiteral("/index.html"));
+    if (index.open(QIODevice::ReadOnly)) {
+        const QRegularExpressionMatch m = QRegularExpression(QStringLiteral("data-duration=\"([0-9.]+)\"")).match(QString::fromUtf8(index.readAll()));
+        if (m.hasMatch()) {
+            seconds = m.captured(1).toDouble();
+        }
+    }
+    const bool mp4 = request.output.endsWith(QLatin1String(".mp4"));
+    QDir().mkpath(QFileInfo(request.output).absolutePath());
+    QProcess p;
+    QStringList args{QStringLiteral("-y"), QStringLiteral("-loglevel"), QStringLiteral("error"), QStringLiteral("-f"), QStringLiteral("lavfi"), QStringLiteral("-i"),
+                     QStringLiteral("color=c=blue:s=64x64:r=%1:d=%2").arg(request.fps).arg(seconds + 0.2)};
+    if (mp4) {
+        args << QStringLiteral("-c:v") << QStringLiteral("mpeg4") << QStringLiteral("-pix_fmt") << QStringLiteral("yuv420p");
+    } else {
+        args << QStringLiteral("-c:v") << QStringLiteral("prores_ks") << QStringLiteral("-profile:v") << QStringLiteral("4444") << QStringLiteral("-pix_fmt")
+             << QStringLiteral("yuva444p10le");
+    }
+    args << request.output;
+    p.start(ffmpeg, args);
+    return p.waitForFinished(30000) && p.exitCode() == 0;
+}
+
+} // namespace
+
+// 29 octobre 2026, campagne en cours (réglage koracut-uc5) : les plans pas encore tournés sont des compositions
+// opaques posées sur V1 « Plans montés », entre les rushs. motion_poser piste_id=V1 répondait ok sans rien
+// déplacer, puis place_occupee (« appartient déjà à une autre composition ») pour la deuxième : six pistes
+// Motion par séquence, au-dessus des plans. Une piste ordinaire porte maintenant plusieurs compositions qui
+// ne se chevauchent pas, et motion_poser, motion_rendre et motion_creer y posent ou y déplacent.
+TEST_CASE("Motion : plusieurs plans pleins cadres sur la piste des rushs", "[KoraCutMotionTools]")
+{
+    if (ffmpegPath().isEmpty()) {
+        WARN("ffmpeg absent : les plans Motion sur V1 ne sont pas essayés");
+        return;
+    }
+    auto binModel = pCore->projectItemModel();
+    std::shared_ptr<DocUndoStack> undoStack = std::make_shared<DocUndoStack>(nullptr);
+    auto document = std::make_unique<KdenliveDoc>(undoStack);
+    pCore->projectManager()->testSetDocument(document.get());
+    KdenliveTests::updateTimeline(false, QString(), QString(), QDateTime::currentDateTime(), 0);
+    auto timeline = document->getTimeline(document->uuid());
+    pCore->projectManager()->testSetActiveTimeline(timeline);
+    const double fps = pCore->getCurrentFps();
+    const auto at = [fps](double seconds) { return int(std::lround(seconds * fps)); };
+
+    QTemporaryDir tmp;
+    REQUIRE(tmp.isValid());
+    const QString saveFile = tmp.path() + QStringLiteral("/plans.koracut");
+    document->setUrl(QUrl::fromLocalFile(saveFile));
+    {
+        QFile marker(saveFile);
+        REQUIRE(marker.open(QIODevice::WriteOnly));
+    }
+    KoraCutMotionRenderer::setSimulator([](const KoraCutMotionRenderRequest &r) { return fakeOpaqueRender(r); });
+    auto mirror = std::make_unique<KoraCutMotionMirror>();
+    mirror->setDocument(document.get(), timeline);
+
+    // Une source par plan, comme la session de la campagne (motion_creer source=<dossier>).
+    const auto source = [&tmp](const QString &name, double duration, double start) -> QString {
+        const QString dir = tmp.path() + QStringLiteral("/sources/") + name;
+        QDir().mkpath(dir);
+        QFile f(dir + QStringLiteral("/index.html"));
+        REQUIRE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(planHtml(name, duration, start).toUtf8());
+        return dir;
+    };
+    const auto tracksOf = [&timeline](const QString &name) {
+        int n = 0;
+        for (int tid : timeline->getTracksIds(false)) {
+            if (timeline->getTrackProperty(tid, QStringLiteral("kdenlive:koracut_motion")).toString() == name) {
+                ++n;
+            }
+        }
+        return n;
+    };
+    const auto clipOf = [&mirror](const QString &name) { return mirror->clipFor(name, name); };
+    // V1 : la piste vidéo la plus basse, avec un rush de 2 s à 6 s.
+    int v1 = -1;
+    for (int tid : timeline->getTracksIds(false)) {
+        if (v1 < 0 || timeline->getTrackPosition(tid) < timeline->getTrackPosition(v1)) {
+            v1 = tid;
+        }
+    }
+    REQUIRE(v1 >= 0);
+    const QString rushBin = KdenliveTests::createProducer(pCore->getProjectProfile(), "red", binModel, at(2), true);
+    int rush = -1;
+    REQUIRE(timeline->requestClipInsertion(rushBin, v1, at(6), rush));
+    const int tracksStart = timeline->getTracksCount();
+
+    // 1. Le premier plan, rendu sans piste : il arrive sur « Motion · plan-1 » (comme avant). motion_poser
+    //    piste_id=V1 le DÉPLACE sur V1, retire la piste Motion vide, en une étape ; V1 n'est pas marquée.
+    QJsonObject r = call(timeline, QStringLiteral("motion_creer"), {{QStringLiteral("nom"), QStringLiteral("plan-1")}, {QStringLiteral("source"), source(QStringLiteral("plan-1"), 2, 0)}});
+    INFO(dumpJson(r));
+    REQUIRE(r.value(QStringLiteral("ok")).toBool());
+    r = call(timeline, QStringLiteral("motion_rendre"), {{QStringLiteral("nom"), QStringLiteral("plan-1")}});
+    INFO(dumpJson(r));
+    REQUIRE(r.value(QStringLiteral("ok")).toBool());
+    REQUIRE(waitFor([&]() { return clipOf(QStringLiteral("plan-1")) >= 0; }, 20000));
+    const int c1 = clipOf(QStringLiteral("plan-1"));
+    CHECK(timeline->getClipTrackId(c1) != v1);
+    CHECK(tracksOf(QStringLiteral("plan-1")) == 1);
+    int undoIndex = undoStack->index();
+    r = call(timeline, QStringLiteral("motion_poser"), {{QStringLiteral("nom"), QStringLiteral("plan-1")}, {QStringLiteral("piste_id"), v1}, {QStringLiteral("position"), 0}});
+    INFO(dumpJson(r));
+    REQUIRE(r.value(QStringLiteral("ok")).toBool());
+    CHECK(r.value(QStringLiteral("change")).toBool());
+    CHECK_FALSE(r.contains(QStringLiteral("deja_pose")));
+    CHECK(timeline->getClipTrackId(c1) == v1);
+    CHECK(timeline->getClipPosition(c1) == 0);
+    CHECK(tracksOf(QStringLiteral("plan-1")) == 0);
+    CHECK(timeline->getTracksCount() == tracksStart);
+    CHECK(r.value(QStringLiteral("pistes_retirees")).toInt() == 1);
+    CHECK(timeline->getTrackProperty(v1, QStringLiteral("kdenlive:koracut_motion")).toString().isEmpty());
+    CHECK(undoStack->index() == undoIndex + 1);
+    // La même demande encore : rien à faire, et c'est dit (plus de ok muet).
+    r = call(timeline, QStringLiteral("motion_poser"), {{QStringLiteral("nom"), QStringLiteral("plan-1")}, {QStringLiteral("piste_id"), v1}, {QStringLiteral("position"), 0}});
+    REQUIRE(r.value(QStringLiteral("ok")).toBool());
+    CHECK(r.value(QStringLiteral("deja_pose")).toBool());
+    CHECK_FALSE(r.value(QStringLiteral("change")).toBool(true));
+    CHECK(undoStack->index() == undoIndex + 1);
+
+    // 2. Le deuxième plan, créé avec sa piste et sa place : il arrive directement sur V1 à 2 s, juste après le
+    //    premier (avant : place_occupee, « La piste V1 appartient déjà à une autre composition Motion »).
+    r = call(timeline, QStringLiteral("motion_creer"), {{QStringLiteral("nom"), QStringLiteral("plan-2")},
+                                                         {QStringLiteral("source"), source(QStringLiteral("plan-2"), 2, 0)},
+                                                         {QStringLiteral("piste_id"), v1},
+                                                         {QStringLiteral("position"), at(2)}});
+    INFO(dumpJson(r));
+    REQUIRE(r.value(QStringLiteral("ok")).toBool());
+    CHECK_FALSE(r.contains(QStringLiteral("pose_refusee")));
+    r = call(timeline, QStringLiteral("motion_rendre"), {{QStringLiteral("nom"), QStringLiteral("plan-2")}});
+    INFO(dumpJson(r));
+    REQUIRE(r.value(QStringLiteral("ok")).toBool());
+    REQUIRE(waitFor([&]() { return clipOf(QStringLiteral("plan-2")) >= 0; }, 20000));
+    const int c2 = clipOf(QStringLiteral("plan-2"));
+    CHECK(timeline->getClipTrackId(c2) == v1);
+    CHECK(timeline->getClipPosition(c2) == at(2));
+    CHECK(tracksOf(QStringLiteral("plan-2")) == 0);
+    CHECK(timeline->getTracksCount() == tracksStart);
+    CHECK(readAll(tmp.path() + QStringLiteral("/motion/plan-2/index.html")).contains(QLatin1String("data-koracut-start=\"2\"")));
+
+    // 3. Un troisième plan dont la place chevauche le rush (5 à 7 s, le rush est à 6 s) : motion_rendre le refuse
+    //    avant de rendre, en nommant le rush et ses temps. Puis motion_poser sur le premier plan : refusé aussi,
+    //    et rien ne bouge.
+    r = call(timeline, QStringLiteral("motion_creer"), {{QStringLiteral("nom"), QStringLiteral("plan-3")}, {QStringLiteral("source"), source(QStringLiteral("plan-3"), 2, 0)}});
+    REQUIRE(r.value(QStringLiteral("ok")).toBool());
+    // Le rendu lancé par la création arrive : sur sa piste Motion, comme avant.
+    REQUIRE(waitFor([&]() { return clipOf(QStringLiteral("plan-3")) >= 0; }, 20000));
+    const int c3 = clipOf(QStringLiteral("plan-3"));
+    const int c3Track = timeline->getClipTrackId(c3);
+    undoIndex = undoStack->index();
+    r = call(timeline, QStringLiteral("motion_rendre"), {{QStringLiteral("nom"), QStringLiteral("plan-3")}, {QStringLiteral("piste_id"), v1}, {QStringLiteral("position"), at(5)}});
+    INFO(dumpJson(r));
+    CHECK(errorCode(r) == QStringLiteral("place_occupee"));
+    CHECK(r.value(QStringLiteral("occupe_par")).toObject().value(QStringLiteral("clip_id")).toInt(-1) == rush);
+    CHECK(r.value(QStringLiteral("occupe_par")).toObject().value(QStringLiteral("pos")).toInt(-1) == at(6));
+    CHECK(r.value(QStringLiteral("occupe_par")).toObject().value(QStringLiteral("len")).toInt(-1) == at(2));
+    CHECK(r.value(QStringLiteral("element")).toString() == QStringLiteral("plan-3"));
+    CHECK(r.value(QStringLiteral("position")).toInt(-1) == at(5));
+    {
+        const QString message = r.value(QStringLiteral("erreur")).toObject().value(QStringLiteral("message")).toString();
+        CHECK(message.contains(QString::number(rush)));
+        CHECK(message.contains(KoraCutAgentTools::timecode(at(6), fps)));
+        CHECK(message.contains(KoraCutAgentTools::timecode(at(5), fps)));
+        CHECK_FALSE(message.contains(QLatin1String("appartient")));
+    }
+    CHECK(timeline->getClipTrackId(c3) == c3Track);
+    CHECK(undoStack->index() == undoIndex);
+    r = call(timeline, QStringLiteral("motion_poser"), {{QStringLiteral("nom"), QStringLiteral("plan-3")}, {QStringLiteral("piste_id"), v1}, {QStringLiteral("position"), at(1)}});
+    INFO(dumpJson(r));
+    CHECK(errorCode(r) == QStringLiteral("place_occupee"));
+    CHECK(r.value(QStringLiteral("occupe_par")).toObject().value(QStringLiteral("clip_id")).toInt(-1) == c1);
+    CHECK(timeline->getClipTrackId(c3) == c3Track);
+    CHECK(timeline->getClipPosition(c1) == 0);
+    CHECK(undoStack->index() == undoIndex);
+    // Après le rush (8 s) : déplacé sur V1 par motion_rendre, sa piste Motion retirée.
+    r = call(timeline, QStringLiteral("motion_rendre"), {{QStringLiteral("nom"), QStringLiteral("plan-3")}, {QStringLiteral("piste_id"), v1}, {QStringLiteral("position"), at(8)}});
+    INFO(dumpJson(r));
+    REQUIRE(r.value(QStringLiteral("ok")).toBool());
+    CHECK_FALSE(r.contains(QStringLiteral("pose_refusee")));
+    CHECK(timeline->getClipTrackId(c3) == v1);
+    CHECK(timeline->getClipPosition(c3) == at(8));
+    CHECK(tracksOf(QStringLiteral("plan-3")) == 0);
+    CHECK(timeline->getTracksCount() == tracksStart);
+
+    // 4. Déplacer le deuxième plan sur la place du troisième : refusé, nommé, rien ne bouge.
+    r = call(timeline, QStringLiteral("motion_poser"), {{QStringLiteral("nom"), QStringLiteral("plan-2")}, {QStringLiteral("piste_id"), v1}, {QStringLiteral("position"), at(9)}});
+    INFO(dumpJson(r));
+    CHECK(errorCode(r) == QStringLiteral("place_occupee"));
+    CHECK(r.value(QStringLiteral("occupe_par")).toObject().value(QStringLiteral("clip_id")).toInt(-1) == c3);
+    CHECK(timeline->getClipPosition(c2) == at(2));
+    // Une place libre sur la même piste (10 s) : déplacé.
+    r = call(timeline, QStringLiteral("motion_poser"), {{QStringLiteral("nom"), QStringLiteral("plan-2")}, {QStringLiteral("piste_id"), v1}, {QStringLiteral("position"), at(10)}});
+    INFO(dumpJson(r));
+    REQUIRE(r.value(QStringLiteral("ok")).toBool());
+    CHECK(timeline->getClipPosition(c2) == at(10));
+    CHECK(timeline->getClipTrackId(c2) == v1);
+    REQUIRE(waitFor([&]() { return readAll(tmp.path() + QStringLiteral("/motion/plan-2/index.html")).contains(QLatin1String("data-koracut-start=\"10\"")); }, 5000));
+    mirror->renderer()->waitForIdle(20000);
+    waitMs(800);
+
+    // 5. Enregistrer, fermer, rouvrir : les trois plans et le rush restent sur V1, à leur place, sans piste en plus.
+    const int tracksBefore = timeline->getTracksCount();
+    pCore->projectManager()->testSaveFileAs(saveFile);
+    mirror->clear();
+    timeline.reset();
+    pCore->projectManager()->closeCurrentDocument(false, false);
+    QUndoGroup *undoGroup = new QUndoGroup(pCore.get());
+    undoGroup->addStack(undoStack.get());
+    DocOpenResult res = KdenliveDoc::Open(QUrl::fromLocalFile(saveFile), QDir::temp().path(), undoGroup, false, nullptr);
+    REQUIRE(res.isSuccessful());
+    document.reset();
+    std::unique_ptr<KdenliveDoc> ouvert = res.getDocument();
+    pCore->projectManager()->testSetDocument(ouvert.get());
+    const QUuid uuid = ouvert->uuid();
+    KdenliveTests::updateTimeline(false, QString(), QString(), QFileInfo(saveFile).lastModified(), 0);
+    pCore->projectManager()->openTimeline(binModel->getAllSequenceClips().value(uuid), -1, uuid);
+    timeline = ouvert->getTimeline(uuid);
+    pCore->projectManager()->testSetActiveTimeline(timeline);
+    mirror->setDocument(ouvert.get(), timeline);
+    waitMs(800);
+    CHECK(timeline->getTracksCount() == tracksBefore);
+    int lowest = -1;
+    for (int tid : timeline->getTracksIds(false)) {
+        if (lowest < 0 || timeline->getTrackPosition(tid) < timeline->getTrackPosition(lowest)) {
+            lowest = tid;
+        }
+    }
+    const QList<std::pair<QString, double>> expected{{QStringLiteral("plan-1"), 0.}, {QStringLiteral("plan-2"), 10.}, {QStringLiteral("plan-3"), 8.}};
+    for (const auto &[name, seconds] : expected) {
+        INFO(name.toStdString());
+        const int cid = clipOf(name);
+        REQUIRE(cid >= 0);
+        CHECK(timeline->getClipTrackId(cid) == lowest);
+        CHECK(timeline->getClipPosition(cid) == at(seconds));
+        CHECK(tracksOf(name) == 0);
+    }
+    CHECK(timeline->getTrackProperty(lowest, QStringLiteral("kdenlive:koracut_motion")).toString().isEmpty());
+    CHECK(timeline->getTrackClipsCount(lowest) == 4);
+
+    mirror->renderer()->waitForIdle(20000);
+    waitMs(800);
+    KoraCutMotionRenderer::setSimulator({});
+    mirror.reset();
+    KoraCutAgentTools::setMotionMirror(nullptr);
+    timeline.reset();
     pCore->projectManager()->closeCurrentDocument(false, false);
 }

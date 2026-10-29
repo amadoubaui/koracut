@@ -226,8 +226,16 @@ KoraCutPorte::Reply KoraCutPorte::Reply::fromTool(const QJsonObject &toolResult)
 {
     if (toolResult.contains(QStringLiteral("ok")) && !toolResult.value(QStringLiteral("ok")).toBool(true)) {
         const QJsonObject e = toolResult.value(QStringLiteral("erreur")).toObject();
+        // Les précisions d'un refus (occupe_par, element, piste…) suivent dans l'erreur : sans elles, la porte
+        // disait « place prise » sans dire par quoi (29 octobre 2026).
+        QJsonObject extra = toolResult;
+        extra.remove(QStringLiteral("ok"));
+        extra.remove(QStringLiteral("erreur"));
+        extra.remove(QStringLiteral("code"));
+        extra.remove(QStringLiteral("message"));
+        extra.remove(QStringLiteral("conseil"));
         return fail(e.value(QStringLiteral("code")).toString(QStringLiteral("erreur")), e.value(QStringLiteral("message")).toString(),
-                    e.value(QStringLiteral("conseil")).toString());
+                    e.value(QStringLiteral("conseil")).toString(), extra);
     }
     return value(toolResult);
 }

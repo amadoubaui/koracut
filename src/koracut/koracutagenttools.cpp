@@ -1342,6 +1342,58 @@ QJsonObject projectJson(const Timeline &, KoraCutMotionMirror *mirror, const QSt
     return o;
 }
 
+QJsonObject motionPlaceArgs(const Timeline &timeline, KoraCutMotionMirror *mirror, const QString &project, const Args &args, int &trackId, double &atSeconds,
+                            bool &wanted);
+QJsonObject motionPlaceError(const Timeline &own, const QString &project, const QString &why, int trackId, const KoraCutMotionMirror::PlaceOutcome &outcome);
+
+/** motion_creer et motion_rendre avec piste_id ou position : la composition va là (comme motion_poser).
+ * Le refus ne défait pas ce qui a été fait (création, rendu) : il est rendu dans pose_refusee. */
+void motionPlaceAfter(const Timeline &timeline, KoraCutMotionMirror *mirror, const QString &project, const Args &args, QJsonObject &result)
+{
+    int trackId = -1;
+    double atSeconds = -1.;
+    bool wanted = false;
+    QJsonObject failure = motionPlaceArgs(timeline, mirror, project, args, trackId, atSeconds, wanted);
+    if (!wanted) {
+        return;
+    }
+    if (failure.isEmpty()) {
+        QString why;
+        KoraCutMotionMirror::PlaceOutcome outcome;
+        const bool changed = mirror->place(project, trackId, atSeconds, &why, &outcome);
+        if (changed || why.isEmpty()) {
+            // La fiche refaite : clips et pistes à leur nouvelle place.
+            const QJsonObject fresh = projectJson(timeline, mirror, project);
+            for (auto it = fresh.constBegin(); it != fresh.constEnd(); ++it) {
+                result.insert(it.key(), it.value());
+            }
+            if (!fresh.contains(QStringLiteral("non_poses"))) {
+                result.remove(QStringLiteral("non_poses"));
+            }
+            if (!fresh.contains(QStringLiteral("non_deplaces"))) {
+                result.remove(QStringLiteral("non_deplaces"));
+            }
+            if (outcome.removedTracks > 0) {
+                result.insert(QStringLiteral("pistes_retirees"), outcome.removedTracks);
+            }
+            if (trackId >= 0) {
+                result.insert(QStringLiteral("piste_retenue"), trackId);
+            }
+            return;
+        }
+        failure = motionPlaceError(mirror->timelineFor(project), project, why, trackId, outcome);
+    }
+    result.insert(QStringLiteral("pose_refusee"), failure.value(QStringLiteral("erreur")).toObject());
+    for (const QString &key : {QStringLiteral("occupe_par"), QStringLiteral("element"), QStringLiteral("piste_id"), QStringLiteral("piste")}) {
+        if (failure.contains(key)) {
+            QJsonObject refused = result.value(QStringLiteral("pose_refusee")).toObject();
+            refused.insert(key, failure.value(key));
+            result.insert(QStringLiteral("pose_refusee"), refused);
+        }
+    }
+    result.insert(QStringLiteral("remarque"), QStringLiteral("La composition n'a PAS été posée là où demandé : voir pose_refusee. Libère la place, puis motion_poser avec piste_id et position."));
+}
+
 QJsonObject motionLister(const Timeline &timeline, const Args &args)
 {
     QString project;
@@ -1427,6 +1479,19 @@ QJsonObject motionCreer(const Timeline &timeline, const Args &args)
     if (width < 0 || height < 0 || fps < 0) {
         return error(QStringLiteral("entree_invalide"), QStringLiteral("largeur, hauteur et ips sont positifs (ou absents : ceux du projet)."));
     }
+    // piste_id et position (29 octobre 2026) : vérifiés avant toute écriture, appliqués après la création.
+    if (args.contains(QStringLiteral("piste_id"))) {
+        const int tid = args.value(QStringLiteral("piste_id")).toInt(-1);
+        if (QJsonObject e = trackIdCheck(timeline, tid, true); !e.isEmpty()) {
+            return e;
+        }
+        if (timeline->isAudioTrack(tid)) {
+            return error(QStringLiteral("mauvais_type_de_piste"), QStringLiteral("Une composition Motion se pose sur une piste vidéo."));
+        }
+    }
+    if (args.contains(QStringLiteral("position")) && KoraCutAgentTools::parseTime(args.value(QStringLiteral("position")), projectFps()) < 0) {
+        return error(QStringLiteral("entree_invalide"), QStringLiteral("position est un nombre d'images ou un timecode HH:MM:SS:II."));
+    }
     // Une composition déjà écrite sur le disque (un dossier HyperFrames avec son index.html, ou un .html
     // seul) : elle est importée avec ses fichiers (polices, images, scripts), comme par le panneau Motion.
     const QString source = args.value(QStringLiteral("source")).toString().trimmed();
@@ -1468,6 +1533,7 @@ QJsonObject motionCreer(const Timeline &timeline, const Args &args)
         if (!trashed.isEmpty()) {
             result.insert(QStringLiteral("ancienne_retiree"), trashed);
         }
+        motionPlaceAfter(timeline, mirror, name, args, result);
         return result;
     }
     const QString html = args.value(QStringLiteral("html")).toString();
@@ -1497,6 +1563,7 @@ QJsonObject motionCreer(const Timeline &timeline, const Args &args)
     if (!trashed.isEmpty()) {
         result.insert(QStringLiteral("ancienne_retiree"), trashed);
     }
+    motionPlaceAfter(timeline, mirror, name, args, result);
     return result;
 }
 
@@ -1739,6 +1806,21 @@ QJsonObject motionRendre(const Timeline &timeline, const Args &args)
     }
     const bool force = args.value(QStringLiteral("forcer")).toBool(false);
     const bool wait = args.value(QStringLiteral("attendre")).toBool(true);
+    // piste_id et position (29 octobre 2026) : la piste et la place sont retenues avant le rendu, pour que le
+    // clip y arrive directement (sans piste « Motion · nom » en plus). Place prise : rien n'est rendu.
+    int trackId = -1;
+    double atSeconds = -1.;
+    bool wantPlace = false;
+    if (QJsonObject e = motionPlaceArgs(timeline, mirror, project, args, trackId, atSeconds, wantPlace); !e.isEmpty()) {
+        return e;
+    }
+    if (wantPlace) {
+        QString why;
+        KoraCutMotionMirror::PlaceOutcome outcome;
+        if (!mirror->place(project, trackId, atSeconds, &why, &outcome) && !why.isEmpty()) {
+            return motionPlaceError(mirror->timelineFor(project), project, why, trackId, outcome);
+        }
+    }
     const int requested = mirror->renderElements(project, ids, force);
     bool finished = true;
     if (wait) {
@@ -1758,6 +1840,10 @@ QJsonObject motionRendre(const Timeline &timeline, const Args &args)
     result.insert(QStringLiteral("termine"), finished);
     if (!mirror->renderer()->lastError().isEmpty() && mirror->projectState(project).failed > 0) {
         result.insert(QStringLiteral("derniere_erreur"), mirror->renderer()->lastError());
+    }
+    if (wantPlace && wait && finished) {
+        // Les clips arrivés pendant l'attente : à leur place demandée (déjà là le plus souvent).
+        motionPlaceAfter(timeline, mirror, project, args, result);
     }
     return result;
 }
@@ -1869,6 +1955,86 @@ QJsonObject motionVerifier(const Timeline &, const Args &args)
                        {QStringLiteral("messages"), messages}};
 }
 
+/** piste_id et position de motion_poser (et de motion_rendre, motion_creer) : lus et vérifiés. @p wanted dit
+ * si l'un des deux est donné. Une erreur prête à rendre, vide si tout va. */
+QJsonObject motionPlaceArgs(const Timeline &timeline, KoraCutMotionMirror *mirror, const QString &project, const Args &args, int &trackId, double &atSeconds,
+                            bool &wanted)
+{
+    trackId = -1;
+    atSeconds = -1.;
+    wanted = args.contains(QStringLiteral("piste_id")) || args.contains(QStringLiteral("position"));
+    // Elle se pose dans SA séquence. Fermée : rien à poser tant qu'elle n'est pas rouverte. Une piste_id
+    // est une piste de la séquence devant : elle ne vaut que si c'est celle de la composition.
+    const Timeline own = mirror->timelineFor(project);
+    if (!own) {
+        return error(QStringLiteral("sequence_fermee"), QStringLiteral("La séquence de « %1 » n'est pas ouverte.").arg(project),
+                     QStringLiteral("Active-la (projet.sequence faire=activer, ou activer_sequence) : ses clips sont posés à l'ouverture."));
+    }
+    if (args.contains(QStringLiteral("piste_id"))) {
+        if (own != timeline) {
+            return error(QStringLiteral("autre_sequence"), QStringLiteral("« %1 » vit dans une autre séquence que celle qui est devant : piste_id ne s'y applique pas.").arg(project),
+                         QStringLiteral("Active sa séquence d'abord (motion_lister donne sequence et sequence_nom), ou laisse piste_id vide."));
+        }
+        trackId = args.value(QStringLiteral("piste_id")).toInt(-1);
+        if (QJsonObject e = trackIdCheck(timeline, trackId, true); !e.isEmpty()) {
+            return e;
+        }
+        if (timeline->isAudioTrack(trackId)) {
+            return error(QStringLiteral("mauvais_type_de_piste"), QStringLiteral("Une composition Motion se pose sur une piste vidéo."));
+        }
+    }
+    if (args.contains(QStringLiteral("position"))) {
+        const int position = KoraCutAgentTools::parseTime(args.value(QStringLiteral("position")), projectFps());
+        if (position < 0) {
+            return error(QStringLiteral("entree_invalide"), QStringLiteral("position est un nombre d'images ou un timecode HH:MM:SS:II."));
+        }
+        atSeconds = position / projectFps();
+    }
+    return {};
+}
+
+/** L'erreur de place() en clair : pour place_occupee, qui tient la place sur quelle piste, de quand à quand. */
+QJsonObject motionPlaceError(const Timeline &own, const QString &project, const QString &why, int trackId, const KoraCutMotionMirror::PlaceOutcome &outcome)
+{
+    const double fps = projectFps();
+    if (why == QLatin1String("place_occupee") && own && outcome.blocked.blockingClip >= 0 && own->isClip(outcome.blocked.blockingClip)) {
+        const int blocking = outcome.blocked.blockingClip;
+        const int from = own->getClipPosition(blocking);
+        const int length = own->getClipPlaytime(blocking);
+        const QString label = trackLabel(own, outcome.blocked.trackId);
+        QJsonObject e = error(why,
+                              QStringLiteral("La place est prise sur la piste %1 : le clip %2 « %3 » y est de %4 à %5, et « %6 » y irait de %7 à %8.")
+                                  .arg(label)
+                                  .arg(blocking)
+                                  .arg(own->getClipName(blocking), KoraCutAgentTools::timecode(from, fps), KoraCutAgentTools::timecode(from + length - 1, fps), outcome.blocked.elementId,
+                                       KoraCutAgentTools::timecode(outcome.blocked.position, fps), KoraCutAgentTools::timecode(outcome.blocked.position + outcome.blocked.length - 1, fps)),
+                              QStringLiteral("Rien n'a bougé. Choisis une autre position ou une autre piste, ou déplace ce clip d'abord (deplacer_clip)."));
+        e.insert(QStringLiteral("element"), outcome.blocked.elementId);
+        e.insert(QStringLiteral("piste_id"), outcome.blocked.trackId);
+        e.insert(QStringLiteral("piste"), label);
+        e.insert(QStringLiteral("position"), outcome.blocked.position);
+        e.insert(QStringLiteral("duree"), outcome.blocked.length);
+        e.insert(QStringLiteral("occupe_par"), QJsonObject{{QStringLiteral("clip_id"), blocking},
+                                                            {QStringLiteral("nom"), own->getClipName(blocking)},
+                                                            {QStringLiteral("pos"), from},
+                                                            {QStringLiteral("len"), length},
+                                                            {QStringLiteral("debut_tc"), KoraCutAgentTools::timecode(from, fps)},
+                                                            {QStringLiteral("fin_tc"), KoraCutAgentTools::timecode(from + length - 1, fps)}});
+        return e;
+    }
+    if (why == QLatin1String("place_occupee")) {
+        return error(why, QStringLiteral("La place est prise sur la piste %1 pour « %2 ».").arg(trackLabel(own, trackId), project),
+                     QStringLiteral("Rien n'a bougé. Choisis une autre position ou une autre piste."));
+    }
+    if (why == QLatin1String("mauvais_type_de_piste")) {
+        return error(why, QStringLiteral("La piste %1 ne convient pas (audio ou verrouillée).").arg(trackLabel(own, trackId)));
+    }
+    if (why == QLatin1String("sequence_fermee")) {
+        return error(why, QStringLiteral("La séquence de « %1 » n'est pas ouverte.").arg(project));
+    }
+    return error(QStringLiteral("projet_inconnu"), QStringLiteral("La composition « %1 » n'a pas pu être posée.").arg(project));
+}
+
 QJsonObject motionPoser(const Timeline &timeline, const Args &args)
 {
     QString project;
@@ -1877,49 +2043,28 @@ QJsonObject motionPoser(const Timeline &timeline, const Args &args)
     if (!mirror) {
         return failure;
     }
-    // Elle se pose dans SA séquence. Fermée : rien à poser tant qu'elle n'est pas rouverte. Une piste_id
-    // est une piste de la séquence devant : elle ne vaut que si c'est celle de la composition.
-    const Timeline own = mirror->timelineFor(project);
-    if (!own) {
-        return error(QStringLiteral("sequence_fermee"), QStringLiteral("La séquence de « %1 » n'est pas ouverte.").arg(project),
-                     QStringLiteral("Active-la (projet.sequence faire=activer, ou activer_sequence) : ses clips sont posés à l'ouverture."));
-    }
     int trackId = -1;
-    if (args.contains(QStringLiteral("piste_id"))) {
-        if (own != timeline) {
-            return error(QStringLiteral("autre_sequence"), QStringLiteral("« %1 » vit dans une autre séquence que celle qui est devant : piste_id ne s'y applique pas.").arg(project),
-                         QStringLiteral("Active sa séquence d'abord (motion_lister donne sequence et sequence_nom), ou laisse piste_id vide."));
-        }
-        trackId = args.value(QStringLiteral("piste_id")).toInt(-1);
-        if (QJsonObject e = trackIdCheck(timeline, trackId); !e.isEmpty()) {
-            return e;
-        }
-        if (timeline->isAudioTrack(trackId)) {
-            return error(QStringLiteral("mauvais_type_de_piste"), QStringLiteral("Une composition Motion se pose sur une piste vidéo."));
-        }
-    }
     double atSeconds = -1.;
-    if (args.contains(QStringLiteral("position"))) {
-        const int position = KoraCutAgentTools::parseTime(args.value(QStringLiteral("position")), projectFps());
-        if (position < 0) {
-            return error(QStringLiteral("entree_invalide"), QStringLiteral("position est un nombre d'images ou un timecode HH:MM:SS:II."));
-        }
-        atSeconds = position / projectFps();
+    bool wanted = false;
+    if (QJsonObject e = motionPlaceArgs(timeline, mirror, project, args, trackId, atSeconds, wanted); !e.isEmpty()) {
+        return e;
     }
     QString why;
-    const bool changed = mirror->place(project, trackId, atSeconds, &why);
+    KoraCutMotionMirror::PlaceOutcome outcome;
+    const bool changed = mirror->place(project, trackId, atSeconds, &why, &outcome);
     if (!changed && !why.isEmpty()) {
-        if (why == QLatin1String("place_occupee")) {
-            return error(why, QStringLiteral("La piste %1 appartient déjà à une autre composition Motion.").arg(trackLabel(timeline, trackId)), QStringLiteral("Laisse piste_id vide : le miroir crée sa piste."));
-        }
-        if (why == QLatin1String("mauvais_type_de_piste")) {
-            return error(why, QStringLiteral("La piste %1 ne convient pas (audio ou verrouillée).").arg(trackLabel(timeline, trackId)));
-        }
-        return error(QStringLiteral("projet_inconnu"), QStringLiteral("La composition « %1 » n'a pas pu être posée.").arg(project));
+        return motionPlaceError(mirror->timelineFor(project), project, why, trackId, outcome);
     }
     QJsonObject result = projectJson(timeline, mirror, project);
     result.insert(QStringLiteral("ok"), true);
     result.insert(QStringLiteral("change"), changed);
+    // Rien n'a bougé parce que tout est déjà là : c'est dit, pas un ok muet (29 octobre 2026).
+    if (outcome.alreadyThere) {
+        result.insert(QStringLiteral("deja_pose"), true);
+    }
+    if (outcome.removedTracks > 0) {
+        result.insert(QStringLiteral("pistes_retirees"), outcome.removedTracks);
+    }
     // Les éléments rendus que la timeline a refusés (non_poses) et les clips restés à leur ancienne place
     // (non_deplaces) sont déjà dans la fiche, un par un : ici, les comptes et la remarque.
     const auto idsOf = [&result](const QString &field) -> QStringList {
@@ -1961,7 +2106,13 @@ QJsonObject motionPoser(const Timeline &timeline, const Args &args)
                        .arg(stuckNames.join(QStringLiteral(", ")));
     }
     if (waiting > 0) {
-        remarks << QStringLiteral("%1 élément(s) n'ont pas de clip : leur rendu n'est pas prêt (motion_rendre) ou a échoué (motion_verifier).").arg(waiting);
+        remarks << (outcome.waitingRender ? QStringLiteral("%1 élément(s) n'ont pas encore de clip : la piste %2 est retenue, ils y seront posés à l'arrivée du rendu (motion_rendre).")
+                                                .arg(waiting)
+                                                .arg(trackLabel(timeline, trackId))
+                                          : QStringLiteral("%1 élément(s) n'ont pas de clip : leur rendu n'est pas prêt (motion_rendre) ou a échoué (motion_verifier).").arg(waiting));
+    }
+    if (outcome.alreadyThere) {
+        remarks << QStringLiteral("Tout était déjà à cette place : rien n'a bougé.");
     }
     if (!remarks.isEmpty()) {
         result.insert(QStringLiteral("remarque"), remarks.join(QLatin1Char(' ')));

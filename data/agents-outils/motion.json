@@ -23,7 +23,7 @@
   },
   {
     "name": "motion_creer",
-    "description": "Crée une composition Motion dans le projet : un dossier motion/<nom>/ avec un index.html (le gabarit de KoraCut, un titre animé de 4 s, ou le HTML fourni dans html), assets/gsap.min.js déjà copié, et compositions/. Avec source (un dossier HyperFrames déjà écrit avec son index.html, ou un fichier .html), la composition est importée avec tous ses fichiers : polices, images, feuilles et scripts cités, comme par le panneau Motion. C'est la voie pour une composition qui a sa charte (polices du client, logo). Une racine qui porte data-koracut-fond=\"opaque\" (un plan plein cadre, pas un habillage) est rendue en MP4 plutôt qu'en ProRes 4444 transparent : environ trente fois plus léger sur le disque et deux fois plus rapide. Sans largeur, hauteur ni ips, la composition prend le format et la cadence du projet. Les éléments temporels du HTML (data-start, data-duration, data-track-index, voir la compétence hyperframes-core) deviennent des clips violets sur des pistes « Motion · nom » au-dessus de la vidéo, dès que leur rendu est prêt (motion_rendre). Le nom devient un nom de dossier (lettres, chiffres, tirets). Avec fichiers, des polices et des images sont copiées dans assets/ avant le premier rendu (réponse : fichiers_copies). La composition vit dans la séquence qui est devant à sa création (la racine reçoit data-koracut-sequence). Refuse si une composition du même nom existe (existe_deja) : dans ce cas, motion_ecrire ; le nom d'une composition retirée est libre (son ancien dossier part dans motion/.corbeille/, réponse : ancienne_retiree). Annulable en une étape. Renvoie la même fiche que motion_lister pour cette composition, avec ok.",
+    "description": "Crée une composition Motion dans le projet : un dossier motion/<nom>/ avec un index.html (le gabarit de KoraCut, un titre animé de 4 s, ou le HTML fourni dans html), assets/gsap.min.js déjà copié, et compositions/. Avec source (un dossier HyperFrames déjà écrit avec son index.html, ou un fichier .html), la composition est importée avec tous ses fichiers : polices, images, feuilles et scripts cités, comme par le panneau Motion. C'est la voie pour une composition qui a sa charte (polices du client, logo). Une racine qui porte data-koracut-fond=\"opaque\" (un plan plein cadre, pas un habillage) est rendue en MP4 plutôt qu'en ProRes 4444 transparent : environ trente fois plus léger sur le disque et deux fois plus rapide. Sans largeur, hauteur ni ips, la composition prend le format et la cadence du projet. Les éléments temporels du HTML (data-start, data-duration, data-track-index, voir la compétence hyperframes-core) deviennent des clips violets sur des pistes « Motion · nom » au-dessus de la vidéo, dès que leur rendu est prêt (motion_rendre). Le nom devient un nom de dossier (lettres, chiffres, tirets). Avec fichiers, des polices et des images sont copiées dans assets/ avant le premier rendu (réponse : fichiers_copies). La composition vit dans la séquence qui est devant à sa création (la racine reçoit data-koracut-sequence). Refuse si une composition du même nom existe (existe_deja) : dans ce cas, motion_ecrire ; le nom d'une composition retirée est libre (son ancien dossier part dans motion/.corbeille/, réponse : ancienne_retiree). Annulable en une étape. Renvoie la même fiche que motion_lister pour cette composition, avec ok. Avec piste_id et position (comme motion_poser), la composition est posée directement sur cette piste à cette place quand son rendu arrive : c'est la voie pour un plan plein cadre sur V1 entre des rushs. Une place prise ne défait pas la création : la réponse porte pose_refusee { code, message, occupe_par }.",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -69,6 +69,24 @@
             "minLength": 1
           },
           "description": "Des fichiers à copier dans assets/ avant le rendu (polices de la charte, logo, images), sous leur nom : chemins absolus, « ~ », ou relatifs au dossier du projet. Le HTML les cite par url(\"assets/Outfit.ttf\") ou <img src=\"assets/logo.png\">. Un fichier du même nom déjà dans assets/ est remplacé."
+        },
+        "piste_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Une piste vidéo existante (etat_timeline), même une piste qui porte déjà des rushs ou d'autres compositions : les clips du premier index de piste y vont directement, sans piste « Motion · nom » en plus. Place prise par un clip qui chevauche : rien n'est posé là (pose_refusee)."
+        },
+        "position": {
+          "description": "Où poser le premier élément sur la timeline. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet). Absent : à la place écrite dans le HTML.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
         }
       },
       "required": [
@@ -188,7 +206,7 @@
   },
   {
     "name": "motion_rendre",
-    "description": "Rend les éléments d'une composition Motion en vidéo transparente (ProRes 4444) par HyperFrames et Chrome sans fenêtre, dans le cache du projet, puis pose leurs clips dans la timeline. Un rendu déjà en cache (même contenu) n'est jamais refait : forcer le refait. Sans ids, toute la composition ; avec ids, ces éléments seulement. Par défaut l'outil attend la fin des rendus (quelques secondes à une minute par élément, jusqu'à 5 minutes en tout) pour que l'appel suivant trouve les clips ; attendre: false rend la main tout de suite et motion_lister donnera l'état. Répond non_disponible si Node ou HyperFrames manquent : le dire à la personne, la composition est écrite quand même. Ce n'est pas un export : rien ne sort du projet. Le rendu n'est pas une étape d'annulation ; la pose des clips l'est. Renvoie la fiche de la composition avec ok, demandes, attendu, termine, derniere_erreur. Quand l'outil a attendu, il laisse aussi aux clips le temps d'être posés (quelques secondes au plus) : la fiche porte alors non_poses pour chaque élément rendu que la timeline a refusé (place prise sur sa piste : deux éléments du même data-track-index qui se recouvrent, même d'une image), et non_deplaces pour un clip resté à son ancienne place (voir motion_lister). Lis-les avant de dire que tout est posé.",
+    "description": "Rend les éléments d'une composition Motion en vidéo transparente (ProRes 4444) par HyperFrames et Chrome sans fenêtre, dans le cache du projet, puis pose leurs clips dans la timeline. Un rendu déjà en cache (même contenu) n'est jamais refait : forcer le refait. Sans ids, toute la composition ; avec ids, ces éléments seulement. Par défaut l'outil attend la fin des rendus (quelques secondes à une minute par élément, jusqu'à 5 minutes en tout) pour que l'appel suivant trouve les clips ; attendre: false rend la main tout de suite et motion_lister donnera l'état. Répond non_disponible si Node ou HyperFrames manquent : le dire à la personne, la composition est écrite quand même. Ce n'est pas un export : rien ne sort du projet. Le rendu n'est pas une étape d'annulation ; la pose des clips l'est. Renvoie la fiche de la composition avec ok, demandes, attendu, termine, derniere_erreur. Quand l'outil a attendu, il laisse aussi aux clips le temps d'être posés (quelques secondes au plus) : la fiche porte alors non_poses pour chaque élément rendu que la timeline a refusé (place prise sur sa piste : deux éléments du même data-track-index qui se recouvrent, même d'une image), et non_deplaces pour un clip resté à son ancienne place (voir motion_lister). Lis-les avant de dire que tout est posé. Avec piste_id et position (comme motion_poser), la piste et la place sont retenues avant le rendu et le clip y arrive directement, sans piste « Motion · nom » en plus ; si un autre clip tient déjà cette place, l'outil répond place_occupee (qui, de quand à quand) et ne rend rien.",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -213,6 +231,24 @@
         "attendre": {
           "type": "boolean",
           "description": "true (défaut) : attend la fin des rendus avant de répondre."
+        },
+        "piste_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Une piste vidéo existante (etat_timeline), même une piste qui porte déjà des rushs ou d'autres compositions : les clips du premier index de piste y vont directement, sans piste « Motion · nom » en plus. Place prise par un clip qui chevauche : rien n'est posé là (pose_refusee)."
+        },
+        "position": {
+          "description": "Où poser le premier élément sur la timeline. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet). Absent : à la place écrite dans le HTML.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+            }
+          ]
         }
       },
       "required": [
@@ -271,7 +307,7 @@
   },
   {
     "name": "motion_poser",
-    "description": "Pose ou repose dans la timeline les clips d'une composition Motion dont le rendu est prêt et qui n'y sont pas (après un rendu lancé sans attendre, ou après un retrait à la main). Sans piste_id, le miroir crée ses pistes « Motion · nom » au-dessus de la vidéo (une par data-track-index) ; avec piste_id, cette piste vidéo devient la première piste Motion de la composition, si elle n'appartient pas déjà à une autre. Avec position, le premier élément à début absolu est amené à cette place de la timeline et les autres suivent d'autant (le HTML est réécrit : data-start). La composition se pose dans SA séquence (motion_lister : sequence) : piste_id ne vaut que si cette séquence est devant (sinon autre_sequence), et une séquence dont l'onglet est fermé répond sequence_fermee (l'activer : ses clips sont posés à l'ouverture). Ne rend rien : motion_rendre d'abord. Annulable en une étape. Renvoie la fiche de la composition avec ok, change, poses (les éléments vraiment dans la timeline), sans_clip (ceux dont le rendu n'est pas prêt ou a échoué), remarque, position_appliquee (seulement quand position est donnée : false si le décalage n'a PAS eu lieu pour au moins un clip, resté à son ancienne place et nommé dans non_deplaces : [{ element, clip_id, piste_id, piste, position, duree, raison, occupe_par?, reste_a { piste_id, piste, pos } }] ; libère la place d'arrivée puis rappelle motion_poser avec position), et non_poses quand un élément rendu n'a PAS pu être posé : [{ element, piste_id, piste, position, duree (en images), raison, occupe_par? { clip_id, pos, len } }]. raison vaut place_occupee (un autre clip tient déjà cette place sur la piste : deux éléments du même data-track-index qui se recouvrent, même d'une seule image, ou un clip rangé là à la main), piste_verrouillee, piste_indisponible ou pose_refusee (deplacement_refuse pour non_deplaces). ok reste vrai : lis toujours non_poses et non_deplaces. Rien n'est déplacé d'office : libère la place ou corrige data-start, data-duration ou data-track-index (motion_element), puis rappelle motion_poser.",
+    "description": "Pose ou repose dans la timeline les clips d'une composition Motion dont le rendu est prêt et qui n'y sont pas (après un rendu lancé sans attendre, ou après un retrait à la main). Pose, repose ou DÉPLACE une composition. Sans piste_id, les clips restent où ils sont et le miroir crée les pistes « Motion · nom » qui manquent (une par data-track-index) ; avec piste_id, les clips du premier index de piste vont sur cette piste vidéo, même déjà posés ailleurs, et y restent : une piste de rushs (V1 « Plans montés ») ou une piste qui porte d'autres compositions convient, tant que rien ne chevauche (plusieurs plans Motion qui se suivent sur V1, par exemple). La piste « Motion · nom » que le miroir avait créée et qui reste vide est retirée (pistes_retirees) ; une piste de la personne ne l'est jamais. Si un autre clip tient la place d'arrivée, rien ne bouge et l'outil répond place_occupee avec element, piste, position, duree et occupe_par { clip_id, nom, pos, len, debut_tc, fin_tc }. Tout est déjà à la place demandée : deja_pose: true (rien n'a bougé). Sans clip encore (rendu en cours), la piste et la place sont retenues pour la pose. Avec position, le premier élément à début absolu est amené à cette place de la timeline et les autres suivent d'autant (le HTML est réécrit : data-start). La composition se pose dans SA séquence (motion_lister : sequence) : piste_id ne vaut que si cette séquence est devant (sinon autre_sequence), et une séquence dont l'onglet est fermé répond sequence_fermee (l'activer : ses clips sont posés à l'ouverture). Ne rend rien : motion_rendre d'abord. Annulable en une étape. Renvoie la fiche de la composition avec ok, change, poses (les éléments vraiment dans la timeline), sans_clip (ceux dont le rendu n'est pas prêt ou a échoué), remarque, position_appliquee (seulement quand position est donnée : false si le décalage n'a PAS eu lieu pour au moins un clip, resté à son ancienne place et nommé dans non_deplaces : [{ element, clip_id, piste_id, piste, position, duree, raison, occupe_par?, reste_a { piste_id, piste, pos } }] ; libère la place d'arrivée puis rappelle motion_poser avec position), et non_poses quand un élément rendu n'a PAS pu être posé : [{ element, piste_id, piste, position, duree (en images), raison, occupe_par? { clip_id, pos, len } }]. raison vaut place_occupee (un autre clip tient déjà cette place sur la piste : deux éléments du même data-track-index qui se recouvrent, même d'une seule image, ou un clip rangé là à la main), piste_verrouillee, piste_indisponible ou pose_refusee (deplacement_refuse pour non_deplaces). ok reste vrai : lis toujours non_poses et non_deplaces. Rien n'est déplacé d'office : libère la place ou corrige data-start, data-duration ou data-track-index (motion_element), puis rappelle motion_poser.",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -283,7 +319,7 @@
         "piste_id": {
           "type": "integer",
           "minimum": 0,
-          "description": "Une piste vidéo existante (etat_timeline) pour les éléments du premier index de piste. Absent : les pistes Motion sont créées."
+          "description": "Une piste vidéo existante (etat_timeline), même une piste qui porte des rushs ou d'autres compositions, pour les éléments du premier index de piste. Absent : les clips restent où ils sont, les pistes Motion qui manquent sont créées."
         },
         "position": {
           "description": "Où poser le premier élément sur la timeline. Nombre d'images (entier, 0 = première image) ou timecode \"HH:MM:SS:II\" (II = images, à la cadence du projet). Absent : à la place écrite dans le HTML.",
@@ -304,7 +340,7 @@
       ],
       "additionalProperties": false
     },
-    "x_kdenlive": "src/koracut/motion/koracutmotionmirror.h:KoraCutMotionMirror::place (marque de piste kdenlive:koracut_motion, applyFromFile, requestClipMove, puis réécriture de data-start).",
+    "x_kdenlive": "src/koracut/motion/koracutmotionmirror.h:KoraCutMotionMirror::place (piste retenue homeTrack, vérification de la place d'arrivée, applyFromFile, requestClipMove, réécriture de data-start ou data-koracut-start, retrait de la piste « Motion · nom » vide).",
     "x_confirmation": false
   },
   {

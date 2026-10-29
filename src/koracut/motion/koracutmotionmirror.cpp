@@ -941,7 +941,11 @@ bool KoraCutMotionMirror::insertClip(const Entry &entry, const KoraCutMotion::El
     }
     const bool audio = element.kind == KoraCutMotion::Kind::Audio;
     const int position = frames(element.start, fps());
+    // Une composition entière ou à plusieurs éléments que motion_poser a rangée sur une piste : ses clips y
+    // vont, et nulle part ailleurs (place prise : refus dit, pas de piste neuve en douce).
+    const int home = audio || entry.sync->composition().isElement() ? -1 : homeTrackFor(entry, tl, element);
     const int tid = entry.sync->composition().isElement() ? elementTrack(entry.name, position, length, undo, redo)
+                    : home >= 0                           ? home
                                                           : ensureTrack(entry, audio ? 0 : element.trackIndex, audio, undo, redo);
     // Un refus est gardé (placementRefusals) : sans cela, l'appelant ne sait pas qu'un élément rendu est
     // resté hors de la timeline (deux cartons qui se chevauchent d'une image, 12 octobre 2026).
@@ -1078,6 +1082,9 @@ bool KoraCutMotionMirror::applyFromFile(const QString &name, bool logUndo, const
         }
         if (e.kind == Kind::Audio) {
             hasAudio = true;
+        } else if (homeTrackFor(entry, tl, e) >= 0) {
+            // motion_poser lui a donné une piste (rushs ou autres compositions) : pas de piste « Motion · nom ».
+            continue;
         } else if (!indexes.contains(e.trackIndex)) {
             indexes.append(e.trackIndex);
         }
@@ -1870,142 +1877,302 @@ bool KoraCutMotionMirror::setElement(const QString &project, const QString &id, 
     return true;
 }
 
-bool KoraCutMotionMirror::place(const QString &project, int trackId, double atSeconds, QString *error)
+bool KoraCutMotionMirror::place(const QString &project, int trackId, double atSeconds, QString *error, PlaceOutcome *outcome)
 {
     using namespace KoraCutMotion;
     rescan();
-    if (!timeline() || !m_entries.contains(project)) {
+    const auto fail = [error](const QString &why) {
         if (error) {
-            *error = QStringLiteral("projet_inconnu");
+            *error = why;
         }
         return false;
+    };
+    if (!timeline() || !m_entries.contains(project)) {
+        return fail(QStringLiteral("projet_inconnu"));
     }
     auto tl = timelineFor(project);
     if (!tl) {
-        if (error) {
-            *error = QStringLiteral("sequence_fermee");
-        }
-        return false;
+        return fail(QStringLiteral("sequence_fermee"));
+    }
+    if (trackId >= 0 && (!tl->isTrack(trackId) || tl->isAudioTrack(trackId) || tl->trackIsLocked(trackId))) {
+        return fail(QStringLiteral("mauvais_type_de_piste"));
     }
     Entry &entry = m_entries[project];
+    const Composition comp = entry.sync->composition();
+    const bool single = comp.isElement();
+    // Le premier index de piste : ses éléments vont sur la piste demandée (un élément seul n'en a qu'un).
+    int lowest = 0;
+    bool first = true;
+    for (const Element &e : comp.elements) {
+        if (e.kind != Kind::Audio && (first || e.trackIndex < lowest)) {
+            lowest = e.trackIndex;
+            first = false;
+        }
+    }
+    const auto goesHome = [single, lowest](const Element &e) { return e.kind != Kind::Audio && (single || e.trackIndex == lowest); };
+
+    // 1. Ce qui doit bouger, et où. Les débuts absolus suivent le décalage ; un début relatif suit par le fichier.
+    struct Move
+    {
+        int cid = -1;
+        int fromTrack = -1;
+        int track = -1;
+        int pos = 0;
+        int target = 0;
+        bool numeric = false;
+        QString id;
+    };
+    int earliest = -1;
+    const auto gather = [&]() {
+        QList<Move> found;
+        earliest = -1;
+        for (const Element &e : comp.elements) {
+            const int cid = clipFor(project, e.id);
+            if (cid < 0) {
+                continue;
+            }
+            Move m;
+            m.cid = cid;
+            m.id = e.id;
+            m.fromTrack = tl->getClipTrackId(cid);
+            m.track = trackId >= 0 && goesHome(e) ? trackId : m.fromTrack;
+            m.pos = tl->getClipPosition(cid);
+            e.startExpr.trimmed().toDouble(&m.numeric);
+            if (m.numeric) {
+                earliest = earliest < 0 ? m.pos : std::min(earliest, m.pos);
+            }
+            found << m;
+        }
+        const int shift = atSeconds >= 0 && earliest >= 0 ? frames(atSeconds, fps()) - earliest : 0;
+        for (Move &m : found) {
+            m.target = m.pos + shift;
+        }
+        return found;
+    };
+    QList<Move> moves = gather();
+    // 2. La piste demandée : la place d'arrivée doit être libre (hors des clips de la composition elle-même).
+    // Sinon rien ne bouge, et l'appelant sait qui tient la place.
+    if (trackId >= 0) {
+        QSet<int> own;
+        for (const Move &m : std::as_const(moves)) {
+            own.insert(m.cid);
+        }
+        for (const Move &m : std::as_const(moves)) {
+            if (m.track == m.fromTrack && m.target == m.pos) {
+                continue;
+            }
+            const int length = tl->getClipPlaytime(m.cid);
+            int blocking = -1;
+            // La fin est exclue par getItemsInRange : target + length couvre la dernière image du clip.
+            for (int id : tl->getItemsInRange(m.track, m.target, m.target + length, false)) {
+                if (!own.contains(id) && tl->isClip(id) && (blocking < 0 || tl->getClipPosition(id) < tl->getClipPosition(blocking))) {
+                    blocking = id;
+                }
+            }
+            if (blocking >= 0) {
+                if (outcome) {
+                    outcome->blocked = PlacementRefusal{m.id, m.track, m.target, length, QStringLiteral("place_occupee"), blocking};
+                    outcome->blocked.clipId = m.cid;
+                    outcome->blocked.stayedTrack = m.fromTrack;
+                    outcome->blocked.stayedPosition = m.pos;
+                }
+                return fail(QStringLiteral("place_occupee"));
+            }
+        }
+        // Un élément sans clip encore (rendu en cours) qui ira sur cette piste : sa place à venir est vue tout de
+        // suite, plutôt qu'un refus muet à l'arrivée du rendu.
+        if (moves.isEmpty()) {
+            for (const Element &e : comp.elements) {
+                if (!goesHome(e) || !e.startResolved || !e.durationKnown || clipFor(project, e.id) >= 0) {
+                    continue;
+                }
+                const bool wholeAt = atSeconds >= 0 && comp.elements.size() == 1 && e.kind == Kind::Whole;
+                const int position = frames(wholeAt ? atSeconds : e.start, fps());
+                const int length = std::max(1, frames(e.duration, fps()));
+                int blocking = -1;
+                for (int id : tl->getItemsInRange(trackId, position, position + length, false)) {
+                    if (tl->isClip(id) && (blocking < 0 || tl->getClipPosition(id) < tl->getClipPosition(blocking))) {
+                        blocking = id;
+                    }
+                }
+                if (blocking >= 0) {
+                    if (outcome) {
+                        outcome->blocked = PlacementRefusal{e.id, trackId, position, length, QStringLiteral("place_occupee"), blocking};
+                    }
+                    return fail(QStringLiteral("place_occupee"));
+                }
+            }
+        }
+    }
+
     Fun undo = []() { return true; };
     Fun redo = []() { return true; };
     bool changed = false;
-    const bool single = entry.sync->composition().isElement();
-    if (single && trackId >= 0) {
-        // Un élément seul : sa piste devient celle demandée, son clip y passe s'il est posé ailleurs.
-        if (!tl->isTrack(trackId) || tl->isAudioTrack(trackId) || tl->trackIsLocked(trackId)) {
-            if (error) {
-                *error = QStringLiteral("mauvais_type_de_piste");
+    // 3. La piste retenue pour ce qui n'a pas encore de clip (rendu en cours) et pour les poses suivantes. Elle
+    // n'est pas marquée : une piste de rushs ou d'autres compositions le reste. Annuler la remet comme avant.
+    if (trackId >= 0 && (entry.homeTrack != trackId || (!single && entry.homeIndex != lowest))) {
+        const int beforeTrack = entry.homeTrack;
+        const int beforeIndex = entry.homeIndex;
+        const int afterIndex = single ? entry.homeIndex : lowest;
+        Fun setHome = [this, project, trackId, afterIndex]() {
+            if (m_entries.contains(project)) {
+                m_entries[project].homeTrack = trackId;
+                m_entries[project].homeIndex = afterIndex;
             }
-            return false;
-        }
-        entry.homeTrack = trackId;
-        const KoraCutMotion::Composition &comp = entry.sync->composition();
-        const int cid = comp.elements.isEmpty() ? -1 : clipFor(project, comp.elements.first().id);
-        if (cid >= 0 && tl->getClipTrackId(cid) != trackId) {
-            m_applying = true;
-            const bool moved = tl->requestClipMove(cid, trackId, tl->getClipPosition(cid), true, true, true, true, undo, redo) == TimelineModel::MoveSuccess;
-            m_applying = false;
-            if (!moved) {
-                if (error) {
-                    *error = QStringLiteral("place_occupee");
-                }
-                return false;
+            return true;
+        };
+        Fun unsetHome = [this, project, beforeTrack, beforeIndex]() {
+            if (m_entries.contains(project)) {
+                m_entries[project].homeTrack = beforeTrack;
+                m_entries[project].homeIndex = beforeIndex;
             }
-            changed = true;
-        }
-        trackId = -1;
+            return true;
+        };
+        setHome();
+        merge(undo, redo, unsetHome, setHome);
     }
-    if (trackId >= 0) {
-        if (!tl->isTrack(trackId) || tl->isAudioTrack(trackId) || tl->trackIsLocked(trackId)) {
-            if (error) {
-                *error = QStringLiteral("mauvais_type_de_piste");
-            }
-            return false;
-        }
-        // La piste demandée devient la première piste Motion du projet, si elle n'en est pas déjà une.
-        int lowest = 0;
-        bool first = true;
-        for (const Element &e : entry.sync->composition().elements) {
-            if (e.kind != Kind::Audio && (first || e.trackIndex < lowest)) {
-                lowest = e.trackIndex;
-                first = false;
-            }
-        }
-        const QString current = tl->getTrackProperty(trackId, kTrackProject).toString();
-        if (current.isEmpty()) {
-            const QString beforeName = tl->getTrackProperty(trackId, QStringLiteral("kdenlive:track_name")).toString();
-            const QString name = project;
-            Fun mark = [tl, trackId, name, lowest]() {
-                if (tl->isTrack(trackId)) {
-                    tl->setTrackProperty(trackId, kTrackProject, name);
-                    tl->setTrackProperty(trackId, kTrackIndex, QString::number(lowest));
-                }
-                return true;
-            };
-            Fun unmark = [tl, trackId]() {
-                if (tl->isTrack(trackId)) {
-                    tl->setTrackProperty(trackId, kTrackProject, QString());
-                    tl->setTrackProperty(trackId, kTrackIndex, QString());
-                }
-                return true;
-            };
-            mark();
-            merge(undo, redo, unmark, mark);
-            changed = true;
-        } else if (current != project) {
-            if (error) {
-                *error = QStringLiteral("place_occupee");
-            }
-            return false;
-        }
-    }
+    // 4. Le fichier : ce qui manque est posé (sur la piste retenue).
     changed = applyFromFile(project, false, QString(), &undo, &redo) || changed;
-    if (atSeconds >= 0) {
-        // Les éléments à début absolu bougent d'un même pas ; les débuts relatifs suivent par le fichier.
-        const double projectFps = fps();
-        QList<std::pair<int, int>> moves; // clip, nouvelle position
-        int earliest = -1;
-        for (const Element &e : entry.sync->composition().elements) {
-            bool numeric = false;
-            e.startExpr.trimmed().toDouble(&numeric);
-            const int cid = clipFor(project, e.id);
-            if (!numeric || cid < 0) {
+    // 5. Les déplacements : piste et décalage d'un même geste, dans l'ordre qui évite qu'un clip de la
+    // composition bute sur un autre de la même composition. Refaits après le fichier : un clip qu'il vient de
+    // poser suit aussi le décalage.
+    moves = gather();
+    const int delta = moves.isEmpty() ? 0 : moves.first().target - moves.first().pos;
+    QList<PlacementRefusal> stuck;
+    bool moved = false;
+    std::sort(moves.begin(), moves.end(), [delta](const Move &a, const Move &b) { return delta > 0 ? a.pos > b.pos : a.pos < b.pos; });
+    m_applying = true;
+    for (const Move &m : std::as_const(moves)) {
+        if (!tl->isClip(m.cid)) {
+            continue;
+        }
+        const int at = m.numeric ? m.target : tl->getClipPosition(m.cid);
+        if (m.track == tl->getClipTrackId(m.cid) && at == tl->getClipPosition(m.cid)) {
+            continue;
+        }
+        if (tl->requestClipMove(m.cid, m.track, at, true, true, true, true, undo, redo) == TimelineModel::MoveSuccess) {
+            changed = true;
+            moved = true;
+        } else {
+            stuck << moveRefusal(tl, m.id, m.cid, m.track, at);
+        }
+    }
+    m_applying = false;
+    if (moved || !stuck.isEmpty()) {
+        reconcileSequence(sequenceOf(project));
+        // Après la mise en accord (elle refait la liste des refus) : les clips que le décalage n'a pas pu
+        // emmener sont restés à leur place, et le fichier aussi.
+        if (m_entries.contains(project)) {
+            for (const PlacementRefusal &r : std::as_const(stuck)) {
+                m_entries[project].refused.insert(r.elementId, r);
+            }
+        }
+    }
+    // 6. Pas encore de clip (rendu en cours) : une composition entière garde la place demandée pour sa pose.
+    if (atSeconds >= 0 && earliest < 0 && comp.elements.size() == 1 && comp.elements.first().kind == Kind::Whole && clipFor(project, comp.elements.first().id) < 0) {
+        const QString id = comp.elements.first().id;
+        const QString wanted = secondsText(frames(atSeconds, fps()) / fps());
+        const QList<Tag> tags = tokenize(entry.sync->html());
+        const int tagIndex = comp.elements.first().tagIndex;
+        const QString before = tagIndex >= 0 && tagIndex < tags.size() ? tags.at(tagIndex).attr(QStringLiteral("data-koracut-start")) : QString();
+        if (before != wanted && entry.sync->writeElement(id, {{QStringLiteral("data-koracut-start"), wanted}})) {
+            KoraCutMotionSync *sync = entry.sync;
+            Fun write = [this, sync, project, id, wanted]() {
+                if (sync->writeElement(id, {{QStringLiteral("data-koracut-start"), wanted}})) {
+                    applyFromFile(project, false);
+                }
+                return true;
+            };
+            Fun restore = [this, sync, project, id, before]() {
+                if (sync->writeElement(id, {{QStringLiteral("data-koracut-start"), before}})) {
+                    applyFromFile(project, false);
+                }
+                return true;
+            };
+            merge(undo, redo, restore, write);
+            changed = true;
+        }
+    }
+    // 7. Les pistes « Motion · nom » que le miroir avait créées pour cet index et qui restent vides : retirées
+    // dans la même étape. Une piste de la personne (renommée, ou qui n'est pas la sienne) n'est jamais touchée.
+    if (trackId >= 0 && !single) {
+        for (int tid : tl->getTracksIds(false)) {
+            if (tid == trackId || tl->getTrackProperty(tid, kTrackIndex).toInt() != lowest || !isOwnEmptyTrack(tl, tid, project)) {
                 continue;
             }
-            const int pos = tl->getClipPosition(cid);
-            earliest = earliest < 0 ? pos : std::min(earliest, pos);
-            moves << std::make_pair(cid, pos);
-        }
-        const int delta = earliest < 0 ? 0 : frames(atSeconds, projectFps) - earliest;
-        if (delta != 0) {
-            std::sort(moves.begin(), moves.end(), [delta](const auto &a, const auto &b) { return delta > 0 ? a.second > b.second : a.second < b.second; });
-            m_applying = true;
-            QList<PlacementRefusal> stuck;
-            for (const auto &[cid, pos] : std::as_const(moves)) {
-                if (tl->requestClipMove(cid, tl->getClipTrackId(cid), pos + delta, true, true, true, true, undo, redo) == TimelineModel::MoveSuccess) {
-                    changed = true;
-                } else {
-                    stuck << moveRefusal(tl, clipInfoIn(tl, cid).elementId, cid, tl->getClipTrackId(cid), pos + delta);
-                }
+            Fun localUndo = []() { return true; };
+            Fun localRedo = []() { return true; };
+            if (!tl->requestTrackDeletion(tid, localUndo, localRedo)) {
+                continue;
             }
-            m_applying = false;
-            reconcileSequence(sequenceOf(project));
-            // Après la mise en accord (elle refait la liste des refus) : les clips que le décalage n'a pas pu
-            // emmener sont restés à leur place, et le fichier aussi.
-            if (m_entries.contains(project)) {
-                for (const PlacementRefusal &r : std::as_const(stuck)) {
-                    m_entries[project].refused.insert(r.elementId, r);
+            // La piste revient avec Annuler : ses marques aussi (comme au refaire d'une création, ensureTrack).
+            const QString name = project;
+            const int index = lowest;
+            Fun mark = [tl, tid, name, index]() {
+                if (tl->isTrack(tid)) {
+                    tl->setTrackProperty(tid, kTrackProject, name);
+                    tl->setTrackProperty(tid, kTrackIndex, QString::number(index));
                 }
+                return true;
+            };
+            const Fun deletionUndo = localUndo;
+            merge(undo, redo, [deletionUndo, mark]() { return deletionUndo() && mark(); }, localRedo);
+            changed = true;
+            if (outcome) {
+                ++outcome->removedTracks;
             }
         }
+    }
+    if (outcome) {
+        bool anyClip = false;
+        bool allThere = true;
+        for (const Element &e : comp.elements) {
+            const int cid = clipFor(project, e.id);
+            if (e.kind == Kind::Audio) {
+                continue;
+            }
+            if (cid < 0) {
+                allThere = false;
+                continue;
+            }
+            anyClip = true;
+            if (trackId >= 0 && goesHome(e) && tl->getClipTrackId(cid) != trackId) {
+                allThere = false;
+            }
+        }
+        outcome->waitingRender = !anyClip && trackId >= 0;
+        outcome->alreadyThere = !changed && anyClip && allThere && stuck.isEmpty();
     }
     if (changed) {
         pCore->pushUndo(undo, redo, i18nc("@action undo text", "Motion: place %1", project));
     }
     Q_EMIT elementsChanged(project);
     return changed;
+}
+
+int KoraCutMotionMirror::homeTrackFor(const Entry &entry, const std::shared_ptr<TimelineItemModel> &tl, const KoraCutMotion::Element &element) const
+{
+    if (!tl || entry.homeTrack < 0 || entry.sync->composition().isElement() || element.kind == KoraCutMotion::Kind::Audio || element.trackIndex != entry.homeIndex) {
+        return -1;
+    }
+    if (!tl->isTrack(entry.homeTrack) || tl->isAudioTrack(entry.homeTrack)) {
+        return -1;
+    }
+    return entry.homeTrack;
+}
+
+bool KoraCutMotionMirror::isOwnEmptyTrack(const std::shared_ptr<TimelineItemModel> &tl, int tid, const QString &project) const
+{
+    if (!tl || !tl->isTrack(tid) || tl->isAudioTrack(tid) || tl->trackIsLocked(tid) || tl->getTrackProperty(tid, kTrackProject).toString() != project) {
+        return false;
+    }
+    if (!tl->getItemsInRange(tid, 0, -1, true).empty()) {
+        return false;
+    }
+    // Le nom que trackName() lui a donné, « Motion · nom » ou « Motion · nom · 2 » : renommée, c'est la sienne.
+    const QString name = tl->getTrackProperty(tid, QStringLiteral("kdenlive:track_name")).toString();
+    const QString base = i18nc("@item track name of a Motion composition", "Motion · %1", project);
+    return name == base || name.startsWith(base + QStringLiteral(" · "));
 }
 
 QList<KoraCutMotionMirror::PlacementRefusal> KoraCutMotionMirror::placementRefusals(const QString &project) const

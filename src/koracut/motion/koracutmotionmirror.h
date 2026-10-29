@@ -158,11 +158,23 @@ public:
     /** @brief Change des attributs et, si @p text n'est pas nul, le texte d'un élément. Une étape. */
     bool setElement(const QString &project, const QString &id, const QMap<QString, QString> &attributes, const QString *text = nullptr,
                     const QString &undoText = QString());
-    /** @brief Pose (ou repose) les clips du projet Motion : ceux dont le rendu est prêt et qui manquent dans
-     * la timeline. @p trackId >= 0 : cette piste vidéo devient la première piste Motion du projet (si elle
-     * n'en est pas déjà une). @p atSeconds >= 0 : le premier élément (début absolu) est amené à cette
-     * seconde, les autres suivent d'autant. Une étape. @return vrai si quelque chose a bougé. */
-    bool place(const QString &project, int trackId = -1, double atSeconds = -1., QString *error = nullptr);
+    /** Ce que place() dit en plus de ce qui a bougé (29 octobre 2026). */
+    struct PlaceOutcome
+    {
+        bool alreadyThere = false;  ///< tout était déjà sur la piste et à la place demandées : rien à faire
+        bool waitingRender = false; ///< aucun clip encore : la piste (et la place) sont retenues pour la pose
+        PlacementRefusal blocked;   ///< place_occupee : le clip qui tient la place sur la piste demandée
+        int removedTracks = 0;      ///< pistes « Motion · nom » du miroir restées vides, retirées
+    };
+    /** @brief Pose, repose ou déplace les clips du projet Motion. @p trackId >= 0 : les éléments du premier
+     * index de piste vont sur cette piste vidéo, qu'elle porte des rushs ou d'autres compositions (elle n'est
+     * pas marquée : plusieurs compositions qui ne se chevauchent pas la partagent, comme « Animations »).
+     * Une piste « Motion · nom » que le miroir avait créée et qui reste vide est retirée. @p atSeconds >= 0 :
+     * le premier élément (début absolu) est amené à cette seconde, les autres suivent d'autant ; sans clip
+     * encore, une composition entière garde cette place (data-koracut-start). Si un autre clip tient la place
+     * d'arrivée, rien ne bouge : @p error vaut place_occupee et @p outcome dit qui. Une étape.
+     * @return vrai si quelque chose a bougé. */
+    bool place(const QString &project, int trackId = -1, double atSeconds = -1., QString *error = nullptr, PlaceOutcome *outcome = nullptr);
     /** @brief Les éléments de cette composition que la dernière mise en accord n'a pas pu poser (place
      * prise sur leur piste, piste verrouillée). Vide quand tout ce qui est rendu est posé. */
     QList<PlacementRefusal> placementRefusals(const QString &project) const;
@@ -252,7 +264,8 @@ private:
             bool longerRender = false; ///< un bloc (sa durée n'entre pas dans l'empreinte) : rendu plus long demandé
         };
         QMap<QString, PendingLength> pendingLength;
-        int homeTrack = -1;                    ///< composition d'un seul élément : la piste où poser son clip
+        int homeTrack = -1;                    ///< la piste où poser son clip (élément seul) ou ceux de homeIndex (motion_poser piste_id)
+        int homeIndex = 0;                     ///< composition entière ou à plusieurs éléments : le data-track-index qui va sur homeTrack
         int cutBefore = -1;                    ///< transition : le plan qui finit à la coupe
         int cutAfter = -1;                     ///< transition : le plan qui commence à la coupe
     };
@@ -307,6 +320,12 @@ private:
      * piste à elle si elle est libre, sinon une piste partagée « Animations » (ou « Transitions », tout en
      * haut), créée au besoin dans undo/redo. */
     int elementTrack(const QString &project, int position, int length, Fun &undo, Fun &redo);
+    /** @brief Composition entière ou à plusieurs éléments : la piste choisie par motion_poser pour cet
+     * élément (homeTrack, si son index est homeIndex et que la piste existe encore), -1 sinon. */
+    int homeTrackFor(const Entry &entry, const std::shared_ptr<TimelineItemModel> &tl, const KoraCutMotion::Element &element) const;
+    /** @brief Vrai pour une piste vidéo vide que le miroir a créée pour @p project (« Motion · nom », marquée,
+     * jamais renommée) : la retirer ne prend rien à la personne. */
+    bool isOwnEmptyTrack(const std::shared_ptr<TimelineItemModel> &tl, int tid, const QString &project) const;
     /** @brief Les transitions suivent leur coupe : une coupe déplacée les recentre, une transition déplacée à la
      * main s'accroche à la coupe la plus proche de son milieu (ou se détache). @return les projets réécrits. */
     QStringList retimeTransitions(const std::shared_ptr<TimelineItemModel> &tl, const QString &sequence);
