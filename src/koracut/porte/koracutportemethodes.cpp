@@ -1346,8 +1346,17 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
                 for (QWidget *candidate : std::as_const(candidates)) {
                     for (QAbstractButton *b : candidate->findChildren<QAbstractButton *>()) {
                         if (b->isVisible() && cleanLabel(b->text()) == label) {
+                            const QPointer<QWidget> clicked(candidate);
                             b->click();
-                            return Reply::value(QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("fenetre"), candidate->windowTitle()}});
+                            QJsonObject o{{QStringLiteral("ok"), true}, {QStringLiteral("fenetre"), clicked ? clicked->windowTitle() : QString()}};
+                            // Un bouton qui ne ferme pas sa fenêtre (« Utiliser des espaces réservés » marque les
+                            // clips, il faut encore OK) : le dire, avec ce qui reste à cliquer (1er novembre 2026).
+                            if (clicked && clicked->isVisible()) {
+                                o.insert(QStringLiteral("toujours_ouverte"), true);
+                                o.insert(QStringLiteral("etat_fenetre"), KoraCutPorte::describeWindow(clicked));
+                                o.insert(QStringLiteral("conseil"), QStringLiteral("La fenêtre attend encore : un bouton qui valide (OK, Appliquer) la ferme."));
+                            }
+                            return Reply::value(o);
                         }
                     }
                 }

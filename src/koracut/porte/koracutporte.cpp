@@ -399,15 +399,32 @@ bool KoraCutPorte::listen(const QString &reglage, const QString &configDir)
 void KoraCutPorte::close()
 {
     const bool was = m_server != nullptr;
+    // Aucune prise n'est détruite sur-le-champ : close() peut être appelée (SIGTERM, fermeture de la
+    // fenêtre) pendant que le signal de lecture d'une prise est encore sur la pile, et Qt y revient
+    // ensuite (plantage du 1er novembre 2026 à 12 h 30, QIODevice::channelReadyRead sur une prise
+    // détruite). Chaque prise est détachée du serveur, qui serait sinon son parent et la détruirait avec
+    // lui, et part par deleteLater.
+    const auto dispose = [](QLocalSocket *socket) {
+        if (!socket) {
+            return;
+        }
+        socket->disconnect();
+        socket->abort();
+        socket->setParent(nullptr);
+        socket->deleteLater();
+    };
     for (auto &c : m_clients) {
         if (c->socket) {
-            c->socket->disconnect(this);
-            c->socket->abort();
-            c->socket->deleteLater();
+            dispose(c->socket);
             c->socket = nullptr;
         }
     }
     m_clients.clear();
+    const auto retired = m_retiredSockets;
+    m_retiredSockets.clear();
+    for (const QPointer<QLocalSocket> &socket : retired) {
+        dispose(socket.data());
+    }
     if (m_server) {
         m_server->close();
         delete m_server;
@@ -619,10 +636,13 @@ void KoraCutPorte::releaseRetiredSockets()
     if (m_running > 0) {
         return;
     }
-    for (QLocalSocket *socket : std::as_const(m_retiredSockets)) {
-        socket->deleteLater();
-    }
+    const auto retired = m_retiredSockets;
     m_retiredSockets.clear();
+    for (const QPointer<QLocalSocket> &socket : retired) {
+        if (socket) {
+            socket->deleteLater();
+        }
+    }
 }
 
 void KoraCutPorte::send(Client *client, const QJsonObject &message)
@@ -759,8 +779,17 @@ void KoraCutPorte::execute(Client *client, const Call &call, const Done &done)
                                 call.method.startsWith(QLatin1String("reglages."));
         const bool opensProject = call.method == QLatin1String("projet.ouvrir") || call.method == QLatin1String("projet.nouveau");
         if (!alwaysFree && (m_running > 0 || (!opensProject && m_busyProvider && m_busyProvider()))) {
-            const Reply busy = Reply::fail(QStringLiteral("occupe"), QStringLiteral("KoraCut est en train de charger un projet ou d'exécuter une autre commande."),
-                                           QStringLiteral("Réessaie dans une seconde (app.ping répond toujours)."));
+            // Une fenêtre qui attend une réponse (par exemple « Problèmes du clip » derrière la fenêtre de
+            // chargement) : la dire, sinon le client réessaie sans fin (1er novembre 2026).
+            QWidget *waiting = qApp ? QApplication::activeModalWidget() : nullptr;
+            const bool dialogWaiting = waiting && waiting->isVisible() && !qobject_cast<QProgressDialog *>(waiting);
+            const Reply busy = dialogWaiting
+                ? Reply::fail(QStringLiteral("occupe"),
+                              QStringLiteral("KoraCut attend une réponse dans la fenêtre « %1 ».").arg(waiting->windowTitle()),
+                              QStringLiteral("Lis fenetre (boutons, champs), réponds par ui.fenetre faire='bouton:<libellé>' (souvent OK pour valider)."),
+                              QJsonObject{{QStringLiteral("fenetre"), describeWindow(waiting)}})
+                : Reply::fail(QStringLiteral("occupe"), QStringLiteral("KoraCut est en train de charger un projet ou d'exécuter une autre commande."),
+                              QStringLiteral("Réessaie dans une seconde (app.ping répond toujours ; ui.fenetres dit si une fenêtre attend)."));
             logCall(call, busy, 0);
             done(busy);
             return;

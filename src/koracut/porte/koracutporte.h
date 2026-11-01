@@ -12,6 +12,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QJsonValue>
 #include <QList>
 #include <QObject>
+#include <QPointer>
 #include <QSet>
 #include <QString>
 #include <QUndoCommand>
@@ -231,7 +232,10 @@ private:
     std::function<bool()> m_busyProvider;
     int m_running{0};
     /** Les prises raccrochées pendant qu'une commande tourne : détruites quand elle a fini (voir retireSocket). */
-    QList<QLocalSocket *> m_retiredSockets;
+    // QPointer : une prise mise de côté peut être détruite avant d'être rendue (close() détruit le serveur,
+    // parent des prises, pendant qu'une commande tourne encore plus haut dans la pile ; plantages du
+    // 1er novembre 2026 à 11 h 29 et 12 h 24, deleteLater sur une prise morte).
+    QList<QPointer<QLocalSocket>> m_retiredSockets;
     void retireSocket(QLocalSocket *socket);
     void releaseRetiredSockets();
     bool m_watchingWindows{false};

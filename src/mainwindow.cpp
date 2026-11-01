@@ -3144,6 +3144,14 @@ MainWindow::~MainWindow()
     // objets MLT vivent encore (les playlists du chutier, un fil de vignettes qui décode) : six rapports de plantage
     // à la fermeture, le destructeur d'un Tractor sautant dans un module déjà déchargé. Le système rend tout à la
     // fin du processus (Recherche/Stabilite - releve des plantages).
+    // KoraCut (1er novembre 2026) : un projet encore ouvert (fermeture par SIGTERM en plein chargement) est
+    // détruit avec les enfants de la fenêtre ; sa pile quitte alors le groupe, qui réglait l'action « Annuler »
+    // déjà détruite (QUndoGroup::setActiveStack, QAction::setEnabled ; rapports de 11 h 21, 12 h 33 et 12 h 34).
+    // Le groupe devient muet. Il n'est pas détruit : les piles sont aussi ses enfants (QUndoStack(group)), elles
+    // seraient libérées deux fois (essayé le même jour).
+    if (m_commandStack) {
+        m_commandStack->blockSignals(true);
+    }
 }
 
 // virtual
