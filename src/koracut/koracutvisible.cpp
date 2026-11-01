@@ -190,7 +190,8 @@ bool KoraCutVisible::isReadOnly(const QString &tool)
                                    QStringLiteral("transcrire_media"),  QStringLiteral("detecter_silences"), QStringLiteral("temps_musique"),     QStringLiteral("exporter"),
                                    QStringLiteral("exporter_serie"),    QStringLiteral("exporter_image"),    QStringLiteral("annuler_export"),
                                    QStringLiteral("rendre_apercu"),     QStringLiteral("proposer_plan"),     QStringLiteral("deleguer"),
-                                   QStringLiteral("voix_off_voix"),     QStringLiteral("voix_off_installer")};
+                                   QStringLiteral("voix_off_voix"),     QStringLiteral("voix_off_installer"),
+                                   QStringLiteral("motion_installer")};
     return names.contains(tool);
 }
 

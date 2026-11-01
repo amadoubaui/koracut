@@ -15,6 +15,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "effects/effectstack/model/effectitemmodel.hpp"
 #include "doc/kdenlivedoc.h"
 #include "koracut/motion/koracutmotionmirror.h"
+#include "koracut/motion/koracutmotionretry.h"
 #include "koracut/motion/koracutmotionproject.h"
 #include "koracut/motion/koracutmotionrenderer.h"
 #include "koracut/motion/koracutmotionsync.h"
@@ -25,6 +26,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <KLocalizedString>
 
+#include <QPointer>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -1721,6 +1723,45 @@ void motionPlaceAfter(const Timeline &timeline, KoraCutMotionMirror *mirror, con
     result.insert(QStringLiteral("remarque"), QStringLiteral("La composition n'a PAS été posée là où demandé : voir pose_refusee. Libère la place, puis motion_poser avec piste_id et position."));
 }
 
+// motion_installer (1er novembre 2026, suite de KC-019) : un agent du panneau Agents restait devant des
+// compositions « INVALID » sur une machine neuve, sans pouvoir installer HyperFrames. À confirmation (environ
+// 130 Mo par npm, puis Chrome au premier rendu) ; l'installation continue en tâche de fond, et les rendus en
+// échec repartent à la fin, comme depuis la porte (app.hyperframes_installer) et le panneau Motion.
+QJsonObject motionInstaller(const Timeline &, const Args &args)
+{
+    static QPointer<KoraCutMotionInstaller> installer;
+    const bool latest = args.value(QStringLiteral("derniere")).toBool();
+    const auto state = KoraCutMotionHost::state();
+    if (state == KoraCutMotionHost::State::NoNode) {
+        return error(QStringLiteral("node_absent"), QStringLiteral("Node.js est introuvable sur cet ordinateur : HyperFrames ne peut pas s'installer."),
+                     QStringLiteral("Dis à la personne d'installer Node.js (version 22 ou plus récente) depuis nodejs.org, puis de réessayer."));
+    }
+    if (installer && installer->isRunning()) {
+        return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("en_cours"), true}, {QStringLiteral("hyperframes"), hostStateName()}};
+    }
+    if (!latest && state == KoraCutMotionHost::State::Ready && KoraCutMotionHost::installedVersion() == KoraCutMotionHost::versionWanted()) {
+        return QJsonObject{{QStringLiteral("ok"), true},
+                           {QStringLiteral("deja_installe"), true},
+                           {QStringLiteral("version"), KoraCutMotionHost::installedVersion()},
+                           {QStringLiteral("rendus_relances"), koraCutRetryFailedMotionRenders(g_motionMirror)}};
+    }
+    if (!installer) {
+        installer = new KoraCutMotionInstaller(qApp);
+        QObject::connect(installer, &KoraCutMotionInstaller::finished, qApp, [](bool ok, const QString &) {
+            if (ok) {
+                koraCutRetryFailedMotionRenders(g_motionMirror);
+            }
+        });
+    }
+    installer->start(latest);
+    return QJsonObject{{QStringLiteral("ok"), true},
+                       {QStringLiteral("en_cours"), true},
+                       {QStringLiteral("version_attendue"), latest ? QStringLiteral("latest") : KoraCutMotionHost::versionWanted()},
+                       {QStringLiteral("taille_mo"), 130},
+                       {QStringLiteral("dossier"), KoraCutMotionHost::dataDir()},
+                       {QStringLiteral("conseil"), QStringLiteral("L'installation prend une à deux minutes. Rappelle motion_lister : quand hyperframes vaut pret, les rendus en échec repartent seuls.")}};
+}
+
 QJsonObject motionLister(const Timeline &timeline, const Args &args)
 {
     QString project;
@@ -2462,6 +2503,7 @@ QMap<QString, Tool> buildTools()
         {QStringLiteral("motion_element"), motionElement}, {QStringLiteral("motion_rendre"), motionRendre},
         {QStringLiteral("motion_instantane"), motionInstantane}, {QStringLiteral("motion_verifier"), motionVerifier},
         {QStringLiteral("motion_poser"), motionPoser},
+        {QStringLiteral("motion_installer"), motionInstaller},
     };
     // Lots A et B (24 septembre 2026) : les autres fichiers d'outils.
     map.insert(montageTools());

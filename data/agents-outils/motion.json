@@ -565,5 +565,22 @@
     },
     "x_kdenlive": "src/mainwindow.cpp:MainWindow::koraCutEditMotionClip (KoraCutMotionInspector::showClip, KoraCutMotionMirror::announceOpened).",
     "x_confirmation": false
+  },
+  {
+    "name": "motion_installer",
+    "description": "Installe HyperFrames, le moteur des compositions Motion, quand motion_lister répond hyperframes = a_installer (environ 130 Mo par npm dans le dossier de données de KoraCut, puis environ 150 Mo de Chrome au premier rendu). À appeler seulement après l'accord explicite de la personne, en lui disant la taille. L'installation continue en tâche de fond : l'appel répond tout de suite { ok, en_cours, taille_mo, dossier } ou { ok, deja_installe, version }. À la fin, les rendus en échec repartent seuls : rappelle motion_lister pour suivre. Erreurs : node_absent (Node.js 22 ou plus récent manque sur l'ordinateur).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "derniere": {
+          "type": "boolean",
+          "description": "true : la dernière version publiée de HyperFrames au lieu de celle que KoraCut attend. Défaut : false. Seulement si la personne le demande."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "x_kdenlive": "fait : src/koracut/koracutagenttools.cpp, motionInstaller (1er novembre 2026).",
+    "x_confirmation": true
   }
 ]
