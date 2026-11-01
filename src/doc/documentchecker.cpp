@@ -255,6 +255,8 @@ bool DocumentChecker::resolveProblemsWithGUI()
 
     // original doc was modified
     m_doc.documentElement().setAttribute(QStringLiteral("modified"), 1);
+    // KoraCut : un fichier relié dans la fenêtre arrive de Qt avec ses accents composés (NFC).
+    koraCutFixPathForms(m_doc);
     return true;
 }
 

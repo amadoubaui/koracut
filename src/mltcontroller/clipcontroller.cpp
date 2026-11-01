@@ -7,6 +7,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 */
 
 #include "clipcontroller.h"
+#include "koracut/koracutpaths.h"
 #include "bin/bin.h"
 #include "bin/clipcreator.hpp"
 #include "bin/model/markerlistmodel.hpp"
@@ -274,7 +275,8 @@ void ClipController::getInfoForProducer()
         path.prepend(pCore->currentDoc()->documentRoot());
         m_properties->set("resource", path.toUtf8().constData());
     }
-    m_path = path.isEmpty() ? QString() : QFileInfo(path).absoluteFilePath();
+    // Le chemin tel qu'il est écrit sur le disque, accents compris (koracutpaths.h, 1er novembre 2026).
+    m_path = path.isEmpty() ? QString() : KoraCutPaths::onDisk(QFileInfo(path).absoluteFilePath());
     QString origurl = m_properties->get("kdenlive:originalurl");
     if (!origurl.isEmpty()) {
         m_properties->set("kdenlive:originalurl", m_path.toUtf8().constData());

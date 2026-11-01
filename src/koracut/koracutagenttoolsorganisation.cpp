@@ -9,6 +9,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 // Chaque appel = une étape d'annulation ; organiser_rushs fait un lot entier en une seule étape.
 
 #include "koracutagenttools.h"
+#include "koracut/koracutpaths.h"
 #include "koracutagenttools_p.h"
 
 #include "bin/clipcreator.hpp"
@@ -1314,11 +1315,14 @@ int releaseMediaFile(const QString &binId)
     return count;
 }
 
-int relocateMedia(const QString &binId, const QString &from, const QString &to)
+int relocateMedia(const QString &binId, const QString &from, const QString &target)
 {
     if (!pCore || !pCore->projectItemModel()) {
         return 0;
     }
+    // Le chemin tel qu'il est écrit sur le disque, accents compris : le chutier et les clips de la
+    // timeline reçoivent la même forme (koracutpaths.h, 1er novembre 2026).
+    const QString to = KoraCutPaths::onDisk(target);
     int count = 0;
     if (auto clip = pCore->projectItemModel()->getClipByBinID(binId)) {
         clip->koraCutRelocate(to);

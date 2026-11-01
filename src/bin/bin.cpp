@@ -7,6 +7,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 */
 
 #include "bin.h"
+#include "koracut/koracutpaths.h"
 #include "bin/sequenceclip.h"
 #include "bincommands.h"
 #include "clipcreator.hpp"
@@ -2523,6 +2524,8 @@ void Bin::slotReplaceClip()
             auto filter = FileFilter::Builder().setCategories({FileFilter::AllSupported}).toQFilter();
             QString fileName = QFileDialog::getOpenFileName(this, i18nc("@title:window", "Open Replacement for %1", currentItem->clipName()),
                                                             QFileInfo(currentItem->url()).absolutePath(), filter);
+            // KoraCut : le chemin tel qu'il est écrit sur le disque, accents compris (koracutpaths.h).
+            fileName = KoraCutPaths::onDisk(fileName);
             if (!fileName.isEmpty()) {
                 QMap<QString, QString> sourceProps;
                 QMap<QString, QString> newProps;
