@@ -8,6 +8,7 @@
 #include "core.h"
 #include "effects/effectsrepository.hpp"
 #include "koracut/koracuteffectpreviews.h"
+#include "lib/localeHandling.h"
 
 #include <QDir>
 #include <QFile>
@@ -33,6 +34,9 @@ double difference(const QImage &a, const QImage &b)
 
 TEST_CASE("Vignettes des effets", "[KoraCutEffectPreviews]")
 {
+    // Comme l'application (MainWindow) : MLT lit « 1.45 » avec la locale du processus. Sous une
+    // locale à virgule (fr_CH, fr_FR), le test lisait 1 et 0,75 devenait 0 (vu le 1er novembre 2026).
+    LocaleHandling::resetLocale();
     auto *previews = KoraCutEffectPreviews::instance();
     // L'image d'exemple : la photo de la famille quand generer.sh en donne une, sinon le paysage dessiné.
     const QString photo = qEnvironmentVariable("KORACUT_APERCUS_EXEMPLE");
