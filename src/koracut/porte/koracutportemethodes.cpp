@@ -26,6 +26,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "koracut/koracutnewprojectdialog.h"
 #include "koracut/koracutpanelfocus.h"
 #include "koracut/motion/koracutmotionrenderer.h"
+#include "koracut/motion/koracutmotionretry.h"
 #include "koracut/terminal/koracutterminalpanel.h"
 #include "koracut/koracuttopbar.h"
 #include "koracut/koracuttranscriber.h"
@@ -829,6 +830,77 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
     porte->registerMethod(QStringLiteral("app.ping"), QStringLiteral("Répond tout de suite, avec l'heure."), {}, [](const Call &) {
         return Reply::value(QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("heure"), QDateTime::currentDateTime().toString(Qt::ISODate)}});
     });
+    // HyperFrames (le moteur du module Motion), depuis la porte : sur une machine neuve, une session ou un agent
+    // restait coincé devant des compositions « INVALID » (hyperframes.etat = a_installer), l'installation ne
+    // partant que du bouton du panneau Motion (1er novembre 2026, Mac mini, campagne Univers Cosmetix).
+    const auto hyperframesState = []() -> QJsonObject {
+        QString state;
+        switch (KoraCutMotionHost::state()) {
+        case KoraCutMotionHost::State::Ready:
+            state = QStringLiteral("pret");
+            break;
+        case KoraCutMotionHost::State::NotInstalled:
+            state = QStringLiteral("a_installer");
+            break;
+        case KoraCutMotionHost::State::NoNode:
+            state = QStringLiteral("node_absent");
+            break;
+        }
+        QJsonObject o{{QStringLiteral("etat"), state},
+                      {QStringLiteral("version"), KoraCutMotionHost::installedVersion()},
+                      {QStringLiteral("version_attendue"), KoraCutMotionHost::versionWanted()},
+                      {QStringLiteral("dossier"), KoraCutMotionHost::dataDir()},
+                      {QStringLiteral("node"), KoraCutMotionHost::nodePath()}};
+        return o;
+    };
+    porte->registerMethod(QStringLiteral("app.hyperframes"),
+                          QStringLiteral("HyperFrames, le moteur du module Motion : etat (pret, a_installer, node_absent), version installée et attendue, dossier, Node."),
+                          {}, [hyperframesState](const Call &) {
+                              return Reply::value(hyperframesState());
+                          });
+    porte->registerMethod(
+        QStringLiteral("app.hyperframes_installer"),
+        QStringLiteral("Installe HyperFrames (version figée de l'application, environ 130 Mo par npm, Node requis), ou la dernière version publiée avec derniere=true. "
+                       "Rend la main tout de suite ; l'événement taches (quoi: hyperframes_installe) dit la fin, et les rendus Motion en échec repartent seuls."),
+        {p(QStringLiteral("derniere"), QStringLiteral("boolean"), QStringLiteral("true : la dernière version publiée au lieu de la version figée."))},
+        [porte, hyperframesState](const Call &call) {
+            static QPointer<KoraCutMotionInstaller> installer;
+            if (KoraCutMotionHost::nodePath().isEmpty()) {
+                return Reply::fail(QStringLiteral("non_disponible"), QStringLiteral("Node est introuvable sur cette machine : HyperFrames ne peut pas s'installer."),
+                                   QStringLiteral("Installer Node (https://nodejs.org), ou régler son chemin dans les préférences du module Motion."),
+                                   hyperframesState());
+            }
+            if (!installer) {
+                installer = new KoraCutMotionInstaller(qApp);
+                QObject::connect(installer, &KoraCutMotionInstaller::finished, qApp, [porte](bool ok, const QString &message) {
+                    const int retried = ok ? koraCutRetryFailedMotionRenders(KoraCutAgentTools::motionMirror()) : 0;
+                    if (porte) {
+                        porte->publish(QStringLiteral("taches"), QJsonObject{{QStringLiteral("quoi"), QStringLiteral("hyperframes_installe")},
+                                                                             {QStringLiteral("ok"), ok},
+                                                                             {QStringLiteral("message"), message},
+                                                                             {QStringLiteral("rendus_relances"), retried}});
+                    }
+                });
+            }
+            if (installer->isRunning()) {
+                QJsonObject o = hyperframesState();
+                o.insert(QStringLiteral("en_cours"), true);
+                return Reply::value(o);
+            }
+            const bool latest = call.params.value(QStringLiteral("derniere")).toBool();
+            if (!latest && KoraCutMotionHost::state() == KoraCutMotionHost::State::Ready && KoraCutMotionHost::installedVersion() == KoraCutMotionHost::versionWanted()) {
+                QJsonObject o = hyperframesState();
+                o.insert(QStringLiteral("deja_installe"), true);
+                o.insert(QStringLiteral("rendus_relances"), koraCutRetryFailedMotionRenders(KoraCutAgentTools::motionMirror()));
+                return Reply::value(o);
+            }
+            installer->start(latest);
+            QJsonObject o = hyperframesState();
+            o.insert(QStringLiteral("en_cours"), true);
+            o.insert(QStringLiteral("conseil"), QStringLiteral("app.hyperframes dit l'état ; l'événement taches (quoi: hyperframes_installe) prévient de la fin."));
+            return Reply::value(o);
+        },
+        true);
     porte->registerMethod(
         QStringLiteral("app.quitter"),
         QStringLiteral("Ferme KoraCut (à confirmation ; un programme de confiance passe sans question quand rien n'est à perdre : projet non modifié, aucun rendu en cours)."),

@@ -4,6 +4,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 */
 
 #include "koracutmotionpanel.h"
+#include "koracut/motion/koracutmotionretry.h"
 #include "../koracutfonts.h"
 #include "koracutmotioncatalog.h"
 #include "koracutmotionmirror.h"
@@ -91,6 +92,9 @@ KoraCutMotionPanel::KoraCutMotionPanel(KoraCutMotionMirror *mirror, KoraCutMotio
     connect(m_installer, &KoraCutMotionInstaller::finished, this, [this](bool ok, const QString &message) {
         if (!ok) {
             pCore->displayMessage(i18nc("@info", "HyperFrames could not be installed: %1", message), ErrorMessage, 8000);
+        } else {
+            // Les rendus tombés faute de HyperFrames repartent tout de suite (sans rouvrir le projet).
+            koraCutRetryFailedMotionRenders(m_mirror);
         }
         refreshHostState();
     });
