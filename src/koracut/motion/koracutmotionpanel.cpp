@@ -13,6 +13,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "bin/projectclip.h"
 #include "bin/projectitemmodel.h"
 #include "core.h"
+#include <KMessageWidget>
+#include <QAction>
 #include "koracut/koracutmetrics.h"
 
 #include <KLocalizedString>
@@ -63,6 +65,7 @@ KoraCutMotionPanel::KoraCutMotionPanel(KoraCutMotionMirror *mirror, KoraCutMotio
     buildCodeTab();
 
     connect(m_mirror, &KoraCutMotionMirror::projectsChanged, this, &KoraCutMotionPanel::refreshProjects);
+    connect(m_mirror, &KoraCutMotionMirror::projectsChanged, this, &KoraCutMotionPanel::offerInstallIfNeeded);
     connect(m_mirror, &KoraCutMotionMirror::elementsChanged, this, [this](const QString &name) {
         refreshProjects();
         if (name == currentProject()) {
@@ -399,6 +402,29 @@ void KoraCutMotionPanel::refreshHostState()
     m_renderButton->setEnabled(state == KoraCutMotionHost::State::Ready && m_projects->topLevelItemCount() > 0);
     m_studioButton->setEnabled(state == KoraCutMotionHost::State::Ready && !currentProject().isEmpty());
     m_saveButton->setEnabled(true);
+}
+
+void KoraCutMotionPanel::offerInstallIfNeeded()
+{
+    // Sans HyperFrames, les compositions d'un projet ouvert ailleurs restaient « INVALID » sans rien
+    // proposer tant que le panneau Motion n'était pas ouvert (1er novembre 2026, Mac mini).
+    if (KoraCutMotionHost::state() != KoraCutMotionHost::State::NotInstalled || m_installer->isRunning() || m_mirror->projects().isEmpty()) {
+        return;
+    }
+    const QString root = m_mirror->motionRoot();
+    if (root.isEmpty() || root == m_installOfferedFor) {
+        return;
+    }
+    m_installOfferedFor = root;
+    auto *install = new QAction(i18nc("@action:button", "Install HyperFrames"), this);
+    connect(install, &QAction::triggered, this, [this]() {
+        if (!m_installer->isRunning()) {
+            m_installer->start();
+            refreshHostState();
+        }
+    });
+    pCore->displayBinMessage(i18nc("@info", "This project has Motion compositions, but HyperFrames is not installed on this computer: they cannot be rendered yet."),
+                             KMessageWidget::Information, {install}, true);
 }
 
 void KoraCutMotionPanel::refreshLog()

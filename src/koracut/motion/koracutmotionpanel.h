@@ -54,6 +54,9 @@ private:
     void refreshProjects();
     void refreshElements();
     void refreshHostState();
+    /** @brief Un projet aux compositions Motion s'ouvre sur une machine sans HyperFrames : un message au-dessus
+     * des médias propose l'installation (une fois par dossier motion/). 1er novembre 2026. */
+    void offerInstallIfNeeded();
     void refreshLog();
     void newComposition();
     void openStudio();
@@ -64,6 +67,7 @@ private:
     KoraCutMotionMirror *m_mirror;
     KoraCutMotionStudio *m_studio;
     KoraCutMotionInstaller *m_installer;
+    QString m_installOfferedFor;
     KoraCutMotionLinter *m_linter;
     QTabWidget *m_tabs{nullptr};
     // Compositions

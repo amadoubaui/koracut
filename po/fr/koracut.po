@@ -55916,3 +55916,8 @@ msgstr ""
 msgctxt "@info:tooltip %1 is a list of programs driving the app"
 msgid "At work through the command door: %1"
 msgstr "Au travail par la porte de commande : %1"
+
+#. KoraCut, module Motion (1er novembre 2026) : HyperFrames absent à l'ouverture d'un projet
+msgctxt "@info"
+msgid "This project has Motion compositions, but HyperFrames is not installed on this computer: they cannot be rendered yet."
+msgstr "Ce projet a des compositions Motion, mais HyperFrames n'est pas installé sur cet ordinateur : elles ne peuvent pas encore être rendues."
