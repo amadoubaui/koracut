@@ -832,7 +832,7 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
     });
     // HyperFrames (le moteur du module Motion), depuis la porte : sur une machine neuve, une session ou un agent
     // restait coincé devant des compositions « INVALID » (hyperframes.etat = a_installer), l'installation ne
-    // partant que du bouton du panneau Motion (1er novembre 2026, Mac mini, campagne Univers Cosmetix).
+    // partant que du bouton du panneau Motion (1er novembre 2026, Mac mini, montage d’une campagne).
     const auto hyperframesState = []() -> QJsonObject {
         QString state;
         switch (KoraCutMotionHost::state()) {
