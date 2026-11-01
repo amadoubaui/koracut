@@ -13,6 +13,7 @@
 #include "titler/titlewidget.h"
 #include "transitions/transitionsrepository.hpp"
 #include "xml/xml.hpp"
+#include "koracut/koracutpaths.h"
 #include "kdenlive_debug.h"
 
 #include <KLocalizedString>
@@ -56,6 +57,73 @@ static bool isPlatformRelative(QString filePath, bool *platformChange)
     return true;
 }
 
+// KoraCut : un chemin dont les accents ne sont pas écrits comme sur le disque (NFC au lieu de NFD,
+// ou un mélange des deux) est trouvé par Qt mais pas par MLT, qui rend alors le clip « INVALID »
+// sans que rien ne le signale (koracutpaths.h, 1er novembre 2026). On réécrit ces chemins dans la
+// forme du disque avant que MLT ne lise le document : la racine, puis les chemins des producteurs
+// (un chemin relatif reste relatif, la vitesse d'un clip accéléré ou ralenti est gardée).
+static int koraCutFixPathForms(QDomDocument &doc)
+{
+    int fixed = 0;
+    QDomElement mlt = doc.documentElement();
+    QString root = mlt.attribute(QStringLiteral("root"));
+    if (!root.isEmpty()) {
+        const QString rootOnDisk = KoraCutPaths::onDisk(root);
+        if (rootOnDisk != root) {
+            mlt.setAttribute(QStringLiteral("root"), rootOnDisk);
+            root = rootOnDisk;
+            ++fixed;
+        }
+    }
+    const QStringList properties = {QStringLiteral("resource"), QStringLiteral("warp_resource"), QStringLiteral("kdenlive:originalurl"),
+                                    QStringLiteral("kdenlive:proxy")};
+    for (const QString &tag : {QStringLiteral("producer"), QStringLiteral("chain")}) {
+        const QDomNodeList items = doc.elementsByTagName(tag);
+        for (int i = 0; i < items.count(); ++i) {
+            QDomElement e = items.at(i).toElement();
+            const bool timewarp = Xml::getXmlProperty(e, QStringLiteral("mlt_service")) == QLatin1String("timewarp");
+            for (const QString &name : properties) {
+                if (!Xml::hasXmlProperty(e, name)) {
+                    continue;
+                }
+                QString value = Xml::getXmlProperty(e, name);
+                QString prefix;
+                if (timewarp && name == QLatin1String("resource")) {
+                    // « 0.9944:/chemin » : la vitesse, puis le fichier.
+                    const int colon = value.indexOf(QLatin1Char(':'));
+                    if (colon > 0) {
+                        prefix = value.left(colon + 1);
+                        value = value.mid(colon + 1);
+                    }
+                }
+                if (value.isEmpty() || value == QLatin1String("-")) {
+                    continue;
+                }
+                const bool relative = !value.startsWith(QLatin1Char('/'));
+                if (relative && root.isEmpty()) {
+                    continue;
+                }
+                const QString full = relative ? root + QLatin1Char('/') + value : value;
+                const QString onDisk = KoraCutPaths::onDisk(full);
+                if (onDisk == full) {
+                    continue;
+                }
+                QString written = onDisk;
+                if (relative && onDisk.startsWith(root + QLatin1Char('/'))) {
+                    written = onDisk.mid(root.size() + 1);
+                }
+                Xml::setXmlProperty(e, name, prefix + written);
+                ++fixed;
+            }
+        }
+    }
+    if (fixed > 0) {
+        qCInfo(KDENLIVE_LOG) << "KoraCut : chemins réécrits dans la forme du disque (accents) :" << fixed;
+        mlt.setAttribute(QStringLiteral("modified"), 1);
+    }
+    return fixed;
+}
+
 DocumentChecker::DocumentChecker(QUrl url, const QDomDocument &doc)
     : m_url(std::move(url))
     , m_doc(doc)
@@ -81,6 +149,12 @@ DocumentChecker::DocumentChecker(QUrl url, const QDomDocument &doc)
     }
     if (!m_root.isEmpty() && QDir(m_root).exists()) {
         m_root = QDir::cleanPath(m_root) + QDir::separator();
+    }
+    if (koraCutFixPathForms(m_doc) > 0) {
+        const QString root = baseElement.attribute(QStringLiteral("root"));
+        if (!root.isEmpty()) {
+            m_root = QDir::cleanPath(root) + QDir::separator();
+        }
     }
 }
 

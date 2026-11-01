@@ -1014,6 +1014,8 @@ bool RenderWidget::koraCutSubtitles() const
 
 void RenderWidget::startRenderTo(const QString &file)
 {
+    m_koraCutLastJobCount = 0;
+    m_koraCutLastErrors.clear();
     QFile::remove(file);
     m_view.out_file->setUrl(QUrl::fromLocalFile(file));
     m_view.out_file->setText(file);
@@ -1179,6 +1181,7 @@ void RenderWidget::slotPrepareExport2(bool delayedRendering)
     const KoraCutLoudness::Plan levelling = request.loudnessPlan();
     m_koraCutLastLevelling = levelling.target != 0 || levelling.fixedGain ? KoraCutLoudness::planJson(levelling) : QJsonObject();
 
+    m_koraCutLastErrors = request.errorMessages();
     if (!request.errorMessages().isEmpty()) {
         KMessageBox::errorList(this, i18n("The following errors occurred while trying to render"), request.errorMessages());
     }
@@ -1202,6 +1205,7 @@ void RenderWidget::slotPrepareExport2(bool delayedRendering)
             jobList << renderItem;
         }
     }
+    m_koraCutLastJobCount = int(jobList.count());
     if (jobList.count() > 0) {
         m_view.running_jobs->setCurrentItem(jobList.at(0));
     }

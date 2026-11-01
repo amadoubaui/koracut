@@ -2954,6 +2954,21 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
                 rw->koraCutSetFixedGain(gainDb);
             }
             rw->startRenderTo(path);
+            if (rw->koraCutLastJobCount() == 0) {
+                // Aucune tâche créée (préparation en échec, un clip introuvable par exemple) : avant le
+                // 1er novembre 2026, la porte répondait quand même « lancé », et export.etat retrouvait
+                // l'ancien rendu fini vers le même chemin (avancement 100, fichier pas refait).
+                QJsonObject details{{QStringLiteral("chemin"), path}};
+                const QStringList errors = rw->koraCutLastErrors();
+                if (!errors.isEmpty()) {
+                    details.insert(QStringLiteral("erreurs"), QJsonArray::fromStringList(errors));
+                }
+                return Reply::fail(QStringLiteral("rendu_non_lance"),
+                                   errors.isEmpty() ? QStringLiteral("Le rendu n'a pas pu être préparé : aucune tâche créée.")
+                                                    : QStringLiteral("Le rendu n'a pas pu être préparé : %1").arg(errors.join(QStringLiteral(" ; "))),
+                                   QStringLiteral("Lire le journal de l'application ; app performance et medias lister montrent les clips introuvables."),
+                                   details);
+            }
             porte->publish(QStringLiteral("taches"), QJsonObject{{QStringLiteral("quoi"), QStringLiteral("rendu_lance")}, {QStringLiteral("chemin"), path}});
             QJsonObject o{{QStringLiteral("tache_id"), path}, {QStringLiteral("prereglage"), rw->currentPresetName()}, {QStringLiteral("zone"), zoneKind}, {QStringLiteral("sous_titres"), subtitles}};
             if (boundIn >= 0) {
@@ -3000,9 +3015,10 @@ void KoraCutPorteMethodes::registerAll(KoraCutPorte *porte, const KoraCutPorteCo
                               if (wanted.isEmpty()) {
                                   return Reply::value(jobs);
                               }
-                              for (const QJsonValue &j : jobs) {
-                                  if (j.toObject().value(QStringLiteral("tache_id")).toString() == wanted) {
-                                      return Reply::value(j);
+                              // Le plus récent d'abord : un ancien rendu fini vers le même chemin reste dans la liste.
+                              for (qsizetype i = jobs.size() - 1; i >= 0; --i) {
+                                  if (jobs.at(i).toObject().value(QStringLiteral("tache_id")).toString() == wanted) {
+                                      return Reply::value(jobs.at(i));
                                   }
                               }
                               return Reply::fail(QStringLiteral("tache_inconnue"), QStringLiteral("Aucun rendu vers %1.").arg(wanted), QStringLiteral("export.etat sans paramètre liste les rendus."));

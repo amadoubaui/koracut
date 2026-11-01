@@ -138,6 +138,10 @@ public:
     void koraCutSetFixedGain(double gainDb);
     /** @brief KoraCut : ce que le nivellement du dernier rendu a posé (planJson), vide s'il n'y en a pas eu. */
     QJsonObject koraCutLastLevelling() const { return m_koraCutLastLevelling; }
+    /** @brief KoraCut, porte : le nombre de tâches créées par le dernier startRenderTo, et les erreurs de sa
+     * préparation. 0 tâche : le rendu n'est pas parti (la porte le dit au lieu de répondre « lancé »). */
+    int koraCutLastJobCount() const { return m_koraCutLastJobCount; }
+    QStringList koraCutLastErrors() const { return m_koraCutLastErrors; }
     bool koraCutSubtitles() const;
 
 protected:
@@ -220,6 +224,8 @@ private:
     QPoint m_koraCutBounds{-1, -1};
     std::optional<double> m_koraCutFixedGain;
     QJsonObject m_koraCutLastLevelling;
+    int m_koraCutLastJobCount{-1};
+    QStringList m_koraCutLastErrors;
     QCheckBox *m_loudnessCheck{nullptr};
     QSpinBox *m_loudnessTarget{nullptr};
     QCheckBox *m_koraCutSubtitles{nullptr};

@@ -4,6 +4,7 @@
 */
 
 #include "clipcreator.hpp"
+#include "koracut/koracutpaths.h"
 #include "bin/bin.h"
 #include "core.h"
 #include "doc/kdenlivedoc.h"
@@ -271,8 +272,11 @@ QString ClipCreator::createPlaylistClip(const QString &parentFolder, const std::
     return res ? id : QStringLiteral("-1");
 }
 
-QDomDocument ClipCreator::getXmlFromUrl(const QString &path)
+QDomDocument ClipCreator::getXmlFromUrl(const QString &requestedPath)
 {
+    // KoraCut : le chemin tel qu'il est écrit sur le disque, accents compris (koracutpaths.h). Un
+    // chemin tapé par un agent ou par la porte arrive souvent en NFC ; MLT ne le trouverait pas.
+    const QString path = KoraCutPaths::onDisk(requestedPath);
     QDomDocument xml;
     QUrl fileUrl = QUrl::fromLocalFile(path);
     // KoraCut : pas de document pendant un chargement (deux rapports du 30 septembre 2026).
