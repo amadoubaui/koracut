@@ -7,6 +7,7 @@ This file is part of Kdenlive. See www.kdenlive.org.
 SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 */
 
+#include "koracut/koracutpaths.h"
 #include "projectitemmodel.h"
 #include "abstractprojectitem.h"
 #include "binplaylist.hpp"
@@ -1750,7 +1751,8 @@ const std::pair<QString, QString> ProjectItemModel::sceneList(const QString &roo
 
     Mlt::Consumer xmlConsumer(pCore->getProjectProfile(), "xml", aspectRatio.isEmpty() ? "kdenlive_playlist" : tempFile.fileName().toUtf8().constData());
     if (!root.isEmpty()) {
-        xmlConsumer.set("root", root.toUtf8().constData());
+        // KoraCut (2 novembre 2026) : la racine sous la forme Unicode du disque (voir TimelineModel::sceneList).
+        xmlConsumer.set("root", KoraCutPaths::onDisk(root).toUtf8().constData());
     }
     if (!xmlConsumer.is_valid()) {
         return {};

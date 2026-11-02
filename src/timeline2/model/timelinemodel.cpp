@@ -44,6 +44,7 @@
 
 #include "macros.hpp"
 #include <localeHandling.h>
+#include "koracut/koracutpaths.h"
 
 #ifdef CRASH_AUTO_TEST
 #include "logger.hpp"
@@ -6959,7 +6960,10 @@ const QString TimelineModel::sceneList(const QString &root, const QString &fullP
     QString playlist;
     Mlt::Consumer xmlConsumer(pCore->getProjectProfile(), "xml", fullPath.isEmpty() ? "kdenlive_playlist" : fullPath.toUtf8().constData());
     if (!root.isEmpty()) {
-        xmlConsumer.set("root", root.toUtf8().constData());
+        // KoraCut (2 novembre 2026) : la racine sous la forme Unicode du disque, comme les chemins
+        // des clips (KoraCutPaths::onDisk) ; sinon MLT ne la retrouve pas en tête des chemins, les écrit
+        // en absolu, et la racine écrite en NFC ne s'ouvre plus sur un partage SMB.
+        xmlConsumer.set("root", KoraCutPaths::onDisk(root).toUtf8().constData());
     }
     if (!xmlConsumer.is_valid()) {
         return QString();
