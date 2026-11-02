@@ -487,7 +487,9 @@ void MainWindow::init()
         const auto sync = [&themes, &ids](KSelectAction *menu, const QString &base, bool all) {
             for (QAction *a : menu->actions()) {
                 const QString id = a->data().toString();
-                if (id.startsWith(QLatin1String("KoraCut")) && !ids.contains(id)) {
+                // Un thème qui n'est plus dans la liste (supprimé, ou retiré du dossier à la main) quitte le
+                // menu ; les entrées posées par sync() sont marquées, quel que soit le nom de leur fichier.
+                if ((id.startsWith(QLatin1String("KoraCut")) || a->property("koracut_theme").toBool()) && !ids.contains(id)) {
                     menu->removeAction(a);
                     a->deleteLater();
                 }
@@ -507,6 +509,7 @@ void MainWindow::init()
                     QAction *a = menu->addAction(t.name);
                     a->setData(t.id);
                     a->setCheckable(true);
+                    a->setProperty("koracut_theme", true);
                 }
             }
         };

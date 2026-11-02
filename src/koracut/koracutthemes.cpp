@@ -19,6 +19,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QFileSystemWatcher>
 #include <QFont>
 #include <QFontDatabase>
 #include <QHash>
@@ -30,6 +31,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QStandardPaths>
+#include <QTimer>
 
 #include <cmath>
 #include <utility>
@@ -207,6 +209,17 @@ KoraCutThemes::KoraCutThemes(QObject *parent)
     : QObject(parent)
 {
     loadBuiltins();
+    // Un thème déposé à la main dans le dossier des thèmes (ou retiré) entre dans les menus tout de
+    // suite, sans relancer (2 novembre 2026). list() relit déjà le dossier : il suffit de dire que la
+    // liste a changé. Le délai regroupe les écritures d'une même copie, et celles de KoraCut elle-même.
+    const QString folder = UiUtils::userThemesFolder();
+    QDir().mkpath(folder);
+    auto *watcher = new QFileSystemWatcher({folder}, this);
+    auto *delay = new QTimer(this);
+    delay->setSingleShot(true);
+    delay->setInterval(400);
+    connect(watcher, &QFileSystemWatcher::directoryChanged, delay, qOverload<>(&QTimer::start));
+    connect(delay, &QTimer::timeout, this, &KoraCutThemes::listChanged);
 }
 
 QStringList KoraCutThemes::tokenNames()

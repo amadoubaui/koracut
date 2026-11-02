@@ -14,12 +14,16 @@
 #include <KColorSchemeManager>
 #include <QApplication>
 #include <QDir>
+#include <QEventLoop>
+#include <QTimer>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QPalette>
 #include <QFontDatabase>
 #include <QRegularExpression>
+
+#include <algorithm>
 
 // Un thème installé pendant la séance (Affichage > Thème > Installer un thème…) : le gestionnaire
 // de schémas de KF6 ne relit pas son dossier, il ne le connaît donc pas. KoraCut l'applique depuis
@@ -87,6 +91,45 @@ TEST_CASE("Thème installé pendant la séance", "[KoraCutTheme]")
 
     QFile::remove(chemin);
     KdenliveSettings::setKoracut_theme_mode(modeAvant);
+}
+
+// Un thème déposé à la main dans le dossier des thèmes entre dans les menus sans relancer, et en sort
+// quand on le retire : le dossier est surveillé, listChanged() part (2 novembre 2026).
+TEST_CASE("Thème déposé ou retiré à la main dans le dossier", "[KoraCutTheme]")
+{
+    KoraCutThemes::self()->installBuiltins();
+    const auto attendre = []() {
+        QEventLoop boucle;
+        bool recu = false;
+        const auto c = QObject::connect(KoraCutThemes::self(), &KoraCutThemes::listChanged, &boucle, [&]() {
+            recu = true;
+            boucle.quit();
+        });
+        QTimer::singleShot(5000, &boucle, &QEventLoop::quit);
+        boucle.exec();
+        QObject::disconnect(c);
+        return recu;
+    };
+    const auto connu = [](const QString &id) {
+        const auto themes = KoraCutThemes::self()->list();
+        return std::any_of(themes.begin(), themes.end(), [&id](const KoraCutThemes::Theme &t) { return t.id == id; });
+    };
+    // Une seconde pour que les écritures des thèmes livrés soient passées.
+    {
+        QEventLoop pause;
+        QTimer::singleShot(1000, &pause, &QEventLoop::quit);
+        pause.exec();
+    }
+    const QString id = QStringLiteral("MonThemeDepose");
+    const QString chemin = UiUtils::userThemesFolder() + QLatin1Char('/') + id + QStringLiteral(".colors");
+    QFile::remove(chemin);
+    REQUIRE_FALSE(connu(id));
+    REQUIRE(QFile::copy(UiUtils::themeFile(QStringLiteral("KoraCutDark")), chemin));
+    CHECK(attendre());
+    CHECK(connu(id));
+    REQUIRE(QFile::remove(chemin));
+    CHECK(attendre());
+    CHECK_FALSE(connu(id));
 }
 
 TEST_CASE("Thèmes par base, pour le suivi du système", "[KoraCutTheme]")
